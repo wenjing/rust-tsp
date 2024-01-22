@@ -5,6 +5,8 @@ use rand::rngs::OsRng;
 use crate::api::{Error, Identifier};
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(try_from = "SerdeRepresentation"))]
+#[cfg_attr(feature = "serde", serde(into = "SerdeRepresentation"))]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Vid {
     ident: url::Url,
@@ -95,6 +97,24 @@ impl Vid {
         let secret = Ed::SigningKey::generate(&mut OsRng);
 
         Ok((Vid::generate_from_key(url.try_into()?, &secret), secret))
+    }
+}
+
+#[cfg(feature = "serde")]
+type SerdeRepresentation = (Ed::Signature, Ed::VerifyingKey, url::Url);
+
+#[cfg(feature = "serde")]
+impl TryFrom<SerdeRepresentation> for Vid {
+    type Error = Error;
+    fn try_from(data: SerdeRepresentation) -> Result<Vid, Error> {
+        Vid::make(data.2, data.1, data.0)
+    }
+}
+
+#[cfg(feature = "serde")]
+impl From<Vid> for SerdeRepresentation {
+    fn from(data: Vid) -> SerdeRepresentation {
+        (data.signature, data.public, data.ident)
     }
 }
 
