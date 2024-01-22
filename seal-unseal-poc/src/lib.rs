@@ -104,7 +104,6 @@ impl SealedMessage {
             + 1 // minor
             + self.signed_envelope.len()
             + 32 // encapped key length
-            + 16 // signature length
             + self.ciphertext.len(),
         );
 
