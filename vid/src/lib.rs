@@ -2,14 +2,15 @@ mod api;
 mod simple_vid;
 
 pub use api::{Error, Identifier};
-pub use ed25519_dalek::{SecretKey, Signature, Signer, SigningKey, VerifyingKey};
 pub use simple_vid::Vid as SelfSignedVid;
 
 #[cfg(test)]
 mod test {
     use super::{Identifier, SelfSignedVid};
 
-    fn reparse_test<Ident: Identifier + Eq + std::fmt::Debug>(id: &Ident) {
+    fn reparse_test<KemType: hpke::Kem, Ident: Identifier<KemType> + Eq + std::fmt::Debug>(
+        id: &Ident,
+    ) {
         let display = id.display();
         let vid = Ident::parse(display.as_str()).unwrap();
         assert_eq!(&vid, id);
