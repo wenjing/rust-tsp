@@ -2,7 +2,7 @@ use std::io::Write;
 
 use faster_hex::hex_string_upper;
 use hpke::{
-    aead::{AeadTag, ChaCha20Poly1305},
+    aead::ChaCha20Poly1305,
     kdf::HkdfSha256,
     kem::X25519HkdfSha256,
     Deserializable, Kem, OpModeR, OpModeS, Serializable,
@@ -19,12 +19,11 @@ type PublicKey = <KemType as Kem>::PublicKey;
 
 type Data = Vec<u8>;
 type EncappedKey = [u8; 32];
-type Signature = [u8; 16];
 
 #[derive(Serialize, Deserialize, PartialEq, Clone)]
 struct SignedEnvelope {
-    sender: SelfSignedVid,
-    receiver: SelfSignedVid,
+    pub(crate) sender: SelfSignedVid,
+    pub(crate) receiver: SelfSignedVid,
 }
 
 impl std::fmt::Debug for SignedEnvelope {
@@ -95,7 +94,6 @@ struct SealedMessage {
     version_minor: u8,
     signed_envelope: Data,
     encapped_key: EncappedKey,
-    signature: Signature,
     ciphertext: Data,
 }
 
@@ -114,7 +112,6 @@ impl SealedMessage {
         result.insert(1, self.version_minor);
         result.write_all(&self.signed_envelope).unwrap();
         result.write_all(&self.encapped_key).unwrap();
-        result.write_all(&self.signature).unwrap();
         result.write_all(&self.ciphertext).unwrap();
 
         result
@@ -127,15 +124,13 @@ impl SealedMessage {
         let (signed_envelope_decoded, offset) = SignedEnvelope::deserialize(&data[2..]);
         let signed_envelope = data[2..(offset + 2)].to_owned();
         let encapped_key: EncappedKey = data[(offset + 2)..(offset + 34)].try_into().unwrap();
-        let signature: Signature = data[(offset + 34)..(offset + 50)].try_into().unwrap();
-        let ciphertext: Data = data[(offset + 50)..].to_owned();
+        let ciphertext: Data = data[(offset + 34)..].to_owned();
 
         let sealed_message = SealedMessage {
             version_major,
             version_minor,
             signed_envelope,
             encapped_key,
-            signature,
             ciphertext,
         };
 
@@ -151,7 +146,6 @@ impl std::fmt::Debug for SealedMessage {
             .field("signed_envelope", &hex_string_upper(&self.signed_envelope))
             .field("ciphertext", &hex_string_upper(&self.ciphertext))
             .field("encapped_key", &hex_string_upper(&self.encapped_key))
-            .field("signature", &hex_string_upper(&self.signature))
             .finish()
     }
 }
@@ -159,7 +153,6 @@ impl std::fmt::Debug for SealedMessage {
 impl Message {
     const MAJOR_VERSION: u8 = 0;
     const MINOR_VERSION: u8 = 1;
-    const INFO_STR: &'static [u8] = b"TSP";
 
     pub fn seal(self, key: PrivateKey) -> Vec<u8> {
         let mut csprng = StdRng::from_entropy();
@@ -167,24 +160,22 @@ impl Message {
         let (encapped_key, mut sender_ctx) = hpke::setup_sender::<Aead, Kdf, KemType, _>(
             &OpModeS::Auth((key, self.signed_envelope.sender_key())),
             &self.signed_envelope.receiver_key(),
-            Self::INFO_STR,
+            self.signed_envelope.sender.display().as_bytes(),
             &mut csprng,
         )
         .expect("invalid server pubkey!");
 
         let signed_envelope = self.signed_envelope.serialize();
-        let mut msg_copy = self.secret_message;
-        let tag = sender_ctx
-            .seal_in_place_detached(&mut msg_copy, &signed_envelope)
+        let ciphertext = sender_ctx
+            .seal(&self.secret_message, &signed_envelope)
             .expect("encryption failed!");
 
         let sealed_message = SealedMessage {
             version_major: Self::MAJOR_VERSION,
             version_minor: Self::MINOR_VERSION,
             signed_envelope,
-            ciphertext: msg_copy,
+            ciphertext,
             encapped_key: encapped_key.to_bytes().into(),
-            signature: tag.to_bytes().into(),
         };
 
         sealed_message.serialize()
@@ -193,9 +184,6 @@ impl Message {
     pub fn unseal(data: &[u8], key: PrivateKey) -> Message {
         let (signed_envelope, sealed_message) = SealedMessage::deserialize(data);
 
-        let signature = AeadTag::<Aead>::from_bytes(&sealed_message.signature)
-            .expect("could not deserialize AEAD tag!");
-
         let encapped_key = <KemType as Kem>::EncappedKey::from_bytes(&sealed_message.encapped_key)
             .expect("could not deserialize the encapsulated pubkey!");
 
@@ -203,20 +191,17 @@ impl Message {
             &OpModeR::Auth(signed_envelope.sender_key()),
             &key,
             &encapped_key,
-            Self::INFO_STR,
+            signed_envelope.sender.display().as_bytes(),
         )
         .expect("failed to set up receiver!");
 
-        let mut ciphertext_copy = sealed_message.ciphertext.to_vec();
-
-        let signed_envelope_data = sealed_message.signed_envelope;
-        receiver_ctx
-            .open_in_place_detached(&mut ciphertext_copy, &signed_envelope_data, &signature)
+        let secret_message = receiver_ctx
+            .open(&sealed_message.ciphertext, &sealed_message.signed_envelope)
             .expect("invalid ciphertext!");
 
         Message {
             signed_envelope,
-            secret_message: ciphertext_copy,
+            secret_message,
         }
     }
 }
@@ -255,7 +240,11 @@ mod tests {
         assert_eq!(envelope.sender_key(), sender_pub);
         assert_eq!(envelope.receiver_key(), receiver_pub);
 
-        (sender_private, receiver_private, envelope)
+        (
+            sender_private,
+            receiver_private,
+            envelope
+        )
     }
 
     #[test]
