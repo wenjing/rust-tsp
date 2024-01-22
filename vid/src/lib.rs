@@ -2,6 +2,7 @@ mod api;
 mod simple_vid;
 
 pub use api::{Error, Identifier};
+pub use ed25519_dalek::{SecretKey, Signature, Signer, SigningKey, VerifyingKey};
 pub use simple_vid::Vid as SelfSignedVid;
 
 #[cfg(test)]
