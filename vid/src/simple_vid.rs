@@ -5,7 +5,7 @@ use rand::rngs::OsRng;
 use crate::api::{Error, Identifier};
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(PartialEq, Eq, Debug)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Vid {
     ident: url::Url,
     public: Ed::VerifyingKey,
