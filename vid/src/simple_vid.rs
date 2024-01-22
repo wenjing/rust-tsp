@@ -96,3 +96,42 @@ impl Vid {
         Ok((Vid::generate_from_key(url.try_into()?, &secret), secret))
     }
 }
+
+#[cfg(test)]
+mod test {
+    use super::{Error, Identifier, Verifier, Vid};
+
+    #[test]
+    fn base64_error() {
+        let vid = "hj9g/Rzn8p8WYalsiTyUSEwy+07qFN9FKCDiK2OfFjI5dZDgTVOzxpX2af3fQCABQAFgEA%idJ0GhTk+7USPcF78BUs4bN29ZPOMb0pqCTbCS1Q4LvTqb4dYIECaWvwBwmailto:tsp@tweedegolf.com";
+        assert!(matches!(Vid::parse(vid).unwrap_err(), Error::Encoding(_)));
+    }
+
+    #[test]
+    fn url_error() {
+        let vid = "hj9g/Rzn8p8WYalsiTyUSEwy+07qFN9FKCDiK2OfFjI5dZDgTVOzxpX2af3fQCABQAFgEATidJ0GhTk+7USPcF78BUs4bN29ZPOMb0pqCTbCS1Q4LvTqb4dYIECaWvwBw/ailto:tsp@tweedegolf.com";
+        assert!(matches!(Vid::parse(vid).unwrap_err(), Error::Transport(_)));
+    }
+
+    #[test]
+    fn crypto_error() {
+        let vid = "hj9g/Rzn8p8WYalsiTyUSEwy+07qFN9FKCDiK2OfFjI5dZDgTVOzxpX2af3fQCABQAFgEATidJ0GhTk+7USPcF78BUs4bN29ZPOMb0pqCTbCS1Q4LvTqb4dYIFCaWvwBwmailto:tsp@tweedegolf.com";
+        assert!(matches!(
+            Vid::parse(vid).unwrap_err(),
+            Error::VerificationFailed(_)
+        ));
+    }
+
+    #[test]
+    fn okay() {
+        let vid = "hj9g/Rzn8p8WYalsiTyUSEwy+07qFN9FKCDiK2OfFjI5dZDgTVOzxpX2af3fQCABQAFgEATidJ0GhTk+7USPcF78BUs4bN29ZPOMb0pqCTbCS1Q4LvTqb4dYIECaWvwBwmailto:tsp@tweedegolf.com";
+        let vid = Vid::parse(vid).unwrap();
+        assert_eq!(
+            vid.endpoint(),
+            &TryInto::<url::Url>::try_into("mailto:tsp@tweedegolf.com").unwrap()
+        );
+        vid.public_key()
+            .verify(b"mailto:tsp@tweedegolf.com", &vid.signature)
+            .unwrap();
+    }
+}
