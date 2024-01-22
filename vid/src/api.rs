@@ -1,6 +1,6 @@
 use ed25519::{pkcs8::EncodePublicKey, signature::Verifier, Signature};
 
-pub trait Identifier: Eq {
+pub trait Identifier: Eq + Clone {
     /// A representation of a Vid encoded as an UTF8 string.
     fn display(&self) -> ascii::AsciiString;
 
