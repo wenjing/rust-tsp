@@ -124,14 +124,21 @@ mod test {
 
     #[test]
     fn okay() {
-        let vid = "hj9g/Rzn8p8WYalsiTyUSEwy+07qFN9FKCDiK2OfFjI5dZDgTVOzxpX2af3fQCABQAFgEATidJ0GhTk+7USPcF78BUs4bN29ZPOMb0pqCTbCS1Q4LvTqb4dYIECaWvwBwmailto:tsp@tweedegolf.com";
-        let vid = Vid::parse(vid).unwrap();
-        assert_eq!(
-            vid.endpoint(),
-            &TryInto::<url::Url>::try_into("mailto:tsp@tweedegolf.com").unwrap()
-        );
-        vid.public_key()
-            .verify(b"mailto:tsp@tweedegolf.com", &vid.signature)
-            .unwrap();
+        fn check_vid(vid: impl AsRef<str>, text: &str) {
+            let vid = Vid::parse(vid.as_ref()).unwrap();
+            assert_eq!(
+                vid.endpoint(),
+                &TryInto::<url::Url>::try_into(text).unwrap()
+            );
+            vid.public_key()
+                .verify(text.as_bytes(), &vid.signature)
+                .unwrap();
+        }
+
+        let vid1 = "hj9g/Rzn8p8WYalsiTyUSEwy+07qFN9FKCDiK2OfFjI5dZDgTVOzxpX2af3fQCABQAFgEATidJ0GhTk+7USPcF78BUs4bN29ZPOMb0pqCTbCS1Q4LvTqb4dYIECaWvwBwmailto:tsp@tweedegolf.com";
+        let vid2 = &Vid::new("mailto:tsp@tweedegolf.com").unwrap().0.display();
+        check_vid(vid1, "mailto:tsp@tweedegolf.com");
+        check_vid(vid2, "mailto:tsp@tweedegolf.com");
+        assert_ne!(vid1, vid2);
     }
 }
