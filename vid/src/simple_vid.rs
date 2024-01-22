@@ -1,10 +1,10 @@
 use base64ct::{Base64Unpadded as B64, Encoding};
-use ed25519_dalek::{self as Ed, Signer, Verifier};
+use ed25519_dalek::{self as Ed, pkcs8::EncodePublicKey, Signature, Signer, Verifier};
 use rand::rngs::OsRng;
 
 use crate::api::{Error, Identifier};
 
-#[derive(Debug)]
+#[derive(PartialEq, Eq, Debug)]
 pub struct Vid {
     ident: url::Url,
     public: Ed::VerifyingKey,
@@ -18,7 +18,7 @@ impl Identifier for Vid {
         &self.ident
     }
 
-    fn public_key(&self) -> &Ed::VerifyingKey {
+    fn public_key(&self) -> &(impl Verifier<Signature> + EncodePublicKey + AsRef<[u8]>) {
         &self.public
     }
 
@@ -59,7 +59,8 @@ impl Identifier for Vid {
         let signature = B64::encode_string(&self.signature.to_bytes());
 
         use std::str::FromStr;
-        ascii::AsciiString::from_str(&format!("{public}{signature}{ident}")).expect("URL encoding contained non-ASCII characters")
+        ascii::AsciiString::from_str(&format!("{public}{signature}{ident}"))
+            .expect("URL encoding contained non-ASCII characters")
     }
 }
 
