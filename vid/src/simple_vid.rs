@@ -1,19 +1,20 @@
 use base64ct::{Base64Unpadded as B64, Encoding};
-use ed25519_dalek::{self as Ed, pkcs8::EncodePublicKey, Signature, Signer, Verifier};
+use ed25519_dalek::{pkcs8::EncodePublicKey, Signature, Verifier};
 use rand::rngs::OsRng;
 
 use crate::api::{Error, Identifier};
+use crate::{Signer, SigningKey, VerifyingKey};
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(try_from = "SerdeRepresentation"))]
 #[cfg_attr(feature = "serde", serde(into = "SerdeRepresentation"))]
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(PartialEq, Eq, Debug, Clone)]
 pub struct Vid {
     ident: url::Url,
-    public: Ed::VerifyingKey,
+    public: VerifyingKey,
     // note: we only need to carry the signature for the 'display' method; as soon as an object of
     // this type is constructed we have a guarantee that this signature has been checked.
-    signature: Ed::Signature,
+    signature: Signature,
 }
 
 impl Identifier for Vid {
@@ -50,8 +51,8 @@ impl Identifier for Vid {
 
         let ident = url::Url::parse(&chars.skip_while(|&c| c == '=').collect::<String>())?;
 
-        let public = Ed::VerifyingKey::from_bytes(&public_bytes)?;
-        let signature = Ed::Signature::from_bytes(&sig_bytes);
+        let public = VerifyingKey::from_bytes(&public_bytes)?;
+        let signature = Signature::from_bytes(&sig_bytes);
 
         Self::make(ident, public, signature)
     }
@@ -68,11 +69,7 @@ impl Identifier for Vid {
 }
 
 impl Vid {
-    pub fn make(
-        ident: url::Url,
-        public: Ed::VerifyingKey,
-        signature: Ed::Signature,
-    ) -> Result<Vid, Error> {
+    pub fn make(ident: url::Url, public: VerifyingKey, signature: Signature) -> Result<Vid, Error> {
         public.verify(ident.as_str().as_bytes(), &signature)?;
 
         Ok(Vid {
@@ -82,9 +79,9 @@ impl Vid {
         })
     }
 
-    pub fn generate_from_key(ident: url::Url, secret: &Ed::SigningKey) -> Vid {
+    pub fn generate_from_key(ident: url::Url, secret: &SigningKey) -> Vid {
         let public = secret.verifying_key();
-        let signature = secret.sign(ident.as_str().as_bytes());
+        let signature = Signer::sign(secret, ident.as_str().as_bytes());
 
         Vid {
             public,
@@ -93,15 +90,15 @@ impl Vid {
         }
     }
 
-    pub fn new<Text: TryInto<url::Url>>(url: Text) -> Result<(Vid, Ed::SigningKey), Text::Error> {
-        let secret = Ed::SigningKey::generate(&mut OsRng);
+    pub fn new<Text: TryInto<url::Url>>(url: Text) -> Result<(Vid, SigningKey), Text::Error> {
+        let secret = SigningKey::generate(&mut OsRng);
 
         Ok((Vid::generate_from_key(url.try_into()?, &secret), secret))
     }
 }
 
 #[cfg(feature = "serde")]
-type SerdeRepresentation = (Ed::Signature, Ed::VerifyingKey, url::Url);
+type SerdeRepresentation = (Signature, VerifyingKey, url::Url);
 
 #[cfg(feature = "serde")]
 impl TryFrom<SerdeRepresentation> for Vid {
