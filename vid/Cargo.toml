@@ -8,10 +8,11 @@ ascii = "1.1.0"
 base64ct = { version = "1.6.0", features = [ "std", "alloc" ] }
 ed25519 = { version = "2.2.3", features = ["std", "pkcs8", "alloc", "pem"] }
 ed25519-dalek = { version = "2", features = [ "rand_core", "pkcs8" ] }
+hpke = { version = "0.11.0", features = ["std"] }
 rand = "0.8.5"
 serde = { version = "1.0.195", features = [ "derive" ], optional = true }
 thiserror = "1.0.56"
 url = "2.5.0"
 
 [features]
-serde = [ "dep:serde", "url/serde", "ed25519-dalek/serde" ]
+serde = [ "dep:serde", "url/serde", "ed25519-dalek/serde", "hpke/serde", "hpke/serde_impls" ]

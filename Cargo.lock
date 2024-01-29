@@ -826,6 +826,7 @@ dependencies = [
  "base64ct",
  "ed25519",
  "ed25519-dalek",
+ "hpke",
  "rand",
  "serde",
  "thiserror",
