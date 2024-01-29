@@ -1,5 +1,6 @@
 use std::io::Write;
 
+use ed25519_dalek::Signer;
 use faster_hex::hex_string_upper;
 use hpke::{
     aead::ChaCha20Poly1305,
@@ -119,11 +120,12 @@ impl SealedMessage {
     pub fn deserialize(data: &[u8]) -> (SignedEnvelope, SealedMessage) {
         let version_major = data[0];
         let version_minor = data[1];
+        let end = data.len() - 64;
 
         let (signed_envelope_decoded, offset) = SignedEnvelope::deserialize(&data[2..]);
         let signed_envelope = data[2..(offset + 2)].to_owned();
         let encapped_key: EncappedKey = data[(offset + 2)..(offset + 34)].try_into().unwrap();
-        let ciphertext: Data = data[(offset + 34)..].to_owned();
+        let ciphertext: Data = data[(offset + 34)..(end)].to_owned();
 
         let sealed_message = SealedMessage {
             version_major,
@@ -153,11 +155,11 @@ impl Message {
     const MAJOR_VERSION: u8 = 0;
     const MINOR_VERSION: u8 = 1;
 
-    pub fn seal(self, key: PrivateKey) -> Vec<u8> {
+    pub fn seal(self, key: PrivateKey, signing_key: &ed25519_dalek::SigningKey) -> Vec<u8> {
         let mut csprng = StdRng::from_entropy();
 
         let (encapped_key, mut sender_ctx) = hpke::setup_sender::<Aead, Kdf, KemType, _>(
-            &OpModeS::Auth((key, self.signed_envelope.sender_key().clone())),
+            &OpModeS::Auth((key.clone(), self.signed_envelope.sender_key().clone())),
             &self.signed_envelope.receiver_key(),
             self.signed_envelope.sender.display().as_bytes(),
             &mut csprng,
@@ -177,11 +179,21 @@ impl Message {
             encapped_key: encapped_key.to_bytes().into(),
         };
 
-        sealed_message.serialize()
+        let mut data = sealed_message.serialize();
+
+        // append outer signature
+        data.extend_from_slice(&signing_key.sign(&data).to_bytes());
+
+        data
     }
 
-    pub fn unseal(data: &[u8], key: PrivateKey) -> Message {
+    pub fn unseal(data: &[u8], key: PrivateKey, verifying_key: &ed25519_dalek::VerifyingKey) -> Message {
         let (signed_envelope, sealed_message) = SealedMessage::deserialize(data);
+
+        // verify outer signature
+        let split = data.len() - 64;
+        let signature = ed25519_dalek::Signature::try_from(&data[split..]).unwrap();
+        verifying_key.verify_strict(&data[..split], &signature).unwrap();
 
         let encapped_key = <KemType as Kem>::EncappedKey::from_bytes(&sealed_message.encapped_key)
             .expect("could not deserialize the encapsulated pubkey!");
@@ -208,7 +220,7 @@ impl Message {
 #[cfg(test)]
 mod tests {
     use crate::{KemType, Message, PrivateKey, SignedEnvelope};
-    use hpke::Kem;
+    use hpke::{rand_core::OsRng, Kem};
     use rand::{rngs::StdRng, SeedableRng};
     use vid::SelfSignedVid;
 
@@ -233,7 +245,6 @@ mod tests {
 
         assert_eq!(&sender_pub, envelope.sender_key());
         assert_eq!(&receiver_pub, envelope.receiver_key());
-
 
         (
             sender_private,
@@ -267,11 +278,14 @@ mod tests {
             signed_envelope,
             secret_message,
         };
+        
+        let mut csprng = OsRng;
+        let signing_key = ed25519_dalek::SigningKey::generate(&mut csprng);
 
-        let sealed = message.clone().seal(sender_private);
-        let received_message = Message::unseal(&sealed, receiver_private);
+        let sealed = message.clone().seal(sender_private, &signing_key);
+        let received_message = Message::unseal(&sealed, receiver_private, &signing_key.verifying_key());
 
-        assert_eq!(sealed.len(), 325);
+        assert_eq!(sealed.len(), 389);
         assert_eq!(message, received_message);
     }
 }
