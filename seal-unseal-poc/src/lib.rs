@@ -36,12 +36,12 @@ impl std::fmt::Debug for SignedEnvelope {
 }
 
 impl SignedEnvelope {
-    pub fn sender_key(&self) -> PublicKey {
-        PublicKey::from_bytes(self.sender.public_key().as_ref()).unwrap()
+    pub fn sender_key(&self) -> &PublicKey {
+        self.sender.public_key()
     }
 
-    pub fn receiver_key(&self) -> PublicKey {
-        PublicKey::from_bytes(self.sender.public_key().as_ref()).unwrap()
+    pub fn receiver_key(&self) -> &PublicKey {
+        self.receiver.public_key()
     }
 
     pub fn serialize(&self) -> Vec<u8> {
@@ -157,7 +157,7 @@ impl Message {
         let mut csprng = StdRng::from_entropy();
 
         let (encapped_key, mut sender_ctx) = hpke::setup_sender::<Aead, Kdf, KemType, _>(
-            &OpModeS::Auth((key, self.signed_envelope.sender_key())),
+            &OpModeS::Auth((key, self.signed_envelope.sender_key().clone())),
             &self.signed_envelope.receiver_key(),
             self.signed_envelope.sender.display().as_bytes(),
             &mut csprng,
@@ -187,7 +187,7 @@ impl Message {
             .expect("could not deserialize the encapsulated pubkey!");
 
         let mut receiver_ctx = hpke::setup_receiver::<Aead, Kdf, KemType>(
-            &OpModeR::Auth(signed_envelope.sender_key()),
+            &OpModeR::Auth(signed_envelope.sender_key().clone()),
             &key,
             &encapped_key,
             signed_envelope.sender.display().as_bytes(),
@@ -208,9 +208,9 @@ impl Message {
 #[cfg(test)]
 mod tests {
     use crate::{KemType, Message, PrivateKey, SignedEnvelope};
-    use hpke::{Kem, Serializable};
+    use hpke::Kem;
     use rand::{rngs::StdRng, SeedableRng};
-    use vid::{SecretKey, SelfSignedVid, SigningKey};
+    use vid::SelfSignedVid;
 
     fn setup() -> (PrivateKey, PrivateKey, SignedEnvelope) {
         let mut csprng = StdRng::from_entropy();
@@ -218,26 +218,22 @@ mod tests {
         let (sender_private, sender_pub) = KemType::gen_keypair(&mut csprng);
         let (receiver_private, receiver_pub) = KemType::gen_keypair(&mut csprng);
 
-        let sender_secret = SecretKey::from(sender_private.to_bytes());
-        let receiver_secret = SecretKey::from(receiver_private.to_bytes());
-
-        let sender_key = SigningKey::from_bytes(&sender_secret);
-        let receiver_key = SigningKey::from_bytes(&receiver_secret);
-
-        let sender = SelfSignedVid::generate_from_key(
+        let sender = SelfSignedVid::generate_from_keypair(
             "mailto:bob@example.com".parse().unwrap(),
-            &sender_key,
+            &sender_private,
+            sender_pub.clone(),
         );
-        let receiver = SelfSignedVid::generate_from_key(
+        let receiver = SelfSignedVid::generate_from_keypair(
             "mailto:alice@example.com".parse().unwrap(),
-            &receiver_key,
+            &receiver_private,
+            receiver_pub.clone(),
         );
 
         let envelope = SignedEnvelope { sender, receiver };
 
-        // vid roundtrip test
-        assert_eq!(envelope.sender_key(), sender_pub);
-        assert_eq!(envelope.receiver_key(), receiver_pub);
+        assert_eq!(&sender_pub, envelope.sender_key());
+        assert_eq!(&receiver_pub, envelope.receiver_key());
+
 
         (
             sender_private,
@@ -275,7 +271,7 @@ mod tests {
         let sealed = message.clone().seal(sender_private);
         let received_message = Message::unseal(&sealed, receiver_private);
 
-        assert_eq!(sealed.len(), 137);
+        assert_eq!(sealed.len(), 325);
         assert_eq!(message, received_message);
     }
 }
