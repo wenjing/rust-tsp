@@ -9,8 +9,6 @@ use serde::{Deserialize, Serialize};
 use std::io::Write;
 use vid::{Identifier, SelfSignedVid};
 
-mod cesr;
-
 type KemType = X25519HkdfSha256;
 type Aead = ChaCha20Poly1305;
 type Kdf = HkdfSha256;
@@ -99,16 +97,15 @@ pub struct Message {
     secret_message: Data,
 }
 
-#[derive(Serialize, Deserialize)]
-struct SealedMessage {
+struct SealedMessage<'a> {
     version_major: u8,
     version_minor: u8,
-    signed_envelope: Data,
-    encapped_key: EncappedKey,
-    ciphertext: Data,
+    signed_envelope: &'a [u8],
+    encapped_key: &'a EncappedKey,
+    ciphertext: &'a [u8],
 }
 
-impl SealedMessage {
+impl SealedMessage<'_> {
     pub fn serialize(&self) -> Vec<u8> {
         let mut result = Vec::<u8>::with_capacity(
             1 // major
@@ -120,9 +117,9 @@ impl SealedMessage {
 
         result.insert(0, self.version_major);
         result.insert(1, self.version_minor);
-        result.write_all(&self.signed_envelope).unwrap();
-        result.write_all(&self.encapped_key).unwrap();
-        result.write_all(&self.ciphertext).unwrap();
+        result.write_all(self.signed_envelope).unwrap();
+        result.write_all(self.encapped_key).unwrap();
+        result.write_all(self.ciphertext).unwrap();
 
         result
     }
@@ -133,9 +130,9 @@ impl SealedMessage {
         let end = data.len() - 64;
 
         let (signed_envelope_decoded, offset) = SignedEnvelope::deserialize(&data[2..]);
-        let signed_envelope = data[2..(offset + 2)].to_owned();
-        let encapped_key: EncappedKey = data[(offset + 2)..(offset + 34)].try_into().unwrap();
-        let ciphertext: Data = data[(offset + 34)..(end)].to_owned();
+        let signed_envelope = &data[2..(offset + 2)];
+        let encapped_key: &EncappedKey = data[(offset + 2)..(offset + 34)].try_into().unwrap();
+        let ciphertext = &data[(offset + 34)..end];
 
         let sealed_message = SealedMessage {
             version_major,
@@ -149,14 +146,14 @@ impl SealedMessage {
     }
 }
 
-impl std::fmt::Debug for SealedMessage {
+impl std::fmt::Debug for SealedMessage<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("SealedMessage")
             .field("version_major", &self.version_major)
             .field("version_minor", &self.version_minor)
-            .field("signed_envelope", &hex_string_upper(&self.signed_envelope))
-            .field("ciphertext", &hex_string_upper(&self.ciphertext))
-            .field("encapped_key", &hex_string_upper(&self.encapped_key))
+            .field("signed_envelope", &hex_string_upper(self.signed_envelope))
+            .field("ciphertext", &hex_string_upper(self.ciphertext))
+            .field("encapped_key", &hex_string_upper(self.encapped_key))
             .finish()
     }
 }
@@ -178,12 +175,14 @@ impl Message {
             &mut csprng,
         ).unwrap();
 
+        let encapped_key = encapped_key.to_bytes();
+
         let sealed_message = SealedMessage {
             version_major: Self::MAJOR_VERSION,
             version_minor: Self::MINOR_VERSION,
-            signed_envelope,
-            ciphertext,
-            encapped_key: encapped_key.to_bytes().into(),
+            signed_envelope: &signed_envelope,
+            ciphertext: &ciphertext,
+            encapped_key: encapped_key.as_ref(),
         };
 
         let mut data = sealed_message.serialize();
@@ -207,7 +206,7 @@ impl Message {
             .verify_strict(&data[..split], &signature)
             .unwrap();
 
-        let encapped_key = <KemType as Kem>::EncappedKey::from_bytes(&sealed_message.encapped_key)
+        let encapped_key = <KemType as Kem>::EncappedKey::from_bytes(sealed_message.encapped_key)
             .unwrap();
 
         let secret_message = hpke::single_shot_open::<Aead, Kdf, KemType>(
@@ -215,8 +214,8 @@ impl Message {
             &receiver.private_key,
             &encapped_key,
             signed_envelope.sender.display().as_bytes(),
-            &sealed_message.ciphertext,
-            &sealed_message.signed_envelope
+            sealed_message.ciphertext,
+            sealed_message.signed_envelope
         ).unwrap();
 
         Message {
