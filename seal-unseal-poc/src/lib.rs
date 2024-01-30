@@ -6,7 +6,7 @@ use hpke::{
     Deserializable, Kem, OpModeR, OpModeS, Serializable,
 };
 use rand::{rngs::StdRng, SeedableRng};
-use std::{borrow::Borrow, io::Write};
+use std::io::Write;
 
 type KemType = X25519HkdfSha256;
 type Aead = ChaCha20Poly1305;
@@ -93,9 +93,6 @@ impl Message<'_> {
 
         let message_sender = x25519_dalek::PublicKey::from(message_sender_bytes.try_into().unwrap());
         let message_receiver = x25519_dalek::PublicKey::from(mesage_receiver_bytes.try_into().unwrap());
-
-        PublicKey::from_bytes(message_sender_bytes).unwrap();
-        let message_receiver = PublicKey::from_bytes(mesage_receiver_bytes).unwrap();
 
         let encapped_key = <KemType as Kem>::EncappedKey::from_bytes(encapped_key).unwrap();
 
