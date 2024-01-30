@@ -26,7 +26,7 @@ fn encode_bytes(data: &[u8]) -> Vec<u8> {
     result
 }
 
-fn decode_bytes(data: &[u8]) -> Vec<u8> {
+fn decode_bytes(data: &[u8]) -> &[u8] {
     let padding = match (data[0], data[1]) {
         _ if (data[0] == 0xe0) && (data[1] >> 4) == 0x1 => 0,
         _ if (data[0] == 0xe4) && (data[1] >> 4) == 0x1 => 1,
@@ -36,7 +36,7 @@ fn decode_bytes(data: &[u8]) -> Vec<u8> {
 
     let len = (u16::from_be_bytes([data[1] & 0x0f, data[2]]) * 3) as usize;
 
-    data[(3 + padding)..(3 + len)].to_vec()
+    &data[(3 + padding)..(3 + len)]
 }
 
 #[cfg(test)]
