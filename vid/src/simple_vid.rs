@@ -1,14 +1,9 @@
 use base64ct::{Base64Unpadded as B64, Encoding};
-use rand::{rngs::StdRng, SeedableRng};
-
-use hpke::{
-    aead::ChaCha20Poly1305 as Aead, kdf::HkdfSha256 as Kdf, kem::X25519HkdfSha256 as KemType,
-    Deserializable, Kem, Serializable,
-};
+use ed25519_dalek::{pkcs8::EncodePublicKey, Signature, Verifier};
+use rand::rngs::OsRng;
 
 use crate::api::{Error, Identifier};
-
-type Signature = [u8; 48];
+use crate::{Signer, SigningKey, VerifyingKey};
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(try_from = "SerdeRepresentation"))]
@@ -16,26 +11,24 @@ type Signature = [u8; 48];
 #[derive(PartialEq, Eq, Debug, Clone)]
 pub struct Vid {
     ident: url::Url,
-    public: <KemType as Kem>::PublicKey,
+    public: VerifyingKey,
     // note: we only need to carry the signature for the 'display' method; as soon as an object of
     // this type is constructed we have a guarantee that this signature has been checked.
     signature: Signature,
 }
 
-const INFO: &[u8] = b"TG Autonomous Self Signed ID";
-
-impl Identifier<KemType> for Vid {
+impl Identifier for Vid {
     fn endpoint(&self) -> &url::Url {
         &self.ident
     }
 
-    fn public_key(&self) -> &<KemType as Kem>::PublicKey {
+    fn public_key(&self) -> &(impl Verifier<Signature> + EncodePublicKey + AsRef<[u8]>) {
         &self.public
     }
 
     fn parse(display_string: &str) -> Result<Vid, Error> {
         let mut public_bytes: [u8; 32] = [0; 32];
-        let mut signature: [u8; 48] = [0; 48];
+        let mut sig_bytes: [u8; 64] = [0; 64];
 
         let mut chars = display_string.chars();
 
@@ -51,22 +44,23 @@ impl Identifier<KemType> for Vid {
             chars
                 .by_ref()
                 .skip_while(|&c| c == '=')
-                .take(B64::encoded_len(&signature))
+                .take(B64::encoded_len(&sig_bytes))
                 .collect::<String>(),
-            &mut signature,
+            &mut sig_bytes,
         )?;
 
         let ident = url::Url::parse(&chars.skip_while(|&c| c == '=').collect::<String>())?;
 
-        let public = <KemType as Kem>::PublicKey::from_bytes(&public_bytes)?;
+        let public = VerifyingKey::from_bytes(&public_bytes)?;
+        let signature = Signature::from_bytes(&sig_bytes);
 
         Self::make(ident, public, signature)
     }
 
     fn display(&self) -> ascii::AsciiString {
         let ident = &self.ident;
-        let public = B64::encode_string(&self.public.to_bytes());
-        let signature = B64::encode_string(&self.signature);
+        let public = B64::encode_string(self.public.as_bytes());
+        let signature = B64::encode_string(&self.signature.to_bytes());
 
         use std::str::FromStr;
         ascii::AsciiString::from_str(&format!("{public}{signature}{ident}"))
@@ -75,27 +69,8 @@ impl Identifier<KemType> for Vid {
 }
 
 impl Vid {
-    pub fn make(
-        ident: url::Url,
-        public: <KemType as Kem>::PublicKey,
-        signature: Signature,
-    ) -> Result<Vid, Error> {
-        #[allow(non_snake_case)]
-        let GLOBAL_PRIVATE_KEY: <KemType as Kem>::PrivateKey =
-            <KemType as Kem>::PrivateKey::from_bytes(&[0; 32]).unwrap();
-
-        let mut verifier = hpke::setup_receiver::<Aead, Kdf, KemType>(
-            &hpke::OpModeR::Auth(public.clone()),
-            &GLOBAL_PRIVATE_KEY,
-            &<KemType as Kem>::EncappedKey::from_bytes(&signature[..32])?,
-            INFO,
-        )?;
-
-        verifier.open_in_place_detached(
-            &mut [],
-            ident.as_str().as_bytes(),
-            &hpke::aead::AeadTag::from_bytes(&signature[32..])?,
-        )?;
+    pub fn make(ident: url::Url, public: VerifyingKey, signature: Signature) -> Result<Vid, Error> {
+        public.verify(ident.as_str().as_bytes(), &signature)?;
 
         Ok(Vid {
             ident,
@@ -104,44 +79,9 @@ impl Vid {
         })
     }
 
-    pub fn new<Text: TryInto<url::Url>>(
-        url: Text,
-    ) -> Result<(Vid, <KemType as Kem>::PrivateKey), Text::Error> {
-        let (sk, pk) = KemType::gen_keypair(&mut StdRng::from_entropy());
-
-        Ok((Vid::generate_from_keypair(url.try_into()?, &sk, pk), sk))
-    }
-
-    pub fn generate_from_keypair(
-        ident: url::Url,
-        secret: &<KemType as Kem>::PrivateKey,
-        public: <KemType as Kem>::PublicKey,
-    ) -> Vid {
-        #[allow(non_snake_case)]
-        let GLOBAL_PRIVATE_KEY: <KemType as Kem>::PrivateKey =
-            <KemType as Kem>::PrivateKey::from_bytes(&[0; 32]).unwrap();
-        #[allow(non_snake_case)]
-        let GLOBAL_PUBLIC_KEY: <KemType as Kem>::PublicKey =
-            <KemType as Kem>::sk_to_pk(&GLOBAL_PRIVATE_KEY);
-
-        let (encap_key, mut signer) = hpke::setup_sender::<Aead, Kdf, KemType, _>(
-            &hpke::OpModeS::Auth((secret.clone(), public.clone())),
-            &GLOBAL_PUBLIC_KEY,
-            INFO,
-            &mut StdRng::from_entropy(),
-        )
-        .expect("Invalid public key");
-
-        let mac: [u8; 16] = signer
-            .seal_in_place_detached(&mut [], ident.as_str().as_bytes())
-            .expect("Signature generation failed")
-            .to_bytes()
-            .into();
-
-        let encap_key: [u8; 32] = encap_key.to_bytes().into();
-
-        let signature: [u8; 48] =
-            std::array::from_fn(|i| if i < 32 { encap_key[i] } else { mac[i - 32] });
+    pub fn generate_from_key(ident: url::Url, secret: &SigningKey) -> Vid {
+        let public = secret.verifying_key();
+        let signature = Signer::sign(secret, ident.as_str().as_bytes());
 
         Vid {
             public,
@@ -149,49 +89,51 @@ impl Vid {
             ident,
         }
     }
+
+    pub fn new<Text: TryInto<url::Url>>(url: Text) -> Result<(Vid, SigningKey), Text::Error> {
+        let secret = SigningKey::generate(&mut OsRng);
+
+        Ok((Vid::generate_from_key(url.try_into()?, &secret), secret))
+    }
 }
 
 #[cfg(feature = "serde")]
-type SerdeRepresentation = (Vec<u8>, <KemType as Kem>::PublicKey, url::Url);
+type SerdeRepresentation = (Signature, VerifyingKey, url::Url);
 
 #[cfg(feature = "serde")]
 impl TryFrom<SerdeRepresentation> for Vid {
     type Error = Error;
     fn try_from(data: SerdeRepresentation) -> Result<Vid, Error> {
-        Vid::make(
-            data.2,
-            data.1,
-            data.0.try_into().expect("Array length invalid"),
-        )
+        Vid::make(data.2, data.1, data.0)
     }
 }
 
 #[cfg(feature = "serde")]
 impl From<Vid> for SerdeRepresentation {
     fn from(data: Vid) -> SerdeRepresentation {
-        (data.signature.to_vec(), data.public, data.ident)
+        (data.signature, data.public, data.ident)
     }
 }
 
 #[cfg(test)]
 mod test {
-    use super::{Error, Identifier, Vid};
+    use super::{Error, Identifier, Verifier, Vid};
 
     #[test]
     fn base64_error() {
-        let vid = "CJ15Zb!V3qE7XJHvlVmaI00plPtdbEgmU6RE9isW9HclSFefCdxx3uccHZnamFltxxkUEVG8p0O3HhIqcKIZVCjX0V7FrnO6C1ncE0IfYqdmailto:tsp@tweedegolf.com";
+        let vid = "hj9g/Rzn8p8WYalsiTyUSEwy+07qFN9FKCDiK2OfFjI5dZDgTVOzxpX2af3fQCABQAFgEA%idJ0GhTk+7USPcF78BUs4bN29ZPOMb0pqCTbCS1Q4LvTqb4dYIECaWvwBwmailto:tsp@tweedegolf.com";
         assert!(matches!(Vid::parse(vid).unwrap_err(), Error::Encoding(_)));
     }
 
     #[test]
     fn url_error() {
-        let vid = "CJ15Zb6V3qE7XJHvlVmaI00plPtdbEgmU6RE9isW9HclSFefCdxx3uccHZnamFltxxkUEVG8p0O3HhIqcKIZVCjX0V7FrnO6C1ncE0IfYqdmailtotsptweedegolf.com";
+        let vid = "hj9g/Rzn8p8WYalsiTyUSEwy+07qFN9FKCDiK2OfFjI5dZDgTVOzxpX2af3fQCABQAFgEATidJ0GhTk+7USPcF78BUs4bN29ZPOMb0pqCTbCS1Q4LvTqb4dYIECaWvwBw/ailto:tsp@tweedegolf.com";
         assert!(matches!(Vid::parse(vid).unwrap_err(), Error::Transport(_)));
     }
 
     #[test]
     fn crypto_error() {
-        let vid = "CJ15Zb6V3qE7XJHvlVmaI00plPtdbEgmU6RE9isW9HclSFefCdxx3uccHZnamFltxxkUEVG8p0O3HhIqcKIZVCjX0V7FrnO6C1ncE0IfYqdmailto:tsp@tweedegalf.com";
+        let vid = "hj9g/Rzn8p8WYalsiTyUSEwy+07qFN9FKCDiK2OfFjI5dZDgTVOzxpX2af3fQCABQAFgEATidJ0GhTk+7USPcF78BUs4bN29ZPOMb0pqCTbCS1Q4LvTqb4dYIFCaWvwBwmailto:tsp@tweedegolf.com";
         assert!(matches!(
             Vid::parse(vid).unwrap_err(),
             Error::VerificationFailed(_)
@@ -206,12 +148,12 @@ mod test {
                 vid.endpoint(),
                 &TryInto::<url::Url>::try_into(text).unwrap()
             );
-            //vid.public_key()
-            //    .verify(text.as_bytes(), &vid.signature)
-            //    .unwrap();
+            vid.public_key()
+                .verify(text.as_bytes(), &vid.signature)
+                .unwrap();
         }
 
-        let vid1 = "CJ15Zb6V3qE7XJHvlVmaI00plPtdbEgmU6RE9isW9HclSFefCdxx3uccHZnamFltxxkUEVG8p0O3HhIqcKIZVCjX0V7FrnO6C1ncE0IfYqdmailto:tsp@tweedegolf.com";
+        let vid1 = "hj9g/Rzn8p8WYalsiTyUSEwy+07qFN9FKCDiK2OfFjI5dZDgTVOzxpX2af3fQCABQAFgEATidJ0GhTk+7USPcF78BUs4bN29ZPOMb0pqCTbCS1Q4LvTqb4dYIECaWvwBwmailto:tsp@tweedegolf.com";
         let vid2 = &Vid::new("mailto:tsp@tweedegolf.com").unwrap().0.display();
         check_vid(vid1, "mailto:tsp@tweedegolf.com");
         check_vid(vid2, "mailto:tsp@tweedegolf.com");
