@@ -1,13 +1,12 @@
 use ed25519_dalek::Signer;
-use faster_hex::hex_string_upper;
 use hpke::{
-    aead::ChaCha20Poly1305, kdf::HkdfSha256, kem::X25519HkdfSha256, Deserializable, Kem, OpModeR,
-    OpModeS, Serializable,
+    aead::{AeadTag, ChaCha20Poly1305},
+    kdf::HkdfSha256,
+    kem::X25519HkdfSha256,
+    Deserializable, Kem, OpModeR, OpModeS, Serializable,
 };
 use rand::{rngs::StdRng, SeedableRng};
-use serde::{Deserialize, Serialize};
 use std::io::Write;
-use vid::{Identifier, SelfSignedVid};
 
 type KemType = X25519HkdfSha256;
 type Aead = ChaCha20Poly1305;
@@ -15,9 +14,6 @@ type Kdf = HkdfSha256;
 
 type PrivateKey = <KemType as Kem>::PrivateKey;
 type PublicKey = <KemType as Kem>::PublicKey;
-
-type Data = Vec<u8>;
-type EncappedKey = [u8; 32];
 
 pub struct Sender<'a> {
     pub signing_key: ed25519_dalek::SigningKey,
@@ -29,163 +25,46 @@ pub struct Receiver {
     pub verifying_key: ed25519_dalek::VerifyingKey,
 }
 
-#[derive(Serialize, Deserialize, PartialEq, Clone)]
-struct SignedEnvelope {
-    sender: SelfSignedVid,
-    receiver: SelfSignedVid,
+#[derive(Debug, PartialEq, Eq)]
+pub struct Message<'a> {
+    sender: PublicKey,
+    receiver: PublicKey,
+    secret_message: &'a [u8],
 }
 
-impl std::fmt::Debug for SignedEnvelope {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("SignedEnvelope")
-            .field("sender", &self.sender.display())
-            .field("receiver", &self.receiver.display())
-            .finish()
-    }
-}
+impl Message<'_> {
+    pub fn serialize_header(&self) -> Vec<u8> {
+        let mut result = Vec::<u8>::with_capacity(64);
 
-impl SignedEnvelope {
-    pub fn sender_key(&self) -> &PublicKey {
-        self.sender.public_key()
-    }
-
-    pub fn receiver_key(&self) -> &PublicKey {
-        self.receiver.public_key()
-    }
-
-    pub fn serialize(&self) -> Vec<u8> {
-        let sender = self.sender.display();
-        let receiver = self.receiver.display();
-        let mut result = Vec::<u8>::with_capacity(sender.len() + receiver.len());
-
-        result
-            .write_all(&(sender.len() as u16).to_be_bytes())
-            .unwrap();
-        result
-            .write_all(&(receiver.len() as u16).to_be_bytes())
-            .unwrap();
-        result.write_all(sender.as_bytes()).unwrap();
-        result.write_all(receiver.as_bytes()).unwrap();
+        result.write_all(&self.sender.to_bytes()).unwrap();
+        result.write_all(&self.receiver.to_bytes()).unwrap();
 
         result
     }
 
-    pub fn deserialize(data: &[u8]) -> (SignedEnvelope, usize) {
-        let sender_len = ((data[0] as u16) << 8) | data[1] as u16;
-        let receiver_len = ((data[2] as u16) << 8) | data[3] as u16;
-
-        let sender_offset = sender_len as usize + 4;
-        let receiver_offset = sender_offset + receiver_len as usize;
-
-        let result = SignedEnvelope {
-            sender: SelfSignedVid::parse(std::str::from_utf8(&data[4..sender_offset]).unwrap())
-                .unwrap(),
-            receiver: SelfSignedVid::parse(
-                std::str::from_utf8(&data[sender_offset..receiver_offset]).unwrap(),
-            )
-            .unwrap(),
-        };
-
-        (result, receiver_offset)
-    }
-}
-
-#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
-pub struct Message {
-    signed_envelope: SignedEnvelope,
-    #[serde(with = "faster_hex")]
-    secret_message: Data,
-}
-
-struct SealedMessage<'a> {
-    version_major: u8,
-    version_minor: u8,
-    signed_envelope: &'a [u8],
-    encapped_key: &'a EncappedKey,
-    ciphertext: &'a [u8],
-}
-
-impl SealedMessage<'_> {
-    pub fn serialize(&self) -> Vec<u8> {
-        let mut result = Vec::<u8>::with_capacity(
-            1 // major
-            + 1 // minor
-            + self.signed_envelope.len()
-            + 32 // encapped key length
-            + self.ciphertext.len(),
-        );
-
-        result.insert(0, self.version_major);
-        result.insert(1, self.version_minor);
-        result.write_all(self.signed_envelope).unwrap();
-        result.write_all(self.encapped_key).unwrap();
-        result.write_all(self.ciphertext).unwrap();
-
-        result
-    }
-
-    pub fn deserialize(data: &[u8]) -> (SignedEnvelope, SealedMessage) {
-        let version_major = data[0];
-        let version_minor = data[1];
-        let end = data.len() - 64;
-
-        let (signed_envelope_decoded, offset) = SignedEnvelope::deserialize(&data[2..]);
-        let signed_envelope = &data[2..(offset + 2)];
-        let encapped_key: &EncappedKey = data[(offset + 2)..(offset + 34)].try_into().unwrap();
-        let ciphertext = &data[(offset + 34)..end];
-
-        let sealed_message = SealedMessage {
-            version_major,
-            version_minor,
-            signed_envelope,
-            encapped_key,
-            ciphertext,
-        };
-
-        (signed_envelope_decoded, sealed_message)
-    }
-}
-
-impl std::fmt::Debug for SealedMessage<'_> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("SealedMessage")
-            .field("version_major", &self.version_major)
-            .field("version_minor", &self.version_minor)
-            .field("signed_envelope", &hex_string_upper(self.signed_envelope))
-            .field("ciphertext", &hex_string_upper(self.ciphertext))
-            .field("encapped_key", &hex_string_upper(self.encapped_key))
-            .finish()
-    }
-}
-
-impl Message {
-    const MAJOR_VERSION: u8 = 0;
-    const MINOR_VERSION: u8 = 1;
-
-    pub fn seal(self, sender: &Sender) -> Vec<u8> {
+    pub fn seal(&self, sender: &Sender) -> Vec<u8> {
         let mut csprng = StdRng::from_entropy();
-        let signed_envelope = self.signed_envelope.serialize();
+        let mut data = self.serialize_header();
 
-        let (encapped_key, ciphertext) = hpke::single_shot_seal::<Aead, Kdf, KemType, StdRng>(
-            &sender.op_mode,
-            self.signed_envelope.receiver_key(),
-            self.signed_envelope.sender.display().as_bytes(),
-            &self.secret_message,
-            &signed_envelope,
-            &mut csprng,
-        ).unwrap();
+        let mut ciphertext = self.secret_message.to_vec();
 
-        let encapped_key = encapped_key.to_bytes();
+        let (encapped_key, tag) =
+            hpke::single_shot_seal_in_place_detached::<Aead, Kdf, KemType, StdRng>(
+                &sender.op_mode,
+                &self.receiver,
+                &self.sender.to_bytes(),
+                &mut ciphertext,
+                &data,
+                &mut csprng,
+            )
+            .unwrap();
 
-        let sealed_message = SealedMessage {
-            version_major: Self::MAJOR_VERSION,
-            version_minor: Self::MINOR_VERSION,
-            signed_envelope: &signed_envelope,
-            ciphertext: &ciphertext,
-            encapped_key: encapped_key.as_ref(),
-        };
+        let mut encapped_key = encapped_key.to_bytes().to_vec();
+        let mut tag = tag.to_bytes().to_vec();
 
-        let mut data = sealed_message.serialize();
+        data.append(&mut ciphertext);
+        data.append(&mut tag);
+        data.append(&mut encapped_key);
 
         // append outer signature
         data.extend_from_slice(&sender.signing_key.sign(&data).to_bytes());
@@ -193,66 +72,57 @@ impl Message {
         data
     }
 
-    pub fn unseal(
-        data: &[u8],
-        receiver: &Receiver,
-    ) -> Message {
-        let (signed_envelope, sealed_message) = SealedMessage::deserialize(data);
+    pub fn unseal<'a>(data: &'a mut [u8], receiver: &Receiver) -> Message<'a> {
+        let signature_split = data.len() - 64;
 
         // verify outer signature
-        let split = data.len() - 64;
-        let signature = ed25519_dalek::Signature::try_from(&data[split..]).unwrap();
-        receiver.verifying_key
-            .verify_strict(&data[..split], &signature)
+        let signature = ed25519_dalek::Signature::try_from(&data[signature_split..]).unwrap();
+        receiver
+            .verifying_key
+            .verify_strict(&data[..signature_split], &signature)
             .unwrap();
 
-        let encapped_key = <KemType as Kem>::EncappedKey::from_bytes(sealed_message.encapped_key)
-            .unwrap();
+        // decode message
+        let (header, rest) = data.split_at_mut(64);
+        let (ciphertext, footer) = rest.split_at_mut(rest.len() - (64 + 32 + 16));
+        let message_sender_bytes = &header[0..32];
+        let mesage_receiver_bytes = &header[32..64];
+        let tag = &footer[0..16];
+        let encapped_key = &footer[16..(16 + 32)];
+        let message_sender = PublicKey::from_bytes(message_sender_bytes).unwrap();
+        let message_receiver = PublicKey::from_bytes(mesage_receiver_bytes).unwrap();
+        let encapped_key = <KemType as Kem>::EncappedKey::from_bytes(encapped_key).unwrap();
 
-        let secret_message = hpke::single_shot_open::<Aead, Kdf, KemType>(
-            &OpModeR::Auth(signed_envelope.sender_key().clone()),
+        hpke::single_shot_open_in_place_detached::<Aead, Kdf, KemType>(
+            &OpModeR::Auth(message_sender.clone()),
             &receiver.private_key,
             &encapped_key,
-            signed_envelope.sender.display().as_bytes(),
-            sealed_message.ciphertext,
-            sealed_message.signed_envelope
-        ).unwrap();
+            message_sender_bytes,
+            ciphertext,
+            header,
+            &AeadTag::from_bytes(tag).unwrap(),
+        )
+        .unwrap();
 
         Message {
-            signed_envelope,
-            secret_message,
+            sender: message_sender,
+            receiver: message_receiver,
+            secret_message: ciphertext,
         }
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::{KemType, Message, Receiver, Sender, SignedEnvelope};
+    use crate::{KemType, Message, PublicKey, Receiver, Sender};
     use hpke::{Kem, OpModeS};
     use rand::{rngs::StdRng, SeedableRng};
-    use vid::SelfSignedVid;
 
-    fn setup<'a>() -> (Sender<'a>, Receiver, SignedEnvelope) {
+    fn setup<'a>() -> (Sender<'a>, Receiver, PublicKey, PublicKey) {
         let mut csprng = StdRng::from_entropy();
 
         let (sender_private, sender_public) = KemType::gen_keypair(&mut csprng);
         let (receiver_private, receiver_public) = KemType::gen_keypair(&mut csprng);
-
-        let sender = SelfSignedVid::generate_from_keypair(
-            "mailto:bob@example.com".parse().unwrap(),
-            &sender_private,
-            sender_public.clone(),
-        );
-        let receiver = SelfSignedVid::generate_from_keypair(
-            "mailto:alice@example.com".parse().unwrap(),
-            &receiver_private,
-            receiver_public.clone(),
-        );
-
-        let envelope = SignedEnvelope { sender, receiver };
-
-        assert_eq!(&sender_public, envelope.sender_key());
-        assert_eq!(&receiver_public, envelope.receiver_key());
 
         let signing_key = ed25519_dalek::SigningKey::generate(&mut csprng);
 
@@ -263,42 +133,29 @@ mod tests {
 
         let sender = Sender {
             signing_key,
-            op_mode: OpModeS::Auth((sender_private, sender_public))
+            op_mode: OpModeS::Auth((sender_private, sender_public.clone())),
         };
 
-        (sender, receiver, envelope)
-    }
-
-    #[test]
-    fn encode_signed_envelope() {
-        let (_, _, signed_envelope) = setup();
-
-        let result = signed_envelope.serialize();
-        assert!(result
-            .windows(3)
-            .position(|window| window == b"bob")
-            .is_some());
-
-        let (original, _) = SignedEnvelope::deserialize(&result);
-
-        assert_eq!(original.sender, signed_envelope.sender);
-        assert_eq!(original.receiver, signed_envelope.receiver);
+        (sender, receiver, sender_public, receiver_public)
     }
 
     #[test]
     fn seal_unseal_message() {
-        let (sender, receiver, signed_envelope) = setup();
+        let (sender, receiver, sender_public, receiver_public) = setup();
         let secret_message = b"hello world".to_vec();
 
         let message = Message {
-            signed_envelope,
-            secret_message,
+            sender: sender_public,
+            receiver: receiver_public,
+            secret_message: &secret_message,
         };
 
-        let sealed = message.clone().seal(&sender);
-        let received_message = Message::unseal(&sealed, &receiver);
+        let mut sealed = message.seal(&sender);
 
-        assert_eq!(sealed.len(), 389);
+        assert_eq!(sealed.len(), 187);
+
+        let received_message = Message::unseal(&mut sealed, &receiver);
+
         assert_eq!(message, received_message);
     }
 }
