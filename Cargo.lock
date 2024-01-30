@@ -284,7 +284,6 @@ version = "0.14.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "85649ca51fd72272d7821adaf274ad91c288277713d9c18820d8499a7ff69e9a"
 dependencies = [
- "serde",
  "typenum",
  "version_check",
  "zeroize",
@@ -343,8 +342,7 @@ dependencies = [
 [[package]]
 name = "hpke"
 version = "0.11.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e04a5933a381bb81f00b083fce6b4528e16d735dbeecbb2bdb45e0dbbf3f7e17"
+source = "git+https://github.com/marlonbaeten/rust-hpke?branch=keys-by-reference#2c8ec38a2573edd8b58fb6c2f243a9cf5bc48b17"
 dependencies = [
  "aead",
  "aes-gcm",
@@ -356,7 +354,6 @@ dependencies = [
  "hmac",
  "p256",
  "rand_core",
- "serde",
  "sha2",
  "subtle",
  "x25519-dalek",
@@ -549,6 +546,7 @@ dependencies = [
  "ed25519-dalek",
  "hpke",
  "rand",
+ "x25519-dalek",
 ]
 
 [[package]]
@@ -774,6 +772,8 @@ checksum = "fb66477291e7e8d2b0ff1bcb900bf29489a9692816d79874bea351e7a8b6de96"
 dependencies = [
  "curve25519-dalek",
  "rand_core",
+ "serde",
+ "zeroize",
 ]
 
 [[package]]
