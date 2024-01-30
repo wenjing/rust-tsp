@@ -6,7 +6,7 @@ use hpke::{
     Deserializable, Kem, OpModeR, OpModeS, Serializable,
 };
 use rand::{rngs::StdRng, SeedableRng};
-use std::io::Write;
+use std::{borrow::Borrow, io::Write};
 
 type KemType = X25519HkdfSha256;
 type Aead = ChaCha20Poly1305;
@@ -15,20 +15,22 @@ type Kdf = HkdfSha256;
 type PrivateKey = <KemType as Kem>::PrivateKey;
 type PublicKey = <KemType as Kem>::PublicKey;
 
-pub struct Sender<'a> {
+pub struct Sender {
+    pub private_key: PrivateKey,
+    pub public_key: PublicKey,
     pub signing_key: ed25519_dalek::SigningKey,
-    pub op_mode: OpModeS<'a, KemType>,
 }
 
 pub struct Receiver {
     pub private_key: PrivateKey,
+    pub public_key: PublicKey,
     pub verifying_key: ed25519_dalek::VerifyingKey,
 }
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct Message<'a> {
-    sender: PublicKey,
-    receiver: PublicKey,
+    sender: &'a PublicKey,
+    receiver: &'a PublicKey,
     secret_message: &'a [u8],
 }
 
@@ -36,8 +38,8 @@ impl Message<'_> {
     pub fn serialize_header(&self) -> Vec<u8> {
         let mut result = Vec::<u8>::with_capacity(64);
 
-        result.write_all(&self.sender.to_bytes()).unwrap();
-        result.write_all(&self.receiver.to_bytes()).unwrap();
+        result.write_all(self.sender.to_bytes().as_ref()).unwrap();
+        result.write_all(self.receiver.to_bytes().as_ref()).unwrap();
 
         result
     }
@@ -50,9 +52,9 @@ impl Message<'_> {
 
         let (encapped_key, tag) =
             hpke::single_shot_seal_in_place_detached::<Aead, Kdf, KemType, StdRng>(
-                &sender.op_mode,
+                &OpModeS::Auth((&sender.private_key, &sender.public_key)),
                 &self.receiver,
-                &self.sender.to_bytes(),
+                self.sender.to_bytes().as_ref(),
                 &mut ciphertext,
                 &data,
                 &mut csprng,
@@ -85,16 +87,20 @@ impl Message<'_> {
         // decode message
         let (header, rest) = data.split_at_mut(64);
         let (ciphertext, footer) = rest.split_at_mut(rest.len() - (64 + 32 + 16));
-        let message_sender_bytes = &header[0..32];
-        let mesage_receiver_bytes = &header[32..64];
+        let (message_sender_bytes, mesage_receiver_bytes) = header.split_at(32);
         let tag = &footer[0..16];
         let encapped_key = &footer[16..(16 + 32)];
-        let message_sender = PublicKey::from_bytes(message_sender_bytes).unwrap();
+
+        let message_sender = x25519_dalek::PublicKey::from(message_sender_bytes.try_into().unwrap());
+        let message_receiver = x25519_dalek::PublicKey::from(mesage_receiver_bytes.try_into().unwrap());
+
+        PublicKey::from_bytes(message_sender_bytes).unwrap();
         let message_receiver = PublicKey::from_bytes(mesage_receiver_bytes).unwrap();
+
         let encapped_key = <KemType as Kem>::EncappedKey::from_bytes(encapped_key).unwrap();
 
         hpke::single_shot_open_in_place_detached::<Aead, Kdf, KemType>(
-            &OpModeR::Auth(message_sender.clone()),
+            &OpModeR::Auth(&message_sender),
             &receiver.private_key,
             &encapped_key,
             message_sender_bytes,
@@ -105,8 +111,8 @@ impl Message<'_> {
         .unwrap();
 
         Message {
-            sender: message_sender,
-            receiver: message_receiver,
+            sender: &message_sender,
+            receiver: &message_receiver,
             secret_message: ciphertext,
         }
     }
@@ -114,11 +120,11 @@ impl Message<'_> {
 
 #[cfg(test)]
 mod tests {
-    use crate::{KemType, Message, PublicKey, Receiver, Sender};
-    use hpke::{Kem, OpModeS};
+    use crate::{KemType, Message, Receiver, Sender};
+    use hpke::Kem;
     use rand::{rngs::StdRng, SeedableRng};
 
-    fn setup<'a>() -> (Sender<'a>, Receiver, PublicKey, PublicKey) {
+    fn setup<'a>() -> (Sender, Receiver) {
         let mut csprng = StdRng::from_entropy();
 
         let (sender_private, sender_public) = KemType::gen_keypair(&mut csprng);
@@ -128,25 +134,27 @@ mod tests {
 
         let receiver = Receiver {
             private_key: receiver_private,
+            public_key: receiver_public,
             verifying_key: signing_key.verifying_key(),
         };
 
         let sender = Sender {
+            private_key: sender_private,
+            public_key: sender_public,
             signing_key,
-            op_mode: OpModeS::Auth((sender_private, sender_public.clone())),
         };
 
-        (sender, receiver, sender_public, receiver_public)
+        (sender, receiver)
     }
 
     #[test]
     fn seal_unseal_message() {
-        let (sender, receiver, sender_public, receiver_public) = setup();
+        let (sender, receiver) = setup();
         let secret_message = b"hello world".to_vec();
 
         let message = Message {
-            sender: sender_public,
-            receiver: receiver_public,
+            sender: &sender.public_key,
+            receiver: &receiver.public_key,
             secret_message: &secret_message,
         };
 
