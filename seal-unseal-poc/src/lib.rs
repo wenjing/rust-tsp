@@ -29,8 +29,8 @@ pub struct Receiver {
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct Message<'a> {
-    sender: &'a PublicKey,
-    receiver: &'a PublicKey,
+    sender: &'a [u8; 32],
+    receiver: &'a [u8; 32],
     secret_message: &'a [u8],
 }
 
@@ -38,8 +38,8 @@ impl Message<'_> {
     pub fn serialize_header(&self) -> Vec<u8> {
         let mut result = Vec::<u8>::with_capacity(64);
 
-        result.write_all(self.sender.to_bytes().as_ref()).unwrap();
-        result.write_all(self.receiver.to_bytes().as_ref()).unwrap();
+        result.write_all(self.sender).unwrap();
+        result.write_all(self.receiver).unwrap();
 
         result
     }
@@ -49,12 +49,13 @@ impl Message<'_> {
         let mut data = self.serialize_header();
 
         let mut ciphertext = self.secret_message.to_vec();
+        let message_receiver = PublicKey::from_bytes(self.receiver).unwrap();
 
         let (encapped_key, tag) =
             hpke::single_shot_seal_in_place_detached::<Aead, Kdf, KemType, StdRng>(
                 &OpModeS::Auth((&sender.private_key, &sender.public_key)),
-                &self.receiver,
-                self.sender.to_bytes().as_ref(),
+                &message_receiver,
+                self.sender,
                 &mut ciphertext,
                 &data,
                 &mut csprng,
@@ -91,9 +92,7 @@ impl Message<'_> {
         let tag = &footer[0..16];
         let encapped_key = &footer[16..(16 + 32)];
 
-        let message_sender = x25519_dalek::PublicKey::from(message_sender_bytes.try_into().unwrap());
-        let message_receiver = x25519_dalek::PublicKey::from(mesage_receiver_bytes.try_into().unwrap());
-
+        let message_sender = PublicKey::from_bytes(message_sender_bytes).unwrap();
         let encapped_key = <KemType as Kem>::EncappedKey::from_bytes(encapped_key).unwrap();
 
         hpke::single_shot_open_in_place_detached::<Aead, Kdf, KemType>(
@@ -108,8 +107,8 @@ impl Message<'_> {
         .unwrap();
 
         Message {
-            sender: &message_sender,
-            receiver: &message_receiver,
+            sender: message_sender_bytes.try_into().unwrap(),
+            receiver: mesage_receiver_bytes.try_into().unwrap(),
             secret_message: ciphertext,
         }
     }
@@ -118,7 +117,7 @@ impl Message<'_> {
 #[cfg(test)]
 mod tests {
     use crate::{KemType, Message, Receiver, Sender};
-    use hpke::Kem;
+    use hpke::{Kem, Serializable};
     use rand::{rngs::StdRng, SeedableRng};
 
     fn setup<'a>() -> (Sender, Receiver) {
@@ -150,8 +149,8 @@ mod tests {
         let secret_message = b"hello world".to_vec();
 
         let message = Message {
-            sender: &sender.public_key,
-            receiver: &receiver.public_key,
+            sender: &sender.public_key.to_bytes().try_into().unwrap(),
+            receiver: &receiver.public_key.to_bytes().try_into().unwrap(),
             secret_message: &secret_message,
         };
 
