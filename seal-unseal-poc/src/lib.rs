@@ -8,9 +8,9 @@ use hpke::{
 use rand::{rngs::StdRng, SeedableRng};
 use std::io::Write;
 
-type KemType = X25519HkdfSha256;
-type Aead = ChaCha20Poly1305;
-type Kdf = HkdfSha256;
+pub type KemType = X25519HkdfSha256;
+pub type Aead = ChaCha20Poly1305;
+pub type Kdf = HkdfSha256;
 
 type PrivateKey = <KemType as Kem>::PrivateKey;
 type PublicKey = <KemType as Kem>::PublicKey;
@@ -29,17 +29,20 @@ pub struct Receiver {
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct Message<'a> {
-    sender: &'a [u8; 32],
-    receiver: &'a [u8; 32],
-    secret_message: &'a [u8],
+    pub sender: &'a [u8; 32],
+    pub receiver: &'a [u8; 32],
+    pub header: &'a [u8],
+    pub secret_message: &'a [u8],
 }
 
 impl Message<'_> {
     pub fn serialize_header(&self) -> Vec<u8> {
         let mut result = Vec::<u8>::with_capacity(64);
 
+        result.write_all(&(self.header.len() as u16).to_be_bytes()).unwrap();
         result.write_all(self.sender).unwrap();
         result.write_all(self.receiver).unwrap();
+        result.write_all(self.header).unwrap();
 
         result
     }
@@ -55,7 +58,7 @@ impl Message<'_> {
             hpke::single_shot_seal_in_place_detached::<Aead, Kdf, KemType, StdRng>(
                 &OpModeS::Auth((&sender.private_key, &sender.public_key)),
                 &message_receiver,
-                self.sender,
+                &[],
                 &mut ciphertext,
                 &data,
                 &mut csprng,
@@ -76,6 +79,7 @@ impl Message<'_> {
     }
 
     pub fn unseal<'a>(data: &'a mut [u8], receiver: &Receiver) -> Message<'a> {
+        let header_len = u16::from_be_bytes(data[..2].try_into().unwrap()) as usize;
         let signature_split = data.len() - 64;
 
         // verify outer signature
@@ -86,9 +90,13 @@ impl Message<'_> {
             .unwrap();
 
         // decode message
-        let (header, rest) = data.split_at_mut(64);
+        let (encoded_header, rest) = data.split_at_mut(header_len + 66);
+        let message_sender_bytes = &encoded_header[2..34];
+        let mesage_receiver_bytes = &encoded_header[34..66];
+
+        // signature (64 bytes) + enc key (32 bytes) + tag (16 bytes)
         let (ciphertext, footer) = rest.split_at_mut(rest.len() - (64 + 32 + 16));
-        let (message_sender_bytes, mesage_receiver_bytes) = header.split_at(32);
+        let header = &encoded_header[66..];
         let tag = &footer[0..16];
         let encapped_key = &footer[16..(16 + 32)];
 
@@ -99,9 +107,9 @@ impl Message<'_> {
             &OpModeR::Auth(&message_sender),
             &receiver.private_key,
             &encapped_key,
-            message_sender_bytes,
+            &[],
             ciphertext,
-            header,
+            encoded_header,
             &AeadTag::from_bytes(tag).unwrap(),
         )
         .unwrap();
@@ -109,6 +117,7 @@ impl Message<'_> {
         Message {
             sender: message_sender_bytes.try_into().unwrap(),
             receiver: mesage_receiver_bytes.try_into().unwrap(),
+            header,
             secret_message: ciphertext,
         }
     }
@@ -146,17 +155,17 @@ mod tests {
     #[test]
     fn seal_unseal_message() {
         let (sender, receiver) = setup();
-        let secret_message = b"hello world".to_vec();
+        let secret_message = b"hello world";
+        let header = b"extra extra";
 
         let message = Message {
             sender: &sender.public_key.to_bytes().try_into().unwrap(),
             receiver: &receiver.public_key.to_bytes().try_into().unwrap(),
-            secret_message: &secret_message,
+            header,
+            secret_message,
         };
 
         let mut sealed = message.seal(&sender);
-
-        assert_eq!(sealed.len(), 187);
 
         let received_message = Message::unseal(&mut sealed, &receiver);
 
