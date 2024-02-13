@@ -58,9 +58,9 @@ impl Message<'_> {
             hpke::single_shot_seal_in_place_detached::<Aead, Kdf, KemType, StdRng>(
                 &OpModeS::Auth((&sender.private_key, &sender.public_key)),
                 &message_receiver,
-                &[],
-                &mut ciphertext,
                 &data,
+                &mut ciphertext,
+                &[],
                 &mut csprng,
             )
             .unwrap();
@@ -107,9 +107,9 @@ impl Message<'_> {
             &OpModeR::Auth(&message_sender),
             &receiver.private_key,
             &encapped_key,
-            &[],
-            ciphertext,
             encoded_header,
+            ciphertext,
+            &[],
             &AeadTag::from_bytes(tag).unwrap(),
         )
         .unwrap();
@@ -156,7 +156,7 @@ mod tests {
     fn seal_unseal_message() {
         let (sender, receiver) = setup();
         let secret_message = b"hello world";
-        let header = b"extra extra";
+        let header = b"extra header data";
 
         let message = Message {
             sender: &sender.public_key.to_bytes().try_into().unwrap(),
@@ -166,7 +166,6 @@ mod tests {
         };
 
         let mut sealed = message.seal(&sender);
-
         let received_message = Message::unseal(&mut sealed, &receiver);
 
         assert_eq!(message, received_message);

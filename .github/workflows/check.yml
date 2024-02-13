@@ -1,0 +1,35 @@
+name: Check
+
+on:
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  check:
+    runs-on: ubuntu-20.04
+    steps:
+      - uses: actions/checkout@v3
+      - run: rustup toolchain install stable --profile minimal
+      - run: rustup component add clippy
+
+      - uses: actions/cache/restore@v3
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: linux-x86-64-gnu-${{ hashFiles('Cargo.toml') }}
+          restore-keys: linux-x86-64-gnu-
+
+      - name: Check, clippy and format
+        run: cargo check && cargo clippy && cargo fmt --check
+
+      - name: Deny
+        run: cargo deny --workspace check
+        shell: bash
+
+      - name: Test
+        run: cargo test -- --nocapture
+        shell: bash
