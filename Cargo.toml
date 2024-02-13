@@ -1,3 +1,19 @@
 [workspace]
 resolver = "2"
-members = [ "vid", "test-program", "seal-unseal-poc" ]
+members = [ "tsp-cesr", "tsp-transport", "tsp-crypto", "tsp-vid", "example" ]
+
+[workspace.package]
+version = "0.0.1"
+edition = "2021"
+license = "Apache-2.0 OR MIT"
+repository = "https://github.com/wenjing/rust-tsp"
+homepage = "https://github.com/wenjing/rust-tsp"
+readme = "./README.md"
+description = "Rust implementation of the Trust Spanning Protocol"
+publish = false
+rust-version = "1.75"
+
+[workspace.dependencies]
+hpke = { git = "https://github.com/marlonbaeten/rust-hpke", branch = "keys-by-reference" }
+rand = "0.8"
+ed25519-dalek = { version = "2", features = [ "rand_core", "pkcs8" ] }
