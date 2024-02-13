@@ -7,7 +7,6 @@ on:
 jobs:
   build:
     name: Binaries for ${{ matrix.name }}
-    needs: frontend
     runs-on: ${{ matrix.os }}
 
     strategy:
@@ -52,11 +51,6 @@ jobs:
     steps:
       - uses: actions/checkout@v3
       - run: rustup toolchain install stable --profile minimal
-
-      - uses: actions/download-artifact@v3
-        with:
-          name: frontend-build-${{ github.sha }}
-          path: frontend/dist
 
       - uses: actions/cache@v3
         with:
