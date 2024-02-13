@@ -39,7 +39,9 @@ impl Message<'_> {
     pub fn serialize_header(&self) -> Vec<u8> {
         let mut result = Vec::<u8>::with_capacity(64);
 
-        result.write_all(&(self.header.len() as u16).to_be_bytes()).unwrap();
+        result
+            .write_all(&(self.header.len() as u16).to_be_bytes())
+            .unwrap();
         result.write_all(self.sender).unwrap();
         result.write_all(self.receiver).unwrap();
         result.write_all(self.header).unwrap();
