@@ -578,6 +578,9 @@ dependencies = [
 [[package]]
 name = "tsp-cesr"
 version = "0.0.1"
+dependencies = [
+ "base64ct",
+]
 
 [[package]]
 name = "tsp-crypto"
