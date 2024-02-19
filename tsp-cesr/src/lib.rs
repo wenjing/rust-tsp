@@ -45,6 +45,23 @@ mod test {
     use super::*;
 
     #[test]
+    fn test_primitives() {
+        assert_eq!(mask(0), 0x0);
+        assert_eq!(mask(1), 0x1);
+        assert_eq!(mask(3), 0x7);
+        assert_eq!(mask(5), 0x1F);
+        assert_eq!(bits(15u8, 6), 15);
+        assert_eq!(extract_triplet(&[1, 2, 3]), 0x00010203);
+        assert!(header_match(&[1, 2, 3], &[1, 2, 3]));
+        assert!(header_match(&[0xFF, 0xF0], &[0xFF, 0xF0]));
+        assert!(header_match(&[0xFC], &[0xFC]));
+        #[cfg(not(feature = "strict"))]
+        assert!(header_match(&[0xFF, 0xF3], &[0xFF, 0xF0]));
+        #[cfg(not(feature = "strict"))]
+        assert!(header_match(&[0xFF], &[0xFC]));
+    }
+
+    #[test]
     fn encode_and_decode() {
         let mut data = vec![];
         encode_genus([1, 2, 3], (4, 5, 6), &mut data);
