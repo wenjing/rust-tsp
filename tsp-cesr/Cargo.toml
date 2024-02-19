@@ -9,3 +9,7 @@ publish.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+base64ct = { version = "1.6.0", features = [ ] }
+
+[dev-dependencies]
+base64ct = { version = "1.6.0", features = ["alloc"] }
