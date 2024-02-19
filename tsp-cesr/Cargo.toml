@@ -11,8 +11,5 @@ rust-version.workspace = true
 [features]
 strict = [ ]
 
-[dependencies]
-base64ct = { version = "1.6.0", features = [ ] }
-
 [dev-dependencies]
 base64ct = { version = "1.6.0", features = ["alloc"] }
