@@ -27,6 +27,19 @@ const fn extract_triplet(quadlet: &[u8; 3]) -> u32 {
     u32::from_be_bytes([0, quadlet[0], quadlet[1], quadlet[2]])
 }
 
+/// Checks if the header bytes in a CESR encoding line up;
+/// In strict mode, this has to be an exact match, i.e. padding bits have to be 0
+fn header_match(input: &[u8], target: &[u8]) -> bool {
+    if cfg!(feature = "strict") {
+        input == target
+    } else {
+        let mask = !mask(2 * (input.len() as u8 % 3)) as u8;
+
+        input[..input.len() - 1] == target[..target.len() - 1]
+            && input[input.len() - 1] & mask == target[target.len() - 1]
+    }
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
@@ -167,7 +180,7 @@ mod test {
 
             // test that encoding the given input leads to the given output
             let mut output = vec![];
-            encode_variable_data(ident, &content, &mut output);
+            encode_variable_data(ident, content, &mut output);
             assert_eq!(input, output);
         }
 
@@ -203,7 +216,7 @@ mod test {
         fn roundtrip(ident: u32, input: &[u8], output: &[u8]) {
             let payload = decode_variable_data(ident, &mut &input[..]).unwrap();
             let mut generated = vec![];
-            encode_variable_data(ident, &payload, &mut generated);
+            encode_variable_data(ident, payload, &mut generated);
             assert_eq!(generated, output);
         }
 
@@ -230,6 +243,7 @@ mod test {
     //    ACDD7NDX93ZGTkZBBuSeSGsAQ7u0hngpNTZTK_Um7rUZGnLRNJvo5oOnnC1J2iBQHuxoq8PyjdT3BHS2LiPrs2Cg
     #[test]
     fn demo_example() {
+        #[cfg(feature = "strict")]
         let base64_data = "\
 -FAB\
 EPT2_p83_gRSuAYvGhqV3S0JzYEF2dIa-OCPLbIhBO7Y\
@@ -240,6 +254,18 @@ EAmQtlcszNoEIDfqD-Zih3N6o5B3humRKvBBln2juTEM\
 AAB267UlFg1jHee4Dauht77SzGl8WUC_0oimYG5If3SdIOSzWM8Qs9SFajAilQcozXJVnbkY5stG_K4NbKdNB4AQ\
 ABBgeqntZW3Gu4HL0h3odYz6LaZ_SMfmITL-Btoq_7OZFe3L16jmOe49Ur108wH7mnBaq2E_0U0N0c5vgrJtDpAQ\
 ACDD7NDX93ZGTkZBBuSeSGsAQ7u0hngpNTZTK_Um7rUZGnLRNJvo5oOnnC1J2iBQHuxoq8PyjdT3BHS2LiPrs2Cg\
+";
+        #[cfg(not(feature = "strict"))]
+        let base64_data = "\
+-FAB\
+E_T2_p83_gRSuAYvGhqV3S0JzYEF2dIa-OCPLbIhBO7Y\
+-EAB\
+0AAAAAAAAAAAAAAAAAAAAAAB\
+EwmQtlcszNoEIDfqD-Zih3N6o5B3humRKvBBln2juTEM\
+-AAD\
+AA5267UlFg1jHee4Dauht77SzGl8WUC_0oimYG5If3SdIOSzWM8Qs9SFajAilQcozXJVnbkY5stG_K4NbKdNB4AQ\
+ABBgeqntZW3Gu4HL0h3odYz6LaZ_SMfmITL-Btoq_7OZFe3L16jmOe49Ur108wH7mnBaq2E_0U0N0c5vgrJtDpAQ\
+ACTD7NDX93ZGTkZBBuSeSGsAQ7u0hngpNTZTK_Um7rUZGnLRNJvo5oOnnC1J2iBQHuxoq8PyjdT3BHS2LiPrs2Cg\
 ";
 
         let data = Base64Url::decode_vec(base64_data).unwrap();

@@ -1,4 +1,4 @@
-use super::{bits, extract_triplet, mask};
+use super::{bits, extract_triplet, header_match, mask};
 
 /// Decode fixed size data with a known identifier
 pub fn decode_fixed_data<'a, const N: usize>(
@@ -15,7 +15,10 @@ pub fn decode_fixed_data<'a, const N: usize>(
         _ => unreachable!("unsigned integer arithmetic is broken"),
     };
 
-    if stream.get(0..hdr_bytes)? == &u32::to_be_bytes(word)[1..=hdr_bytes] {
+    if header_match(
+        stream.get(0..hdr_bytes)?,
+        &u32::to_be_bytes(word)[1..=hdr_bytes],
+    ) {
         let slice = stream.get(hdr_bytes..total_size)?;
         *stream = &stream[total_size..];
 
@@ -83,7 +86,10 @@ pub fn decode_indexed_data<'a, const N: usize>(
         _ => unreachable!("unsigned integer arithmetic is broken"),
     };
 
-    if stream.get(0..hdr_bytes)? == &u32::to_be_bytes(word)[1..=hdr_bytes] {
+    if header_match(
+        stream.get(0..hdr_bytes)?,
+        &u32::to_be_bytes(word)[1..=hdr_bytes],
+    ) {
         let slice = stream.get(hdr_bytes..total_size)?;
         *stream = &stream[total_size..];
 

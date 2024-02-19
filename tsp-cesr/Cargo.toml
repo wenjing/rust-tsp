@@ -8,6 +8,9 @@ homepage.workspace = true
 publish.workspace = true
 rust-version.workspace = true
 
+[features]
+strict = [ ]
+
 [dependencies]
 base64ct = { version = "1.6.0", features = [ ] }
 
