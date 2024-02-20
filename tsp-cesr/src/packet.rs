@@ -6,9 +6,9 @@ use crate::error::{DecodeError, EncodeError};
 /// A type to distinguish "normal" TSP messages from "control" messages
 #[repr(u32)]
 #[derive(Debug, Clone)]
-pub enum Payload<'a> {
+pub enum Payload<Bytes: AsRef<[u8]>> {
     /// A TSP message which consists only of a message which will be protected using HPKE
-    HpkeMessage(&'a [u8]),
+    HpkeMessage(Bytes),
 }
 
 /// Type representing a TSP Envelope
@@ -49,16 +49,16 @@ fn checked_encode_variable_data(
 /// Encode a TSP Payload into CESR for encryption
 /// TODO: add 'hops'
 pub fn encode_payload(
-    payload: Payload,
+    payload: Payload<impl AsRef<[u8]>>,
     output: &mut impl for<'a> Extend<&'a u8>,
 ) -> Result<(), EncodeError> {
     let Payload::HpkeMessage(data) = payload;
 
-    checked_encode_variable_data(TSP_PLAINTEXT, data, output)
+    checked_encode_variable_data(TSP_PLAINTEXT, data.as_ref(), output)
 }
 
 /// Decode a TSP Payload
-pub fn decode_payload(mut stream: &[u8]) -> Result<Payload, DecodeError> {
+pub fn decode_payload(mut stream: &[u8]) -> Result<Payload<&[u8]>, DecodeError> {
     let payload = decode_variable_data(TSP_PLAINTEXT, &mut stream)
         .map(Payload::HpkeMessage)
         .ok_or(DecodeError::UnexpectedData)?;
@@ -101,16 +101,18 @@ pub struct VerificationChallenge<'a> {
 }
 
 /// Decode an encrypted TSP message plus Envelope & Signature
-pub fn decode_envelope<'a, Vid: From<&'a [u8]>>(
+pub fn decode_envelope<'a, Vid: TryFrom<&'a [u8]>>(
     mut stream: &'a [u8],
 ) -> Result<(Envelope<Vid>, VerificationChallenge<'a>), DecodeError> {
     let origin = stream;
     let sender = decode_variable_data(TSP_DEVELOPMENT_VID, &mut stream)
         .ok_or(DecodeError::UnexpectedData)?
-        .into();
+        .try_into()
+        .map_err(|_| DecodeError::VidError)?;
     let receiver = decode_variable_data(TSP_DEVELOPMENT_VID, &mut stream)
         .ok_or(DecodeError::UnexpectedData)?
-        .into();
+        .try_into()
+        .map_err(|_| DecodeError::VidError)?;
     let nonconfidential_header = decode_variable_data(TSP_PLAINTEXT, &mut stream);
     let ciphertext =
         decode_variable_data(TSP_CIPHERTEXT, &mut stream).ok_or(DecodeError::UnexpectedData)?;
@@ -138,7 +140,7 @@ pub fn decode_envelope<'a, Vid: From<&'a [u8]>>(
 
 /// Allocating variant of [encode_payload]
 #[cfg(any(feature = "alloc", test))]
-pub fn encode_payload_vec(payload: Payload) -> Result<Vec<u8>, EncodeError> {
+pub fn encode_payload_vec(payload: Payload<impl AsRef<[u8]>>) -> Result<Vec<u8>, EncodeError> {
     let mut data = vec![];
     encode_payload(payload, &mut data)?;
 
@@ -154,6 +156,80 @@ pub fn encode_envelope_vec<Vid: AsRef<[u8]>>(
     encode_envelope(envelope, &mut data)?;
 
     Ok(data)
+}
+
+/// Convenience interface: this struct is isomorphic to [Envelope] but represents
+/// a "opened" envelope, i.e. message.
+#[cfg(feature = "demo")]
+#[derive(Debug, Clone)]
+pub struct Message<'a, Vid, Bytes: AsRef<[u8]>> {
+    pub sender: Vid,
+    pub receiver: Vid,
+    pub nonconfidential_header: Option<&'a [u8]>,
+    pub message: Payload<Bytes>,
+}
+
+/// Convenience interface which illustrates encoding as a single operation
+#[cfg(feature = "demo")]
+pub fn encode_tsp_message<Vid: AsRef<[u8]>>(
+    Message {
+        ref sender,
+        ref receiver,
+        nonconfidential_header,
+        message,
+    }: Message<Vid, impl AsRef<[u8]>>,
+    encrypt: impl FnOnce(&Vid, Vec<u8>) -> Vec<u8>,
+    sign: impl FnOnce(&Vid, &[u8]) -> Signature,
+) -> Result<Vec<u8>, EncodeError> {
+    let mut cesr = encode_envelope_vec(Envelope {
+        sender,
+        receiver,
+        nonconfidential_header,
+        ciphertext: &encrypt(receiver, encode_payload_vec(message)?),
+    })?;
+
+    encode_signature(&sign(sender, &cesr), &mut cesr);
+
+    Ok(cesr)
+}
+
+/// A convenience interface which illustrates decoding as a single operation
+#[cfg(feature = "demo")]
+pub fn decode_tsp_message<'a, Vid: TryFrom<&'a [u8]>>(
+    data: &'a [u8],
+    decrypt: impl FnOnce(&Vid, &[u8]) -> Vec<u8>,
+    verify: impl FnOnce(&[u8], &Vid, &Signature) -> bool,
+) -> Result<Message<Vid, Vec<u8>>, DecodeError> {
+    let (
+        Envelope {
+            sender,
+            receiver,
+            nonconfidential_header,
+            ciphertext,
+        },
+        VerificationChallenge {
+            signed_data,
+            signature,
+        },
+    ) = decode_envelope(data)?;
+
+    if !verify(signed_data, &sender, signature) {
+        return Err(DecodeError::SignatureError);
+    }
+
+    let decrypted = decrypt(&receiver, ciphertext);
+
+    // This illustrates a challenge: unless decryption happens in place, either a needless
+    // allocation or at the very least moving the contents of the payload around must occur.
+    let Payload::HpkeMessage(message) = decode_payload(&decrypted)?;
+    let message = Payload::HpkeMessage(message.to_owned());
+
+    Ok(Message {
+        sender,
+        receiver,
+        nonconfidential_header,
+        message,
+    })
 }
 
 #[cfg(test)]
@@ -255,5 +331,37 @@ mod test {
         outer.push(b'-');
 
         assert!(decode_envelope::<&[u8]>(&outer).is_err());
+    }
+
+    #[cfg(feature = "demo")]
+    #[test]
+    fn convenience() {
+        let sender = b"Alister".as_slice();
+        let receiver = b"Bobbi".as_slice();
+        let payload = b"Hello TSP!";
+        let data = encode_tsp_message(
+            Message {
+                sender,
+                receiver,
+                nonconfidential_header: None,
+                message: Payload::HpkeMessage(payload),
+            },
+            |_, vec| vec,
+            |_, _| [5; 64],
+        )
+        .unwrap();
+
+        let tsp = decode_tsp_message(
+            &data,
+            |_: &&[u8], x| x.to_vec(),
+            |_, _, sig| sig == &[5u8; 64],
+        )
+        .unwrap();
+
+        assert_eq!(tsp.sender, b"Alister".as_slice());
+        assert_eq!(tsp.receiver, b"Bobbi");
+
+        let Payload::HpkeMessage(content) = tsp.message;
+        assert_eq!(&content[..], b"Hello TSP!");
     }
 }
