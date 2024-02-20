@@ -1,4 +1,6 @@
 mod decode;
+#[cfg(feature = "cesr-t")]
+mod detect;
 mod encode;
 
 pub use decode::{
@@ -7,6 +9,9 @@ pub use decode::{
 pub use encode::{
     encode_count, encode_fixed_data, encode_genus, encode_indexed_data, encode_variable_data,
 };
+
+#[cfg(feature = "cesr-t")]
+pub use detect::to_binary;
 
 /// Safely restrict value to a certain number of bits
 fn bits(value: impl Into<u32>, bits: u8) -> u32 {
