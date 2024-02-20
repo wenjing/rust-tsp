@@ -9,11 +9,10 @@ use tokio_stream::StreamExt;
 use tokio_util::{
     bytes::BytesMut,
     codec::{BytesCodec, Framed},
-    sync::CancellationToken,
 };
 use tracing_subscriber::EnvFilter;
 
-pub async fn broadcast_server(token: CancellationToken) -> Result<(), Box<dyn Error>> {
+pub async fn broadcast_server() -> Result<(), Box<dyn Error>> {
     tracing_subscriber::fmt()
         .with_env_filter(EnvFilter::from_default_env().add_directive("info".parse()?))
         .init();
@@ -29,21 +28,15 @@ pub async fn broadcast_server(token: CancellationToken) -> Result<(), Box<dyn Er
     tracing::info!("server running on {}", addr);
 
     loop {
-        tokio::select! {
-            Ok((stream, addr)) = listener.accept() => {
-                let state = Arc::clone(&state);
+        if let Ok((stream, addr)) = listener.accept().await {
+            let state = Arc::clone(&state);
 
-                tokio::spawn(async move {
-                    tracing::debug!("accepted connection");
-                    if let Err(e) = process(state, stream, addr).await {
-                        tracing::info!("an error occurred; error = {:?}", e);
-                    }
-                });
-            }
-            _ = token.cancelled() => {
-                tracing::info!("stopping server");
-                return Ok(());
-            }
+            tokio::spawn(async move {
+                tracing::debug!("accepted connection");
+                if let Err(e) = process(state, stream, addr).await {
+                    tracing::info!("an error occurred; error = {:?}", e);
+                }
+            });
         }
     }
 }
