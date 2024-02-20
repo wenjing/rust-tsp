@@ -10,6 +10,10 @@ rust-version.workspace = true
 
 [features]
 strict = [ ]
+cesr-t = ["dep:base64ct"]
+
+[dependencies]
+base64ct = { version = "1.6.0", optional = true, features = [ ] }
 
 [dev-dependencies]
 base64ct = { version = "1.6.0", features = ["alloc"] }
