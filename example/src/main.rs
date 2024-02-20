@@ -3,11 +3,14 @@ use std::time::Duration;
 use hpke::Serializable;
 use rand::Rng;
 use tokio::{io::AsyncWriteExt, time::sleep};
-use tokio_util::sync::CancellationToken;
+use tokio_util::{codec::{BytesCodec, Framed}, sync::CancellationToken};
 use tsp_crypto::Message;
+use tokio_stream::StreamExt;
+
+const SERVER_ADDRESS: &str = "127.0.0.1:1337";
 
 async fn send(msg: &[u8]) {
-    let mut stream = tokio::net::TcpStream::connect("127.0.0.1:1337")
+    let mut stream = tokio::net::TcpStream::connect(SERVER_ADDRESS)
         .await
         .unwrap();
 
@@ -19,7 +22,7 @@ async fn main() {
     // start broadcast server
     let token = CancellationToken::new();
     let server_handle = tokio::spawn(async move {
-        tsp_transport::tcp::broadcast_server().await.unwrap();
+        tsp_transport::tcp::broadcast_server(SERVER_ADDRESS).await.unwrap();
     });
 
     // wait for server to start
@@ -31,42 +34,40 @@ async fn main() {
     for (me, other) in [(alice.clone(), bob.clone()), (bob, alice)] {
         let (reveiver_me, receiver_other) = (me.clone(), other.clone());
         tokio::spawn(async move {
-            let stream = tokio::net::TcpStream::connect("127.0.0.1:1337")
+            let stream = tokio::net::TcpStream::connect(SERVER_ADDRESS)
                 .await
                 .unwrap();
+
+            let mut messages = Framed::new(stream, BytesCodec::new());
 
             let pk_bytes = reveiver_me.public_key.to_bytes().to_vec();
 
             loop {
-                stream.readable().await.unwrap();
-
-                let mut buf = [0; 4096];
-                let n = match stream.try_read(&mut buf) {
-                    Ok(0) => continue,
-                    Ok(n) => n,
-                    Err(ref e) if e.kind() == tokio::io::ErrorKind::WouldBlock => {
+                let mut message = match messages.next().await {
+                    Some(Ok(m)) => m,
+                    Some(Err(e)) => {
+                        tracing::error!("{e}");
                         continue;
                     }
-                    Err(e) => {
-                        tracing::error!("{e}");
-                        return;
+                    None => {
+                        break;
                     }
                 };
 
                 // check thge message was intended for us
-                if buf[34..66] != pk_bytes {
+                if message[34..66] != pk_bytes {
                     continue;
                 }
 
                 tracing::info!(
                     "{} received {} from {}",
                     reveiver_me.name,
-                    const_hex::encode(&buf[0..n]),
+                    const_hex::encode(&message),
                     receiver_other.name
                 );
 
                 let message: Message = Message::unseal_hpke(
-                    &mut buf[0..n],
+                    &mut message,
                     &reveiver_me,
                     &receiver_other.verifying_key,
                 );

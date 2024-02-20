@@ -435,6 +435,7 @@ dependencies = [
  "rand",
  "random_word",
  "tokio",
+ "tokio-stream",
  "tokio-util",
  "tracing",
  "tsp-crypto",

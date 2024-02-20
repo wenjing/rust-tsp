@@ -1,8 +1,8 @@
-use std::{collections::HashMap, env, error::Error, io, net::SocketAddr, sync::Arc};
+use std::{collections::HashMap, error::Error, fmt::Display, io, net::SocketAddr, sync::Arc};
 
 use futures::SinkExt;
 use tokio::{
-    net::{TcpListener, TcpStream},
+    net::{TcpListener, TcpStream, ToSocketAddrs},
     sync::{mpsc, Mutex},
 };
 use tokio_stream::StreamExt;
@@ -12,17 +12,12 @@ use tokio_util::{
 };
 use tracing_subscriber::EnvFilter;
 
-pub async fn broadcast_server() -> Result<(), Box<dyn Error>> {
+pub async fn broadcast_server<A: ToSocketAddrs + Display>(addr: A) -> Result<(), Box<dyn Error>> {
     tracing_subscriber::fmt()
         .with_env_filter(EnvFilter::from_default_env().add_directive("info".parse()?))
         .init();
 
     let state = Arc::new(Mutex::new(Shared::new()));
-
-    let addr = env::args()
-        .nth(1)
-        .unwrap_or_else(|| "127.0.0.1:1337".to_string());
-
     let listener = TcpListener::bind(&addr).await?;
 
     tracing::info!("server running on {}", addr);
@@ -59,6 +54,7 @@ impl Shared {
             peers: HashMap::new(),
         }
     }
+
     async fn broadcast(&mut self, sender: SocketAddr, message: BytesMut) {
         for peer in self.peers.iter_mut() {
             if *peer.0 != sender {
