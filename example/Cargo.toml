@@ -9,3 +9,12 @@ publish.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+tsp-crypto = { path = "../tsp-crypto" }
+tsp-transport = { path = "../tsp-transport" }
+tokio = { workspace = true }
+tokio-util = { workspace = true }
+tracing = { workspace = true }
+random_word = { version = "0.4.3", features = ["en"] }
+const-hex = "1.11"
+rand = { workspace = true }
+hpke = { workspace = true }

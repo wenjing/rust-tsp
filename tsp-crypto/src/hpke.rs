@@ -16,20 +16,17 @@ pub type Kdf = HkdfSha256;
 type PrivateKey = <KemType as Kem>::PrivateKey;
 type PublicKey = <KemType as Kem>::PublicKey;
 
-pub struct Sender {
+#[derive(Clone)]
+pub struct Keypair {
+    pub name: String,
     pub private_key: PrivateKey,
     pub public_key: PublicKey,
     pub signing_key: ed25519_dalek::SigningKey,
-}
-
-pub struct Receiver {
-    pub private_key: PrivateKey,
-    pub public_key: PublicKey,
     pub verifying_key: ed25519_dalek::VerifyingKey,
 }
 
 impl Message<'_> {
-    pub fn seal_hpke(&self, sender: &Sender) -> Vec<u8> {
+    pub fn seal_hpke(&self, sender: &Keypair) -> Vec<u8> {
         let mut csprng = StdRng::from_entropy();
         let mut data = self.serialize_header();
 
@@ -60,14 +57,17 @@ impl Message<'_> {
         data
     }
 
-    pub fn unseal_hpke<'a>(data: &'a mut [u8], receiver: &Receiver) -> Message<'a> {
+    pub fn unseal_hpke<'a>(
+        data: &'a mut [u8],
+        receiver: &Keypair,
+        verifying_key: &ed25519_dalek::VerifyingKey,
+    ) -> Message<'a> {
         let header_len = u16::from_be_bytes(data[..2].try_into().unwrap()) as usize;
         let signature_split = data.len() - 64;
 
         // verify outer signature
         let signature = ed25519_dalek::Signature::try_from(&data[signature_split..]).unwrap();
-        receiver
-            .verifying_key
+        verifying_key
             .verify_strict(&data[..signature_split], &signature)
             .unwrap();
 
@@ -105,34 +105,39 @@ impl Message<'_> {
     }
 }
 
+pub fn setup() -> (Keypair, Keypair) {
+    let mut csprng = StdRng::from_entropy();
+
+    let (alice_private, alice_public) = KemType::gen_keypair(&mut csprng);
+    let (bob_private, bob_public) = KemType::gen_keypair(&mut csprng);
+
+    let alice_signing_key = ed25519_dalek::SigningKey::generate(&mut csprng);
+    let bob_signing_key = ed25519_dalek::SigningKey::generate(&mut csprng);
+
+    let alice = Keypair {
+        name: "alice".to_owned(),
+        private_key: alice_private,
+        public_key: alice_public,
+        verifying_key: alice_signing_key.verifying_key(),
+        signing_key: alice_signing_key,
+    };
+
+    let bob = Keypair {
+        name: "bob".to_owned(),
+        private_key: bob_private,
+        public_key: bob_public,
+        verifying_key: bob_signing_key.verifying_key(),
+        signing_key: bob_signing_key,
+    };
+
+    (alice, bob)
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{KemType, Message, Receiver, Sender};
-    use hpke::{Kem, Serializable};
-    use rand::{rngs::StdRng, SeedableRng};
+    use hpke::Serializable;
 
-    fn setup<'a>() -> (Sender, Receiver) {
-        let mut csprng = StdRng::from_entropy();
-
-        let (sender_private, sender_public) = KemType::gen_keypair(&mut csprng);
-        let (receiver_private, receiver_public) = KemType::gen_keypair(&mut csprng);
-
-        let signing_key = ed25519_dalek::SigningKey::generate(&mut csprng);
-
-        let receiver = Receiver {
-            private_key: receiver_private,
-            public_key: receiver_public,
-            verifying_key: signing_key.verifying_key(),
-        };
-
-        let sender = Sender {
-            private_key: sender_private,
-            public_key: sender_public,
-            signing_key,
-        };
-
-        (sender, receiver)
-    }
+    use super::{setup, Message};
 
     #[test]
     fn seal_unseal_message() {
@@ -148,7 +153,7 @@ mod tests {
         };
 
         let mut sealed = message.seal_hpke(&sender);
-        let received_message = Message::unseal_hpke(&mut sealed, &receiver);
+        let received_message = Message::unseal_hpke(&mut sealed, &receiver, &sender.verifying_key);
 
         assert_eq!(message, received_message);
     }

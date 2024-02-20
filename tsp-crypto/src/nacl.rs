@@ -87,9 +87,10 @@ impl Message<'_> {
 
 #[cfg(test)]
 mod tests {
-    use super::{Message, Receiver, Sender};
     use crypto_box::SecretKey;
     use rand::{rngs::StdRng, SeedableRng};
+
+    use super::{Message, Receiver, Sender};
 
     fn setup<'a>() -> (Sender, Receiver) {
         let mut csprng = StdRng::from_entropy();
@@ -128,8 +129,6 @@ mod tests {
         };
 
         let mut sealed = message.seal_nacl(&sender);
-
-        dbg!(&sealed);
 
         let received_message = Message::unseal_nacl(&mut sealed, &receiver);
 

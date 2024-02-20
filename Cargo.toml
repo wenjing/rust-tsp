@@ -14,7 +14,15 @@ publish = false
 rust-version = "1.75"
 
 [workspace.dependencies]
+# crypto
 hpke = { git = "https://github.com/marlonbaeten/rust-hpke", branch = "keys-by-reference" }
 crypto_box = { version = "0.9", features = ["alloc", "seal", "chacha20"] }
 rand = "0.8"
 ed25519-dalek = { version = "2", features = [ "rand_core", "pkcs8" ] }
+# transport
+tokio = { version = "1.0", features = ["full", "tracing"] }
+tokio-util = { version = "0.7", features = ["full"] }
+tokio-stream = { version = "0.1" }
+futures = { version = "0.3.0", features = ["thread-pool"]}
+tracing = "0.1"
+tracing-subscriber = { version = "0.3.1", default-features = false, features = ["fmt", "ansi", "env-filter", "tracing-log"] }
