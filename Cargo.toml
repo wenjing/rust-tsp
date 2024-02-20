@@ -18,3 +18,4 @@ hpke = { git = "https://github.com/marlonbaeten/rust-hpke", branch = "keys-by-re
 crypto_box = { version = "0.9", features = ["alloc", "seal", "chacha20"] }
 rand = "0.8"
 ed25519-dalek = { version = "2", features = [ "rand_core", "pkcs8" ] }
+base64ct = { version = "1.6.0", features = ["alloc"] }

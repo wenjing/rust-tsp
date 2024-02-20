@@ -21,6 +21,7 @@ pub fn encode_fixed_data(
 }
 
 /// Encode indexed fixed size data with a known identifier
+#[allow(dead_code)]
 pub fn encode_indexed_data(
     identifier: u32,
     index: u16,
@@ -67,6 +68,7 @@ pub fn encode_variable_data(
 }
 
 /// Encode a frame with known identifier and count code
+#[allow(dead_code)]
 pub fn encode_count(identifier: u16, count: u16, stream: &mut impl for<'a> Extend<&'a u8>) {
     let word = DASH << 18 | bits(identifier, 6) << 12 | bits(count, 12);
 
@@ -74,6 +76,7 @@ pub fn encode_count(identifier: u16, count: u16, stream: &mut impl for<'a> Exten
 }
 
 /// Encode a genus with known identifier and version
+#[allow(dead_code)]
 pub fn encode_genus(
     genus: [u8; 3],
     (major, minor, patch): (u8, u8, u8),

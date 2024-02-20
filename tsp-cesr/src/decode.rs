@@ -62,6 +62,7 @@ pub fn decode_variable_data<'a>(identifier: u32, stream: &mut &'a [u8]) -> Optio
 }
 
 /// Decode indexed data with a known identifier
+#[allow(dead_code)]
 pub fn decode_indexed_data<'a, const N: usize>(
     identifier: u32,
     stream: &mut &'a [u8],
@@ -100,6 +101,7 @@ pub fn decode_indexed_data<'a, const N: usize>(
 }
 
 /// Decode a frame with known identifier and size
+#[allow(dead_code)]
 pub fn decode_count(identifier: u16, stream: &mut &[u8]) -> Option<u16> {
     let word = extract_triplet(stream.get(0..=2)?.try_into().unwrap());
     let index = word & mask(12);
@@ -115,6 +117,7 @@ pub fn decode_count(identifier: u16, stream: &mut &[u8]) -> Option<u16> {
 }
 
 /// Decode a genus with known identifier and version
+#[allow(dead_code)]
 pub fn decode_genus(
     genus: [u8; 3],
     (major, minor, patch): (u8, u8, u8),
