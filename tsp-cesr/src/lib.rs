@@ -2,13 +2,8 @@ mod decode;
 #[cfg(feature = "cesr-t")]
 mod detect;
 mod encode;
-
-pub use decode::{
-    decode_count, decode_fixed_data, decode_genus, decode_indexed_data, decode_variable_data,
-};
-pub use encode::{
-    encode_count, encode_fixed_data, encode_genus, encode_indexed_data, encode_variable_data,
-};
+pub mod error;
+pub mod packet;
 
 #[cfg(feature = "cesr-t")]
 pub use detect::to_binary;
@@ -61,6 +56,8 @@ mod selector {
 #[cfg(test)]
 mod test {
     use super::*;
+    use crate::decode::*;
+    use crate::encode::*;
 
     #[test]
     fn test_primitives() {
