@@ -1,4 +1,4 @@
-use super::bits;
+use super::{bits, selector::*};
 
 /// Encode fixed size data with a known identifier
 pub fn encode_fixed_data(
@@ -11,8 +11,8 @@ pub fn encode_fixed_data(
 
     let word = match hdr_bytes {
         1 => bits(identifier, 6) << 18,
-        2 => 52 << 18 | bits(identifier, 6) << 12,
-        3 => 53 << 18 | bits(identifier, 18),
+        2 => D0 << 18 | bits(identifier, 6) << 12,
+        3 => D1 << 18 | bits(identifier, 18),
         _ => unreachable!("integer arithmetic"),
     };
 
@@ -33,7 +33,7 @@ pub fn encode_indexed_data(
     let word = match hdr_bytes {
         1 => panic!("an indexed type with 1 lead byte is not possible"),
         2 => bits(identifier, 6) << 18 | bits(index, 6) << 12,
-        3 => 52 << 18 | bits(identifier, 6) << 12 | bits(index, 12),
+        3 => D0 << 18 | bits(identifier, 6) << 12 | bits(index, 12),
         _ => unreachable!("integer arithmetic"),
     };
 
@@ -50,7 +50,7 @@ pub fn encode_variable_data(
     let padded_size = payload.len().next_multiple_of(3);
     let lead_bytes = padded_size - payload.len();
 
-    let selector = 56 + lead_bytes as u32;
+    let selector = D4 + lead_bytes as u32;
     let size = (padded_size / 3) as u32;
 
     if size < 64 * 64 && identifier < 64 {
@@ -68,7 +68,7 @@ pub fn encode_variable_data(
 
 /// Encode a frame with known identifier and count code
 pub fn encode_count(identifier: u16, count: u16, stream: &mut impl for<'a> Extend<&'a u8>) {
-    let word = 62 << 18 | bits(identifier, 6) << 12 | bits(count, 12);
+    let word = DASH << 18 | bits(identifier, 6) << 12 | bits(count, 12);
 
     stream.extend(&u32::to_be_bytes(word)[1..]);
 }
@@ -80,7 +80,7 @@ pub fn encode_genus(
     stream: &mut impl for<'a> Extend<&'a u8>,
 ) {
     let version = bits(major, 6) << 12 | bits(minor, 6) << 6 | bits(patch, 6);
-    let word1 = 62 << 18 | 62 << 12 | bits(genus[0], 6) << 6 | bits(genus[1], 6);
+    let word1 = DASH << 18 | DASH << 12 | bits(genus[0], 6) << 6 | bits(genus[1], 6);
     let word2 = bits(genus[2], 6) << 18 | version;
 
     stream.extend(&u32::to_be_bytes(word1)[1..]);
