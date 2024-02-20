@@ -9,6 +9,8 @@ pub enum EncodeError {
 pub enum DecodeError {
     UnexpectedData,
     TrailingGarbage,
+    SignatureError,
+    VidError,
 }
 
 #[cfg(feature = "std")]
