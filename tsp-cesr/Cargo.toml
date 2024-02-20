@@ -13,6 +13,7 @@ cesr-t = ["dep:base64ct"]
 default = ["std"]
 std = [ ]
 strict = [ ]
+alloc = [ ]
 
 [dependencies]
 base64ct = { workspace = true, optional = true }

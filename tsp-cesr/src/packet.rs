@@ -21,7 +21,7 @@ pub struct Envelope<'a, Vid> {
 }
 
 /// TODO: something more type safe
-pub type Signature<'a> = &'a [u8; 64];
+pub type Signature = [u8; 64];
 
 const TSP_PLAINTEXT: u32 = (b'B' - b'A') as u32;
 const TSP_CIPHERTEXT: u32 = (b'C' - b'A') as u32;
@@ -87,14 +87,14 @@ pub fn encode_envelope<'a, Vid: AsRef<[u8]>>(
 
 /// Encode a Ed25519 signature into CESR
 /// TODO: replace type with a more precise "signature" type
-pub fn encode_signature(signature: Signature, output: &mut impl for<'a> Extend<&'a u8>) {
+pub fn encode_signature(signature: &Signature, output: &mut impl for<'a> Extend<&'a u8>) {
     encode_fixed_data(ED25519_SIGNATURE, signature, output);
 }
 
 /// Decode an encrypted TSP message plus Envelope & Signature
 pub fn decode_envelope<'a, Vid: From<&'a [u8]>>(
     mut stream: &'a [u8],
-) -> Result<(Envelope<Vid>, Signature), DecodeError> {
+) -> Result<(Envelope<Vid>, &'a Signature), DecodeError> {
     let sender = decode_variable_data(TSP_DEVELOPMENT_VID, &mut stream)
         .ok_or(DecodeError::UnexpectedData)?
         .into();
@@ -122,6 +122,26 @@ pub fn decode_envelope<'a, Vid: From<&'a [u8]>>(
     ))
 }
 
+/// Allocating variant of [encode_payload]
+#[cfg(any(feature = "alloc", test))]
+pub fn encode_payload_vec(payload: Payload) -> Result<Vec<u8>, EncodeError> {
+    let mut data = vec![];
+    encode_payload(payload, &mut data)?;
+
+    Ok(data)
+}
+
+/// Allocating variant of [encode_payload]
+#[cfg(any(feature = "alloc", test))]
+pub fn encode_envelope_vec<Vid: AsRef<[u8]>>(
+    envelope: Envelope<Vid>,
+) -> Result<Vec<u8>, EncodeError> {
+    let mut data = vec![];
+    encode_envelope(envelope, &mut data)?;
+
+    Ok(data)
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
@@ -133,22 +153,14 @@ mod test {
         }
         let fixed_sig = [1; 64];
 
-        let cesr_payload = {
-            let mut inner = vec![];
-            encode_payload(Payload::HpkeMessage(b"Hello TSP!"), &mut inner).unwrap();
-            inner
-        };
+        let cesr_payload = { encode_payload_vec(Payload::HpkeMessage(b"Hello TSP!")).unwrap() };
 
-        let mut outer = vec![];
-        encode_envelope(
-            Envelope {
-                sender: &b"Alister"[..],
-                receiver: &b"Bobbi"[..],
-                nonconfidential_header: None,
-                ciphertext: dummy_crypt(&cesr_payload),
-            },
-            &mut outer,
-        )
+        let mut outer = encode_envelope_vec(Envelope {
+            sender: &b"Alister"[..],
+            receiver: &b"Bobbi"[..],
+            nonconfidential_header: None,
+            ciphertext: dummy_crypt(&cesr_payload),
+        })
         .unwrap();
         encode_signature(&fixed_sig, &mut outer);
 
@@ -169,22 +181,14 @@ mod test {
         }
         let fixed_sig = [1; 64];
 
-        let cesr_payload = {
-            let mut inner = vec![];
-            encode_payload(Payload::HpkeMessage(b"Hello TSP!"), &mut inner).unwrap();
-            inner
-        };
+        let cesr_payload = { encode_payload_vec(Payload::HpkeMessage(b"Hello TSP!")).unwrap() };
 
-        let mut outer = vec![];
-        encode_envelope(
-            Envelope {
-                sender: &b"Alister"[..],
-                receiver: &b"Bobbi"[..],
-                nonconfidential_header: Some(b"treasure"),
-                ciphertext: dummy_crypt(&cesr_payload),
-            },
-            &mut outer,
-        )
+        let mut outer = encode_envelope_vec(Envelope {
+            sender: &b"Alister"[..],
+            receiver: &b"Bobbi"[..],
+            nonconfidential_header: Some(b"treasure"),
+            ciphertext: dummy_crypt(&cesr_payload),
+        })
         .unwrap();
         encode_signature(&fixed_sig, &mut outer);
 
@@ -222,16 +226,12 @@ mod test {
     fn trailing_data() {
         let fixed_sig = [1; 64];
 
-        let mut outer = vec![];
-        encode_envelope(
-            Envelope {
-                sender: &b"Alister"[..],
-                receiver: &b"Bobbi"[..],
-                nonconfidential_header: Some(b"treasure"),
-                ciphertext: &[],
-            },
-            &mut outer,
-        )
+        let mut outer = encode_envelope_vec(Envelope {
+            sender: &b"Alister"[..],
+            receiver: &b"Bobbi"[..],
+            nonconfidential_header: Some(b"treasure"),
+            ciphertext: &[],
+        })
         .unwrap();
         encode_signature(&fixed_sig, &mut outer);
         outer.push(b'-');
