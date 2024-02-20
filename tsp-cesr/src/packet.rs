@@ -58,9 +58,15 @@ pub fn encode_payload(
 
 /// Decode a TSP Payload
 pub fn decode_payload(mut stream: &[u8]) -> Result<Payload, DecodeError> {
-    decode_variable_data(TSP_PLAINTEXT, &mut stream)
+    let payload = decode_variable_data(TSP_PLAINTEXT, &mut stream)
         .map(Payload::HpkeMessage)
-        .ok_or(DecodeError)
+        .ok_or(DecodeError::UnexpectedData)?;
+
+    if !stream.is_empty() {
+        return Err(DecodeError::TrailingGarbage);
+    }
+
+    Ok(payload)
 }
 
 /// Encode a encrypted TSP message plus Envelope into CESR
@@ -90,14 +96,20 @@ pub fn decode_envelope<'a, Vid: From<&'a [u8]>>(
     mut stream: &'a [u8],
 ) -> Result<(Envelope<Vid>, Signature), DecodeError> {
     let sender = decode_variable_data(TSP_DEVELOPMENT_VID, &mut stream)
-        .ok_or(DecodeError)?
+        .ok_or(DecodeError::UnexpectedData)?
         .into();
     let receiver = decode_variable_data(TSP_DEVELOPMENT_VID, &mut stream)
-        .ok_or(DecodeError)?
+        .ok_or(DecodeError::UnexpectedData)?
         .into();
     let nonconfidential_header = decode_variable_data(TSP_PLAINTEXT, &mut stream);
-    let ciphertext = decode_variable_data(TSP_CIPHERTEXT, &mut stream).ok_or(DecodeError)?;
-    let signature = decode_fixed_data(ED25519_SIGNATURE, &mut stream).ok_or(DecodeError)?;
+    let ciphertext =
+        decode_variable_data(TSP_CIPHERTEXT, &mut stream).ok_or(DecodeError::UnexpectedData)?;
+    let signature =
+        decode_fixed_data(ED25519_SIGNATURE, &mut stream).ok_or(DecodeError::UnexpectedData)?;
+
+    if !stream.is_empty() {
+        return Err(DecodeError::TrailingGarbage);
+    }
 
     Ok((
         Envelope {
@@ -202,6 +214,27 @@ mod test {
             &mut outer,
         )
         .unwrap();
+
+        assert!(decode_envelope::<&[u8]>(&outer).is_err());
+    }
+
+    #[test]
+    fn trailing_data() {
+        let fixed_sig = [1; 64];
+
+        let mut outer = vec![];
+        encode_envelope(
+            Envelope {
+                sender: &b"Alister"[..],
+                receiver: &b"Bobbi"[..],
+                nonconfidential_header: Some(b"treasure"),
+                ciphertext: &[],
+            },
+            &mut outer,
+        )
+        .unwrap();
+        encode_signature(&fixed_sig, &mut outer);
+        outer.push(b'-');
 
         assert!(decode_envelope::<&[u8]>(&outer).is_err());
     }

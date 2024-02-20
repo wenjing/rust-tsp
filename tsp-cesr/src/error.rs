@@ -6,7 +6,10 @@ pub enum EncodeError {
 
 /// An error type to indicate something went wrong with decoding
 #[derive(Clone, Copy, Debug)]
-pub struct DecodeError;
+pub enum DecodeError {
+    UnexpectedData,
+    TrailingGarbage,
+}
 
 #[cfg(feature = "std")]
 impl std::fmt::Display for EncodeError {
