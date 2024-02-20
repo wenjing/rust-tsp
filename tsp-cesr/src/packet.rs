@@ -42,6 +42,7 @@ fn checked_encode_variable_data(
     }
 
     crate::encode::encode_variable_data(identifier, payload, stream);
+
     Ok(())
 }
 
@@ -91,10 +92,19 @@ pub fn encode_signature(signature: &Signature, output: &mut impl for<'a> Extend<
     encode_fixed_data(ED25519_SIGNATURE, signature, output);
 }
 
+/// A structure representing a siganture + data that needs to be verified
+#[derive(Clone, Debug)]
+#[must_use]
+pub struct VerificationChallenge<'a> {
+    pub signed_data: &'a [u8],
+    pub signature: &'a Signature,
+}
+
 /// Decode an encrypted TSP message plus Envelope & Signature
 pub fn decode_envelope<'a, Vid: From<&'a [u8]>>(
     mut stream: &'a [u8],
-) -> Result<(Envelope<Vid>, &'a Signature), DecodeError> {
+) -> Result<(Envelope<Vid>, VerificationChallenge<'a>), DecodeError> {
+    let origin = stream;
     let sender = decode_variable_data(TSP_DEVELOPMENT_VID, &mut stream)
         .ok_or(DecodeError::UnexpectedData)?
         .into();
@@ -104,6 +114,7 @@ pub fn decode_envelope<'a, Vid: From<&'a [u8]>>(
     let nonconfidential_header = decode_variable_data(TSP_PLAINTEXT, &mut stream);
     let ciphertext =
         decode_variable_data(TSP_CIPHERTEXT, &mut stream).ok_or(DecodeError::UnexpectedData)?;
+    let signed_data = &origin[..origin.len() - stream.len()];
     let signature =
         decode_fixed_data(ED25519_SIGNATURE, &mut stream).ok_or(DecodeError::UnexpectedData)?;
 
@@ -118,7 +129,10 @@ pub fn decode_envelope<'a, Vid: From<&'a [u8]>>(
             nonconfidential_header,
             ciphertext,
         },
-        signature,
+        VerificationChallenge {
+            signed_data,
+            signature,
+        },
     ))
 }
 
@@ -162,10 +176,12 @@ mod test {
             ciphertext: dummy_crypt(&cesr_payload),
         })
         .unwrap();
+        let signed_data = outer.clone();
         encode_signature(&fixed_sig, &mut outer);
 
-        let (env, sig) = decode_envelope::<&[u8]>(&outer).unwrap();
-        assert_eq!(sig, &fixed_sig);
+        let (env, ver) = decode_envelope::<&[u8]>(&outer).unwrap();
+        assert_eq!(ver.signed_data, signed_data);
+        assert_eq!(ver.signature, &fixed_sig);
         assert_eq!(env.sender, &b"Alister"[..]);
         assert_eq!(env.receiver, &b"Bobbi"[..]);
         assert_eq!(env.nonconfidential_header, None);
@@ -190,10 +206,12 @@ mod test {
             ciphertext: dummy_crypt(&cesr_payload),
         })
         .unwrap();
+        let signed_data = outer.clone();
         encode_signature(&fixed_sig, &mut outer);
 
-        let (env, sig) = decode_envelope::<&[u8]>(&outer).unwrap();
-        assert_eq!(sig, &fixed_sig);
+        let (env, ver) = decode_envelope::<&[u8]>(&outer).unwrap();
+        assert_eq!(ver.signed_data, signed_data);
+        assert_eq!(ver.signature, &fixed_sig);
         assert_eq!(env.sender, &b"Alister"[..]);
         assert_eq!(env.receiver, &b"Bobbi"[..]);
         assert_eq!(env.nonconfidential_header, Some(&b"treasure"[..]));
