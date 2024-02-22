@@ -5,7 +5,7 @@ pub struct Message<'a> {
     pub sender: &'a [u8; 32],
     pub receiver: &'a [u8; 32],
     pub header: &'a [u8],
-    pub secret_message: Vec<u8>,
+    pub secret_message: &'a [u8],
 }
 
 impl Message<'_> {
