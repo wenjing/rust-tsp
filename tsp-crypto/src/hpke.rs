@@ -1,7 +1,9 @@
 use ed25519_dalek::Signer;
 use hpke::{
-    aead::ChaCha20Poly1305, kdf::HkdfSha256, kem::X25519HkdfSha256, Deserializable, Kem, OpModeR,
-    OpModeS, Serializable,
+    aead::{AeadTag, ChaCha20Poly1305},
+    kdf::HkdfSha256,
+    kem::X25519HkdfSha256,
+    Deserializable, Kem, OpModeR, OpModeS, Serializable,
 };
 use rand::{rngs::StdRng, SeedableRng};
 
@@ -37,7 +39,7 @@ impl Message<'_> {
             &OpModeS::Auth((&sender.private_key, &sender.public_key)),
             &message_receiver,
             &data,
-            &self.secret_message,
+            self.secret_message,
             &[],
             &mut csprng,
         )
@@ -53,15 +55,10 @@ impl Message<'_> {
         data
     }
 
-    pub fn unseal_hpke<'a>(data: &'a [u8], receiver: &Receiver) -> Message<'a> {
-        let (
-            tsp_cesr::DecodedEnvelope {
-                envelope,
-                ciphertext,
-                raw_header,
-            },
-            verif,
-        ) = tsp_cesr::decode_envelope(data).expect("envelope");
+    pub fn unseal_hpke<'a>(data: &'a mut [u8], receiver: &Receiver) -> Message<'a> {
+        let view = tsp_cesr::decode_envelope_mut(data).expect("envelope");
+
+        let verif = view.as_challenge();
 
         // verify outer signature
         let signature = ed25519_dalek::Signature::from(verif.signature);
@@ -70,19 +67,27 @@ impl Message<'_> {
             .verify_strict(verif.signed_data, &signature)
             .unwrap();
 
+        let tsp_cesr::DecodedEnvelope {
+            raw_header: info,
+            envelope,
+            ciphertext,
+        } = view.into_opened().expect("vid");
+
         // signature (64 bytes) + enc key (32 bytes) + tag (16 bytes)
-        let (ciphertext, encapped_key) = ciphertext.split_at(ciphertext.len() - 32);
+        let (ciphertext, footer) = ciphertext.split_at_mut(ciphertext.len() - 32 - 16);
+        let (tag, encapped_key) = footer.split_at(footer.len() - 32);
 
         let message_sender = PublicKey::from_bytes(envelope.sender).unwrap();
         let encapped_key = <KemType as Kem>::EncappedKey::from_bytes(encapped_key).unwrap();
 
-        let secret_message = hpke::single_shot_open::<Aead, Kdf, KemType>(
+        hpke::single_shot_open_in_place_detached::<Aead, Kdf, KemType>(
             &OpModeR::Auth(&message_sender),
             &receiver.private_key,
             &encapped_key,
-            raw_header,
+            info,
             ciphertext,
             &[],
+            &AeadTag::from_bytes(tag).unwrap(),
         )
         .unwrap();
 
@@ -90,7 +95,7 @@ impl Message<'_> {
             sender: envelope.sender.try_into().unwrap(),
             receiver: envelope.receiver.try_into().unwrap(),
             header: envelope.nonconfidential_header.unwrap(),
-            secret_message,
+            secret_message: ciphertext,
         }
     }
 }
@@ -127,7 +132,7 @@ mod tests {
     #[test]
     fn seal_unseal_message() {
         let (sender, receiver) = setup();
-        let secret_message = b"hello world".to_vec();
+        let secret_message = b"hello world";
         let header = b"extra header data";
 
         let message = Message {
@@ -137,8 +142,8 @@ mod tests {
             secret_message,
         };
 
-        let sealed = message.seal_hpke(&sender);
-        let received_message = Message::unseal_hpke(&sealed, &receiver);
+        let mut sealed = message.seal_hpke(&sender);
+        let received_message = Message::unseal_hpke(&mut sealed, &receiver);
 
         assert_eq!(message, received_message);
     }
