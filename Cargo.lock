@@ -640,6 +640,7 @@ dependencies = [
  "ed25519-dalek",
  "hpke",
  "rand",
+ "tsp-cesr",
 ]
 
 [[package]]
