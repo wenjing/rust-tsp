@@ -1,4 +1,4 @@
-use crate::decode::{decode_fixed_data, decode_variable_data};
+use crate::decode::{decode_fixed_data, decode_variable_data, decode_variable_data_index};
 use crate::encode::encode_fixed_data;
 use crate::error::{DecodeError, EncodeError};
 
@@ -146,6 +146,109 @@ pub fn decode_envelope<'a, Vid: TryFrom<&'a [u8]>>(
         },
         ciphertext,
     ))
+}
+
+use std::ops::Range;
+
+pub struct CipherView<'a> {
+    data: &'a mut [u8],
+
+    sender: Range<usize>,
+    receiver: Range<usize>,
+    nonconfidential_header: Option<Range<usize>>,
+
+    associated_data: Range<usize>,
+    signature: &'a Signature,
+
+    signed_data: Range<usize>,
+    ciphertext: Range<usize>,
+}
+
+impl<'a> CipherView<'a> {
+    pub fn into_opened<Vid: TryFrom<&'a [u8]>>(
+        self,
+    ) -> Result<(Envelope<'a, Vid>, &'a mut [u8]), Vid::Error> {
+        let (header, cipherdata) = self.data.split_at_mut(self.ciphertext.start);
+
+        let ciphertext = &mut cipherdata[..self.ciphertext.len()];
+
+        let envelope = Envelope {
+            sender: header[self.sender.clone()].try_into()?,
+            receiver: header[self.receiver.clone()].try_into()?,
+            nonconfidential_header: self
+                .nonconfidential_header
+                .as_ref()
+                .map(|range| &header[range.clone()]),
+        };
+
+        Ok((envelope, ciphertext))
+    }
+
+    pub fn as_challenge(&self) -> VerificationChallenge {
+        VerificationChallenge {
+            //TODO: having this here is maybe not the best idea from a borrow-checker perspective
+            associated_data: &self.data[self.associated_data.clone()],
+            signed_data: &self.data[self.signed_data.clone()],
+            signature: self.signature,
+        }
+    }
+}
+
+/// Decode an encrypted TSP message plus Envelope & Signature
+/// Produces the ciphertext as a mutable stream.
+pub fn decode_envelope_mut<'a>(stream: &'a mut [u8]) -> Result<CipherView<'a>, DecodeError> {
+    let mut pos = 0;
+    let sender = decode_variable_data_index(TSP_DEVELOPMENT_VID, &stream[pos..])
+        .ok_or(DecodeError::UnexpectedData)?;
+    pos = sender.end;
+
+    let mut receiver = decode_variable_data_index(TSP_DEVELOPMENT_VID, &stream[pos..])
+        .ok_or(DecodeError::UnexpectedData)?;
+    receiver.start += pos;
+    receiver.end += pos;
+    pos = receiver.end;
+
+    let mut nonconfidential_header = decode_variable_data_index(TSP_PLAINTEXT, &stream[pos..]);
+    if let Some(range) = &mut nonconfidential_header {
+        range.start += pos;
+        range.end += pos;
+        pos = range.end;
+    }
+
+    let associated_data = 0..pos;
+
+    let mut ciphertext = decode_variable_data_index(TSP_CIPHERTEXT, &stream[pos..])
+        .ok_or(DecodeError::UnexpectedData)?;
+    ciphertext.start += pos;
+    ciphertext.end += pos;
+    pos = ciphertext.end;
+
+    let signed_data = 0..pos;
+
+    let data: &'a mut [u8];
+    let mut sigdata: &[u8];
+    (data, sigdata) = stream.split_at_mut(signed_data.end);
+
+    let signature =
+        decode_fixed_data(ED25519_SIGNATURE, &mut sigdata).ok_or(DecodeError::UnexpectedData)?;
+
+    if !sigdata.is_empty() {
+        return Err(DecodeError::TrailingGarbage);
+    }
+
+    Ok(CipherView {
+        data,
+
+        sender,
+        receiver,
+        nonconfidential_header,
+
+        associated_data,
+        signature,
+
+        signed_data,
+        ciphertext,
+    })
 }
 
 /// Allocating variant of [encode_payload]
@@ -380,5 +483,38 @@ mod test {
 
         let Payload::HpkeMessage(content) = tsp.message;
         assert_eq!(&content[..], b"Hello TSP!");
+    }
+
+    #[test]
+    fn mut_envelope_with_nonconfidential_header() {
+        fn dummy_crypt(data: &[u8]) -> &[u8] {
+            data
+        }
+        let fixed_sig = [1; 64];
+
+        let cesr_payload = { encode_payload_vec(Payload::HpkeMessage(b"Hello TSP!")).unwrap() };
+
+        let mut outer = encode_envelope_vec(Envelope {
+            sender: &b"Alister"[..],
+            receiver: &b"Bobbi"[..],
+            nonconfidential_header: Some(b"treasure"),
+        })
+        .unwrap();
+        let ciphertext = dummy_crypt(&cesr_payload);
+        encode_ciphertext(ciphertext, &mut outer).unwrap();
+
+        let signed_data = outer.clone();
+        encode_signature(&fixed_sig, &mut outer);
+
+        let view = decode_envelope_mut(&mut outer).unwrap();
+        assert_eq!(view.as_challenge().signed_data, signed_data);
+        assert_eq!(view.as_challenge().signature, &fixed_sig);
+        let (env, ciphertext) = view.into_opened::<&[u8]>().unwrap();
+
+        assert_eq!(env.sender, &b"Alister"[..]);
+        assert_eq!(env.receiver, &b"Bobbi"[..]);
+        assert_eq!(env.nonconfidential_header, Some(&b"treasure"[..]));
+        let Payload::HpkeMessage(data) = decode_payload(dummy_crypt(ciphertext)).unwrap();
+        assert_eq!(data, b"Hello TSP!");
     }
 }

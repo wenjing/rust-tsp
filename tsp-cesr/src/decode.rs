@@ -29,7 +29,11 @@ pub fn decode_fixed_data<'a, const N: usize>(
 }
 
 /// Decode variable size data with a known identifier
-pub fn decode_variable_data<'a>(identifier: u32, stream: &mut &'a [u8]) -> Option<&'a [u8]> {
+/// Be aware that this function DOES NOT forward the stream (unlike the other functions)
+pub fn decode_variable_data_index(
+    identifier: u32,
+    stream: &[u8],
+) -> Option<std::ops::Range<usize>> {
     let input = extract_triplet(stream.get(0..=2)?.try_into().unwrap());
     let selector = input >> 18;
 
@@ -52,13 +56,20 @@ pub fn decode_variable_data<'a>(identifier: u32, stream: &mut &'a [u8]) -> Optio
         let offset = (selector - D4) as usize;
         let data_begin = offset + 3;
         let data_end = (offset + 1).next_multiple_of(3) + 3 * size as usize;
-        let slice = stream.get(data_begin..data_end)?;
-        *stream = &stream[data_end..];
 
-        Some(slice)
+        // access check: make sure that if this function returns Some(...), that the range is valid
+        stream.get(data_begin..data_end)?;
+        Some(data_begin..data_end)
     } else {
         None
     }
+}
+pub fn decode_variable_data<'a>(identifier: u32, stream: &mut &'a [u8]) -> Option<&'a [u8]> {
+    let range = decode_variable_data_index(identifier, stream)?;
+    let slice = &stream[range.start..range.end];
+    *stream = &stream[range.end..];
+
+    Some(slice)
 }
 
 /// Decode indexed data with a known identifier
