@@ -54,7 +54,14 @@ impl Message<'_> {
     }
 
     pub fn unseal_hpke<'a>(data: &'a [u8], receiver: &Receiver) -> Message<'a> {
-        let (envelope, verif, ciphertext) = tsp_cesr::decode_envelope(data).expect("envelope");
+        let (
+            tsp_cesr::DecodedEnvelope {
+                envelope,
+                ciphertext,
+                raw_header,
+            },
+            verif,
+        ) = tsp_cesr::decode_envelope(data).expect("envelope");
 
         // verify outer signature
         let signature = ed25519_dalek::Signature::from(verif.signature);
@@ -73,7 +80,7 @@ impl Message<'_> {
             &OpModeR::Auth(&message_sender),
             &receiver.private_key,
             &encapped_key,
-            verif.associated_data,
+            raw_header,
             ciphertext,
             &[],
         )
