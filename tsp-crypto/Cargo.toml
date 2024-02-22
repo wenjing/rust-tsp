@@ -13,3 +13,4 @@ hpke = { workspace = true }
 rand = { workspace = true }
 ed25519-dalek = { workspace = true }
 crypto_box = { workspace = true }
+tsp-cesr = { path = "../tsp-cesr" }
