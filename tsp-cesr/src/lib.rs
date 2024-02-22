@@ -3,7 +3,9 @@ mod decode;
 mod detect;
 mod encode;
 pub mod error;
-pub mod packet;
+mod packet;
+
+pub use packet::*;
 
 #[cfg(feature = "cesr-t")]
 pub use detect::to_binary;
