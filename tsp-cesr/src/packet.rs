@@ -19,6 +19,12 @@ pub struct Envelope<'a, Vid> {
     pub nonconfidential_header: Option<&'a [u8]>,
 }
 
+pub struct DecodedEnvelope<'a, Vid, Bytes> {
+    pub envelope: Envelope<'a, Vid>,
+    pub raw_header: &'a [u8], // for associated data purposes
+    pub ciphertext: Bytes,
+}
+
 /// TODO: something more type safe
 pub type Signature = [u8; 64];
 
@@ -102,7 +108,6 @@ pub fn encode_ciphertext(
 #[derive(Clone, Debug)]
 #[must_use]
 pub struct VerificationChallenge<'a> {
-    pub associated_data: &'a [u8],
     pub signed_data: &'a [u8],
     pub signature: &'a Signature,
 }
@@ -110,7 +115,13 @@ pub struct VerificationChallenge<'a> {
 /// Decode an encrypted TSP message plus Envelope & Signature
 pub fn decode_envelope<'a, Vid: TryFrom<&'a [u8]>>(
     mut stream: &'a [u8],
-) -> Result<(Envelope<Vid>, VerificationChallenge<'a>, &'a [u8]), DecodeError> {
+) -> Result<
+    (
+        DecodedEnvelope<'a, Vid, &'a [u8]>,
+        VerificationChallenge<'a>,
+    ),
+    DecodeError,
+> {
     let origin = stream;
     let sender = decode_variable_data(TSP_DEVELOPMENT_VID, &mut stream)
         .ok_or(DecodeError::UnexpectedData)?
@@ -121,7 +132,7 @@ pub fn decode_envelope<'a, Vid: TryFrom<&'a [u8]>>(
         .try_into()
         .map_err(|_| DecodeError::VidError)?;
     let nonconfidential_header = decode_variable_data(TSP_PLAINTEXT, &mut stream);
-    let associated_data = &origin[..origin.len() - stream.len()];
+    let raw_header = &origin[..origin.len() - stream.len()];
 
     let ciphertext =
         decode_variable_data(TSP_CIPHERTEXT, &mut stream).ok_or(DecodeError::UnexpectedData)?;
@@ -134,17 +145,19 @@ pub fn decode_envelope<'a, Vid: TryFrom<&'a [u8]>>(
     }
 
     Ok((
-        Envelope {
-            sender,
-            receiver,
-            nonconfidential_header,
+        DecodedEnvelope {
+            envelope: Envelope {
+                sender,
+                receiver,
+                nonconfidential_header,
+            },
+            raw_header,
+            ciphertext,
         },
         VerificationChallenge {
-            associated_data,
             signed_data,
             signature,
         },
-        ciphertext,
     ))
 }
 
@@ -167,10 +180,12 @@ pub struct CipherView<'a> {
 impl<'a> CipherView<'a> {
     pub fn into_opened<Vid: TryFrom<&'a [u8]>>(
         self,
-    ) -> Result<(Envelope<'a, Vid>, &'a mut [u8]), Vid::Error> {
+    ) -> Result<DecodedEnvelope<'a, Vid, &'a mut [u8]>, Vid::Error> {
         let (header, cipherdata) = self.data.split_at_mut(self.ciphertext.start);
 
         let ciphertext = &mut cipherdata[..self.ciphertext.len()];
+
+        let raw_header = &header[self.associated_data.clone()];
 
         let envelope = Envelope {
             sender: header[self.sender.clone()].try_into()?,
@@ -181,13 +196,15 @@ impl<'a> CipherView<'a> {
                 .map(|range| &header[range.clone()]),
         };
 
-        Ok((envelope, ciphertext))
+        Ok(DecodedEnvelope {
+            envelope,
+            raw_header,
+            ciphertext,
+        })
     }
 
     pub fn as_challenge(&self) -> VerificationChallenge {
         VerificationChallenge {
-            //TODO: having this here is maybe not the best idea from a borrow-checker perspective
-            associated_data: &self.data[self.associated_data.clone()],
             signed_data: &self.data[self.signed_data.clone()],
             signature: self.signature,
         }
@@ -316,17 +333,20 @@ pub fn decode_tsp_message<'a, Vid: TryFrom<&'a [u8]>>(
     verify: impl FnOnce(&[u8], &Vid, &Signature) -> bool,
 ) -> Result<Message<Vid, Vec<u8>>, DecodeError> {
     let (
-        Envelope {
-            sender,
-            receiver,
-            nonconfidential_header,
+        DecodedEnvelope {
+            envelope:
+                Envelope {
+                    sender,
+                    receiver,
+                    nonconfidential_header,
+                },
+            ciphertext,
+            ..
         },
         VerificationChallenge {
             signed_data,
             signature,
-            ..
         },
-        ciphertext,
     ) = decode_envelope(data)?;
 
     if !verify(signed_data, &sender, signature) {
@@ -373,7 +393,14 @@ mod test {
         let signed_data = outer.clone();
         encode_signature(&fixed_sig, &mut outer);
 
-        let (env, ver, ciphertext) = decode_envelope::<&[u8]>(&outer).unwrap();
+        let (
+            DecodedEnvelope {
+                envelope: env,
+                ciphertext,
+                ..
+            },
+            ver,
+        ) = decode_envelope::<&[u8]>(&outer).unwrap();
         assert_eq!(ver.signed_data, signed_data);
         assert_eq!(ver.signature, &fixed_sig);
         assert_eq!(env.sender, &b"Alister"[..]);
@@ -405,7 +432,14 @@ mod test {
         let signed_data = outer.clone();
         encode_signature(&fixed_sig, &mut outer);
 
-        let (env, ver, ciphertext) = decode_envelope::<&[u8]>(&outer).unwrap();
+        let (
+            DecodedEnvelope {
+                envelope: env,
+                ciphertext,
+                ..
+            },
+            ver,
+        ) = decode_envelope::<&[u8]>(&outer).unwrap();
         assert_eq!(ver.signed_data, signed_data);
         assert_eq!(ver.signature, &fixed_sig);
         assert_eq!(env.sender, &b"Alister"[..]);
@@ -509,7 +543,11 @@ mod test {
         let view = decode_envelope_mut(&mut outer).unwrap();
         assert_eq!(view.as_challenge().signed_data, signed_data);
         assert_eq!(view.as_challenge().signature, &fixed_sig);
-        let (env, ciphertext) = view.into_opened::<&[u8]>().unwrap();
+        let DecodedEnvelope {
+            envelope: env,
+            ciphertext,
+            ..
+        } = view.into_opened::<&[u8]>().unwrap();
 
         assert_eq!(env.sender, &b"Alister"[..]);
         assert_eq!(env.receiver, &b"Bobbi"[..]);

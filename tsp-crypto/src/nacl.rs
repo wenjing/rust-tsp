@@ -49,8 +49,14 @@ impl Message<'_> {
     }
 
     pub fn unseal_nacl<'a>(data: &'a mut [u8], receiver: &Receiver) -> Message<'a> {
-        let (envelope, verif, ciphertext) =
-            tsp_cesr::decode_envelope::<&[u8; 32]>(data).expect("envelope");
+        let (
+            tsp_cesr::DecodedEnvelope {
+                envelope,
+                ciphertext,
+                ..
+            },
+            verif,
+        ) = tsp_cesr::decode_envelope::<&[u8; 32]>(data).expect("envelope");
 
         // verify outer signature
         let signature = ed25519_dalek::Signature::from(verif.signature);
