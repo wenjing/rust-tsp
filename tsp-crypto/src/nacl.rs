@@ -31,7 +31,7 @@ impl Message<'_> {
         let mut sender_box = ChaChaBox::new(&message_receiver, &sender.private_key);
         let nonce = ChaChaBox::generate_nonce(&mut csprng);
         let mut ciphertext = Vec::with_capacity(self.secret_message.len() + crypto_box::SEALBYTES);
-        ciphertext.write_all(&self.secret_message).unwrap();
+        ciphertext.write_all(self.secret_message).unwrap();
 
         let tag = sender_box
             .encrypt_in_place_detached(&nonce, &[], &mut ciphertext)
@@ -49,28 +49,24 @@ impl Message<'_> {
     }
 
     pub fn unseal_nacl<'a>(data: &'a mut [u8], receiver: &Receiver) -> Message<'a> {
-        let (
-            tsp_cesr::DecodedEnvelope {
-                envelope,
-                ciphertext,
-                ..
-            },
-            verif,
-        ) = tsp_cesr::decode_envelope::<&[u8; 32]>(data).expect("envelope");
+        let decoded = tsp_cesr::decode_envelope_mut(data).expect("envelope");
 
         // verify outer signature
-        let signature = ed25519_dalek::Signature::from(verif.signature);
+        let signature = ed25519_dalek::Signature::from(decoded.as_challenge().signature);
         receiver
             .verifying_key
-            .verify_strict(verif.signed_data, &signature)
+            .verify_strict(decoded.as_challenge().signed_data, &signature)
             .unwrap();
 
-        // will fix this later, as this defeats the purpose of in-place decryption
-        let mut ciphertext_data = ciphertext.to_vec();
+        let tsp_cesr::DecodedEnvelope {
+            envelope,
+            ciphertext,
+            ..
+        } = decoded.into_opened::<&[u8; 32]>().unwrap();
 
         // signature (64 bytes) + enc key (32 bytes) + tag (16 bytes)
-        let cipher_len = ciphertext_data.len();
-        let (ciphertext, footer) = ciphertext_data.split_at_mut(cipher_len - (16 + 24));
+        let cipher_len = ciphertext.len();
+        let (ciphertext, footer) = ciphertext.split_at_mut(cipher_len - (16 + 24));
 
         let (tag, nonce) = footer.split_at_mut(16);
         let tag = GenericArray::from_mut_slice(tag);
@@ -88,7 +84,7 @@ impl Message<'_> {
             receiver: envelope.receiver,
             header: envelope.nonconfidential_header.unwrap(),
             // will fix this later, as this defeats the purpose of in-place decryption
-            secret_message: ciphertext.to_vec(),
+            secret_message: ciphertext,
         }
     }
 }
@@ -132,7 +128,7 @@ mod tests {
             sender: &sender.public_key.to_bytes().try_into().unwrap(),
             receiver: &receiver.public_key.to_bytes().try_into().unwrap(),
             header,
-            secret_message: secret_message.to_vec(),
+            secret_message,
         };
 
         let mut sealed = message.seal_nacl(&sender);
