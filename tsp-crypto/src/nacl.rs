@@ -24,52 +24,53 @@ pub struct Receiver {
 impl Message<'_> {
     pub fn seal_nacl(&self, sender: &Sender) -> Vec<u8> {
         let mut csprng = StdRng::from_entropy();
-        let mut data = self.serialize_header();
+        let mut data = self.cesr_header();
 
         let message_receiver = PublicKey::from(*self.receiver);
 
         let mut sender_box = ChaChaBox::new(&message_receiver, &sender.private_key);
         let nonce = ChaChaBox::generate_nonce(&mut csprng);
         let mut ciphertext = Vec::with_capacity(self.secret_message.len() + crypto_box::SEALBYTES);
-        ciphertext.write_all(self.secret_message).unwrap();
+        ciphertext.write_all(&self.secret_message).unwrap();
 
         let tag = sender_box
             .encrypt_in_place_detached(&nonce, &[], &mut ciphertext)
             .expect("Could not encrypt");
 
-        data.append(&mut ciphertext);
-        data.extend_from_slice(&tag[..]);
-        data.extend_from_slice(&nonce[..]);
-        data.extend_from_slice(&sender.signing_key.sign(&data).to_bytes());
+        ciphertext.extend_from_slice(&tag[..]);
+        ciphertext.extend_from_slice(&nonce[..]);
+
+        tsp_cesr::encode_ciphertext(&ciphertext, &mut data).expect("encoding error");
+
+        let signature = sender.signing_key.sign(&data).to_bytes();
+        tsp_cesr::encode_signature(&signature, &mut data);
 
         data
     }
 
     pub fn unseal_nacl<'a>(data: &'a mut [u8], receiver: &Receiver) -> Message<'a> {
-        let header_len = u16::from_be_bytes(data[..2].try_into().unwrap()) as usize;
-        let signature_split = data.len() - 64;
+        let (envelope, verif, ciphertext) =
+            tsp_cesr::decode_envelope::<&[u8; 32]>(data).expect("envelope");
 
         // verify outer signature
-        let signature = ed25519_dalek::Signature::try_from(&data[signature_split..]).unwrap();
+        let signature = ed25519_dalek::Signature::from(verif.signature);
         receiver
             .verifying_key
-            .verify_strict(&data[..signature_split], &signature)
+            .verify_strict(verif.signed_data, &signature)
             .unwrap();
 
-        // decode message
-        let (encoded_header, rest) = data.split_at_mut(header_len + 66);
-        let message_sender_bytes: &[u8] = &encoded_header[2..34];
-        let mesage_receiver_bytes: &[u8] = &encoded_header[34..66];
+        // will fix this later, as this defeats the purpose of in-place decryption
+        let mut ciphertext_data = ciphertext.to_vec();
 
         // signature (64 bytes) + enc key (32 bytes) + tag (16 bytes)
-        let (ciphertext, footer) = rest.split_at_mut(rest.len() - (64 + 16 + 24));
-        let header = &encoded_header[66..];
+        let cipher_len = ciphertext_data.len();
+        let (ciphertext, footer) = ciphertext_data.split_at_mut(cipher_len - (16 + 24));
+
         let (tag, nonce) = footer.split_at_mut(16);
         let tag = GenericArray::from_mut_slice(tag);
         let nonce = GenericArray::from_mut_slice(&mut nonce[0..24]);
 
-        let sender_public_key: [u8; 32] = (*message_sender_bytes).try_into().unwrap();
-        let message_sender = PublicKey::from(sender_public_key);
+        let message_sender = PublicKey::from(*envelope.sender);
         let mut receiver_box = ChaChaBox::new(&message_sender, &receiver.private_key);
 
         receiver_box
@@ -77,10 +78,11 @@ impl Message<'_> {
             .unwrap();
 
         Message {
-            sender: message_sender_bytes.try_into().unwrap(),
-            receiver: mesage_receiver_bytes.try_into().unwrap(),
-            header,
-            secret_message: ciphertext,
+            sender: envelope.sender,
+            receiver: envelope.receiver,
+            header: envelope.nonconfidential_header.unwrap(),
+            // will fix this later, as this defeats the purpose of in-place decryption
+            secret_message: ciphertext.to_vec(),
         }
     }
 }
@@ -124,7 +126,7 @@ mod tests {
             sender: &sender.public_key.to_bytes().try_into().unwrap(),
             receiver: &receiver.public_key.to_bytes().try_into().unwrap(),
             header,
-            secret_message,
+            secret_message: secret_message.to_vec(),
         };
 
         let mut sealed = message.seal_nacl(&sender);

@@ -102,6 +102,7 @@ pub fn encode_ciphertext(
 #[derive(Clone, Debug)]
 #[must_use]
 pub struct VerificationChallenge<'a> {
+    pub associated_data: &'a [u8],
     pub signed_data: &'a [u8],
     pub signature: &'a Signature,
 }
@@ -120,6 +121,8 @@ pub fn decode_envelope<'a, Vid: TryFrom<&'a [u8]>>(
         .try_into()
         .map_err(|_| DecodeError::VidError)?;
     let nonconfidential_header = decode_variable_data(TSP_PLAINTEXT, &mut stream);
+    let associated_data = &origin[..origin.len() - stream.len()];
+
     let ciphertext =
         decode_variable_data(TSP_CIPHERTEXT, &mut stream).ok_or(DecodeError::UnexpectedData)?;
     let signed_data = &origin[..origin.len() - stream.len()];
@@ -137,6 +140,7 @@ pub fn decode_envelope<'a, Vid: TryFrom<&'a [u8]>>(
             nonconfidential_header,
         },
         VerificationChallenge {
+            associated_data,
             signed_data,
             signature,
         },
@@ -217,6 +221,7 @@ pub fn decode_tsp_message<'a, Vid: TryFrom<&'a [u8]>>(
         VerificationChallenge {
             signed_data,
             signature,
+            ..
         },
         ciphertext,
     ) = decode_envelope(data)?;
