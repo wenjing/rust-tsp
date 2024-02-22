@@ -40,6 +40,19 @@ fn header_match(input: &[u8], target: &[u8]) -> bool {
     }
 }
 
+/// Constants for CESR selectors
+mod selector {
+    pub const D0: u32 = 52;
+    pub const D1: u32 = D0 + 1;
+    pub const D4: u32 = D0 + 4;
+    pub const D5: u32 = D0 + 5;
+    pub const D6: u32 = D0 + 6;
+    pub const D7: u32 = D0 + 7;
+    pub const D8: u32 = D0 + 8;
+    pub const D9: u32 = D0 + 9;
+    pub const DASH: u32 = 62;
+}
+
 #[cfg(test)]
 mod test {
     use super::*;

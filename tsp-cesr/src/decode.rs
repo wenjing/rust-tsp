@@ -1,4 +1,4 @@
-use super::{bits, extract_triplet, header_match, mask};
+use super::{bits, extract_triplet, header_match, mask, selector::*};
 
 /// Decode fixed size data with a known identifier
 pub fn decode_fixed_data<'a, const N: usize>(
@@ -10,8 +10,8 @@ pub fn decode_fixed_data<'a, const N: usize>(
 
     let word = match hdr_bytes {
         1 => bits(identifier, 6) << 18,
-        2 => 52 << 18 | bits(identifier, 6) << 12,
-        3 => 53 << 18 | bits(identifier, 18),
+        2 => D0 << 18 | bits(identifier, 6) << 12,
+        3 => D1 << 18 | bits(identifier, 18),
         _ => unreachable!("unsigned integer arithmetic is broken"),
     };
 
@@ -37,11 +37,11 @@ pub fn decode_variable_data<'a>(identifier: u32, stream: &mut &'a [u8]) -> Optio
     let found_id;
 
     match selector {
-        56..=58 => {
+        D4 | D5 | D6 => {
             found_id = input >> 12 & mask(6);
             size = input & mask(12);
         }
-        59..=61 => {
+        D7 | D8 | D9 => {
             found_id = input & mask(18);
             size = extract_triplet(stream.get(3..6)?.try_into().unwrap());
         }
@@ -49,7 +49,7 @@ pub fn decode_variable_data<'a>(identifier: u32, stream: &mut &'a [u8]) -> Optio
     };
 
     if found_id == identifier {
-        let offset = (selector - 56) as usize;
+        let offset = (selector - D4) as usize;
         let data_begin = offset + 3;
         let data_end = (offset + 1).next_multiple_of(3) + 3 * size as usize;
         let slice = stream.get(data_begin..data_end)?;
@@ -81,7 +81,7 @@ pub fn decode_indexed_data<'a, const N: usize>(
         }
         3 => {
             index = input & mask(12);
-            word = 52 << 18 | bits(identifier, 6) << 12 | bits(index, 12);
+            word = D0 << 18 | bits(identifier, 6) << 12 | bits(index, 12);
         }
         _ => unreachable!("unsigned integer arithmetic is broken"),
     };
@@ -104,7 +104,7 @@ pub fn decode_count(identifier: u16, stream: &mut &[u8]) -> Option<u16> {
     let word = extract_triplet(stream.get(0..=2)?.try_into().unwrap());
     let index = word & mask(12);
 
-    let expected = 62 << 18 | bits(identifier, 6) << 12 | bits(index, 12);
+    let expected = DASH << 18 | bits(identifier, 6) << 12 | bits(index, 12);
     if word == expected {
         *stream = &stream[3..];
 
@@ -121,7 +121,7 @@ pub fn decode_genus(
     stream: &mut &[u8],
 ) -> Option<()> {
     let version = bits(major, 6) << 12 | bits(minor, 6) << 6 | bits(patch, 6);
-    let word1 = 62 << 18 | 62 << 12 | bits(genus[0], 6) << 6 | bits(genus[1], 6);
+    let word1 = DASH << 18 | DASH << 12 | bits(genus[0], 6) << 6 | bits(genus[1], 6);
     let word2 = bits(genus[2], 6) << 18 | version;
 
     (extract_triplet(stream.get(0..3)?.try_into().unwrap()) == word1).then_some(())?;
