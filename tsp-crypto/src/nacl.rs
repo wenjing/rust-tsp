@@ -1,5 +1,3 @@
-use std::io::Write;
-
 use crypto_box::{
     aead::{generic_array::GenericArray, AeadCore, AeadMutInPlace},
     ChaChaBox, PublicKey, SecretKey,
@@ -21,6 +19,8 @@ pub struct Receiver {
     pub verifying_key: ed25519_dalek::VerifyingKey,
 }
 
+use tsp_cesr::{DecodedEnvelope, Payload};
+
 impl Message<'_> {
     pub fn seal_nacl(&self, sender: &Sender) -> Vec<u8> {
         let mut csprng = StdRng::from_entropy();
@@ -31,7 +31,8 @@ impl Message<'_> {
         let mut sender_box = ChaChaBox::new(&message_receiver, &sender.private_key);
         let nonce = ChaChaBox::generate_nonce(&mut csprng);
         let mut ciphertext = Vec::with_capacity(self.secret_message.len() + crypto_box::SEALBYTES);
-        ciphertext.write_all(self.secret_message).unwrap();
+        tsp_cesr::encode_payload(Payload::HpkeMessage(self.secret_message), &mut ciphertext)
+            .unwrap();
 
         let tag = sender_box
             .encrypt_in_place_detached(&nonce, &[], &mut ciphertext)
@@ -58,7 +59,7 @@ impl Message<'_> {
             .verify_strict(decoded.as_challenge().signed_data, &signature)
             .unwrap();
 
-        let tsp_cesr::DecodedEnvelope {
+        let DecodedEnvelope {
             envelope,
             ciphertext,
             ..
@@ -79,12 +80,15 @@ impl Message<'_> {
             .decrypt_in_place_detached(nonce, &[], ciphertext, tag)
             .unwrap();
 
+        let Payload::HpkeMessage(secret_message) =
+            tsp_cesr::decode_payload(ciphertext).expect("message");
+
         Message {
             sender: envelope.sender,
             receiver: envelope.receiver,
             header: envelope.nonconfidential_header.unwrap(),
             // will fix this later, as this defeats the purpose of in-place decryption
-            secret_message: ciphertext,
+            secret_message,
         }
     }
 }
