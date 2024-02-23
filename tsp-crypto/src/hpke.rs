@@ -28,6 +28,8 @@ pub struct Receiver {
     pub verifying_key: ed25519_dalek::VerifyingKey,
 }
 
+use tsp_cesr::{DecodedEnvelope, Payload};
+
 impl Message<'_> {
     pub fn seal_hpke(&self, sender: &Sender) -> Vec<u8> {
         let mut csprng = StdRng::from_entropy();
@@ -35,11 +37,15 @@ impl Message<'_> {
 
         let message_receiver = PublicKey::from_bytes(self.receiver).unwrap();
 
+        let mut cesr_message = Vec::new();
+        tsp_cesr::encode_payload(Payload::HpkeMessage(self.secret_message), &mut cesr_message)
+            .unwrap();
+
         let (encapped_key, mut ciphertext) = hpke::single_shot_seal::<Aead, Kdf, KemType, StdRng>(
             &OpModeS::Auth((&sender.private_key, &sender.public_key)),
             &message_receiver,
             &data,
-            self.secret_message,
+            &cesr_message,
             &[],
             &mut csprng,
         )
@@ -67,7 +73,7 @@ impl Message<'_> {
             .verify_strict(verif.signed_data, &signature)
             .unwrap();
 
-        let tsp_cesr::DecodedEnvelope {
+        let DecodedEnvelope {
             raw_header: info,
             envelope,
             ciphertext,
@@ -91,11 +97,13 @@ impl Message<'_> {
         )
         .unwrap();
 
+        let Payload::HpkeMessage(secret_message) = tsp_cesr::decode_payload(ciphertext).unwrap();
+
         Message {
             sender: envelope.sender.try_into().unwrap(),
             receiver: envelope.receiver.try_into().unwrap(),
             header: envelope.nonconfidential_header.unwrap(),
-            secret_message: ciphertext,
+            secret_message,
         }
     }
 }
