@@ -13,3 +13,4 @@ tsp-cesr = { path = "../tsp-cesr" }
 thiserror = { workspace = true }
 hpke = { workspace = true }
 ed25519-dalek = { workspace = true }
+url = { workspace = true }

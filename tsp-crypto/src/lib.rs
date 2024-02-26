@@ -82,6 +82,10 @@ pub mod dummy {
     }
 
     impl ResolvedVid for Dummy {
+        fn endpoint(&self) -> &url::Url {
+            unreachable!()
+        }
+
         fn vid(&self) -> tsp_definitions::VidData {
             self.vid.as_bytes()
         }
