@@ -13,7 +13,7 @@ pub trait ResolvedVid {
     fn vid(&self) -> VidData;
 
     fn verifying_key(&self) -> PublicKeyData;
-    fn encryption_key(&self) ->PublicKeyData;
+    fn encryption_key(&self) -> PublicKeyData;
 }
 
 pub trait Sender: ResolvedVid {
