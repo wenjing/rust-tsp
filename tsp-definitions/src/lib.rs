@@ -16,10 +16,10 @@ pub trait ResolvedVid {
     fn encryption_key(&self) -> PublicKeyData;
 }
 
-pub trait Sender: ResolvedVid {
-    fn signing_key(&self) -> PrivateKeyData;
-}
-
 pub trait Receiver: ResolvedVid {
     fn decryption_key(&self) -> PrivateKeyData;
+}
+
+pub trait Sender: Receiver {
+    fn signing_key(&self) -> PrivateKeyData;
 }
