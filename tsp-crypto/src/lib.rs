@@ -26,24 +26,23 @@ pub fn open<'a>(
     tsp_hpke::open::<Aead, Kdf, Kem>(receiver, sender, message)
 }
 
-#[cfg(test)]
-mod tests {
+#[cfg(feature = "dummy")]
+pub mod dummy {
     use hpke::{Kem, Serializable};
     use rand::{rngs::StdRng, SeedableRng};
     use tsp_definitions::{Receiver, ResolvedVid, Sender};
 
-    use crate::{open, seal};
-
-    struct BobOrAlice {
+    #[derive(Clone)]
+    pub struct Dummy {
         vid: String,
         decryption_key: [u8; 32],
         encryption_key: [u8; 32],
-        signing_key: ed25519_dalek::SigningKey,
-        verifying_key: ed25519_dalek::VerifyingKey,
+        signing_key: [u8; 32],
+        verifying_key: [u8; 32],
     }
 
-    impl BobOrAlice {
-        fn new(vid: &str) -> Self {
+    impl Dummy {
+        pub fn new(vid: &str) -> Self {
             let mut csprng = StdRng::from_entropy();
             let (decryption_key, encryption_key) =
                 hpke::kem::X25519HkdfSha256::gen_keypair(&mut csprng);
@@ -54,19 +53,23 @@ mod tests {
                 vid: vid.to_string(),
                 decryption_key: decryption_key.to_bytes().into(),
                 encryption_key: encryption_key.to_bytes().into(),
-                signing_key,
-                verifying_key,
+                signing_key: signing_key.to_bytes(),
+                verifying_key: verifying_key.to_bytes(),
             }
+        }
+
+        pub fn name(&self) -> &str {
+            &self.vid
         }
     }
 
-    impl ResolvedVid for BobOrAlice {
+    impl ResolvedVid for Dummy {
         fn vid(&self) -> tsp_definitions::VidData {
             self.vid.as_bytes()
         }
 
         fn verifying_key(&self) -> tsp_definitions::PublicKeyData {
-            &self.verifying_key.as_bytes()
+            &self.verifying_key
         }
 
         fn encryption_key(&self) -> tsp_definitions::PublicKeyData {
@@ -74,22 +77,27 @@ mod tests {
         }
     }
 
-    impl Receiver for BobOrAlice {
+    impl Receiver for Dummy {
         fn decryption_key(&self) -> tsp_definitions::PrivateKeyData {
             &self.decryption_key
         }
     }
 
-    impl Sender for BobOrAlice {
+    impl Sender for Dummy {
         fn signing_key(&self) -> tsp_definitions::PrivateKeyData {
-            &self.signing_key.as_bytes()
+            &self.signing_key
         }
     }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{dummy::Dummy, open, seal};
 
     #[test]
     fn seal_open_message() {
-        let bob = BobOrAlice::new("did:test:bob");
-        let alice = BobOrAlice::new("did:test:alice");
+        let bob = Dummy::new("did:test:bob");
+        let alice = Dummy::new("did:test:alice");
 
         let secret_message = b"hello world";
         let nonconfidential_data = b"extra header data";

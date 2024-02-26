@@ -9,3 +9,9 @@ publish.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+tokio = { workspace = true }
+tokio-util = { workspace = true }
+tokio-stream = { workspace = true }
+futures = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
