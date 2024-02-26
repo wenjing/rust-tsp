@@ -40,5 +40,15 @@ impl Message<'_> {
     }
 }
 
+/// Encrypt, authenticate and sign and CESR encode a TSP message
+fn seal(sender: &dyn Sender, receiver: &dyn ResolvedVid, nonconfidential_data: NonConfidentialData, message: Payload) -> Result<Ciphertext, Error> {
+    todo!();
+}
+
+/// Decode a CESR Authentic Confidential Message, verify the signature and decrypt its contents
+fn open<'a>(receiver: &dyn Receiver, sender: &dyn ResolvedVid, message: &'a mut [u8]) -> Result<(NonConfidentialData<'a>, Payload<'a>), Error> {
+    todo!();
+}
+
 pub mod hpke;
 pub mod nacl;
