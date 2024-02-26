@@ -24,7 +24,7 @@ where
         tsp_cesr::Envelope {
             sender: sender.vid(),
             receiver: receiver.vid(),
-            nonconfidential_data: nonconfidential_data,
+            nonconfidential_data,
         },
         &mut data,
     )?;

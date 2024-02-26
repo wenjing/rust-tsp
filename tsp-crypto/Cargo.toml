@@ -9,7 +9,7 @@ publish.workspace = true
 rust-version.workspace = true
 
 [features]
-dummy = [ ]
+dummy = [ "dep:url" ]
 
 [dependencies]
 tsp-definitions = { path = "../tsp-definitions" }
@@ -19,6 +19,7 @@ hpke = { workspace = true }
 rand = { workspace = true }
 ed25519-dalek = { workspace = true }
 crypto_box = { workspace = true }
+url = { optional = true, workspace = true }
 
 [dev-dependencies]
 tsp-crypto = { path = ".", features = ["dummy"] }

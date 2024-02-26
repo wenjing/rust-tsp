@@ -9,3 +9,4 @@ publish.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+tsp-definitions = { path = "../tsp-definitions" }
