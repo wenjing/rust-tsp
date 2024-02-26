@@ -1,6 +1,8 @@
-use crate::decode::{decode_fixed_data, decode_variable_data, decode_variable_data_index};
-use crate::encode::encode_fixed_data;
-use crate::error::{DecodeError, EncodeError};
+use crate::{
+    decode::{decode_fixed_data, decode_variable_data, decode_variable_data_index},
+    encode::encode_fixed_data,
+    error::{DecodeError, EncodeError},
+};
 
 ///TODO: add control messages
 /// A type to distinguish "normal" TSP messages from "control" messages
