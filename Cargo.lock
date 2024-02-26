@@ -672,6 +672,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "tsp-definitions"
+version = "0.0.1"
+
+[[package]]
 name = "tsp-transport"
 version = "0.0.1"
 
