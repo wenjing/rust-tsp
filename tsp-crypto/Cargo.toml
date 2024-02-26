@@ -9,8 +9,10 @@ publish.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+tsp-definitions = { path = "../tsp-definitions" }
+tsp-cesr = { path = "../tsp-cesr" }
+
 hpke = { workspace = true }
 rand = { workspace = true }
 ed25519-dalek = { workspace = true }
 crypto_box = { workspace = true }
-tsp-cesr = { path = "../tsp-cesr" }

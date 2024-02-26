@@ -58,8 +58,7 @@ mod selector {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::decode::*;
-    use crate::encode::*;
+    use crate::{decode::*, encode::*};
 
     #[test]
     fn test_primitives() {
