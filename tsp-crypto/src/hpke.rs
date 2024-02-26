@@ -37,20 +37,23 @@ impl Message<'_> {
 
         let message_receiver = PublicKey::from_bytes(self.receiver).unwrap();
 
-        let mut cesr_message = Vec::new();
+        let mut cesr_message = Vec::with_capacity(self.secret_message.len() + 6);
         tsp_cesr::encode_payload(Payload::HpkeMessage(self.secret_message), &mut cesr_message)
             .unwrap();
 
-        let (encapped_key, mut ciphertext) = hpke::single_shot_seal::<Aead, Kdf, KemType, StdRng>(
-            &OpModeS::Auth((&sender.private_key, &sender.public_key)),
-            &message_receiver,
-            &data,
-            &cesr_message,
-            &[],
-            &mut csprng,
-        )
-        .unwrap();
+        let (encapped_key, tag) =
+            hpke::single_shot_seal_in_place_detached::<Aead, Kdf, KemType, StdRng>(
+                &OpModeS::Auth((&sender.private_key, &sender.public_key)),
+                &message_receiver,
+                &data,
+                &mut cesr_message,
+                &[],
+                &mut csprng,
+            )
+            .unwrap();
 
+        let mut ciphertext = cesr_message;
+        ciphertext.extend(tag.to_bytes());
         ciphertext.extend(encapped_key.to_bytes());
         tsp_cesr::encode_ciphertext(&ciphertext, &mut data).expect("encoding error");
 
