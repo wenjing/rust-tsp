@@ -99,7 +99,7 @@ mod tests {
     use crypto_box::SecretKey;
     use rand::{rngs::StdRng, SeedableRng};
 
-    fn setup<'a>() -> (Sender, Receiver) {
+    fn setup() -> (Sender, Receiver) {
         let mut csprng = StdRng::from_entropy();
 
         let sender_private = SecretKey::generate(&mut csprng);
@@ -129,8 +129,8 @@ mod tests {
         let header = b"extra header data";
 
         let message = Message {
-            sender: &sender.public_key.to_bytes().try_into().unwrap(),
-            receiver: &receiver.public_key.to_bytes().try_into().unwrap(),
+            sender: &sender.public_key.to_bytes(),
+            receiver: &receiver.public_key.to_bytes(),
             header,
             secret_message,
         };
