@@ -668,7 +668,10 @@ dependencies = [
 name = "tsp-definitions"
 version = "0.0.1"
 dependencies = [
+ "ed25519-dalek",
+ "hpke",
  "thiserror",
+ "tsp-cesr",
 ]
 
 [[package]]

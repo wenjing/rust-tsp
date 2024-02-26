@@ -9,4 +9,7 @@ publish.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+tsp-cesr = { path = "../tsp-cesr" }
 thiserror = { workspace = true }
+hpke = { workspace = true }
+ed25519-dalek = { workspace = true }
