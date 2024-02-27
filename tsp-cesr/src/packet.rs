@@ -1,6 +1,6 @@
 use crate::{
-    decode::{decode_fixed_data, decode_variable_data, decode_variable_data_index},
-    encode::encode_fixed_data,
+    decode::{decode_count, decode_fixed_data, decode_variable_data, decode_variable_data_index},
+    encode::{encode_count, encode_fixed_data},
     error::{DecodeError, EncodeError},
 };
 
@@ -30,10 +30,13 @@ pub struct DecodedEnvelope<'a, Vid, Bytes> {
 /// TODO: something more type safe
 pub type Signature = [u8; 64];
 
+const TSP_VERSION: u32 = (b'X' - b'A') as u32;
 const TSP_PLAINTEXT: u32 = (b'B' - b'A') as u32;
 const TSP_CIPHERTEXT: u32 = (b'C' - b'A') as u32;
 const ED25519_SIGNATURE: u32 = (b'B' - b'A') as u32;
 
+const TSP_WRAPPER: u16 = (b'E' - b'A') as u16;
+const TSP_PAYLOAD: u16 = (b'Z' - b'A') as u16;
 const TSP_DEVELOPMENT_VID: u32 = 183236;
 
 /// Safely encode variable data, returning a soft error in case the size limit is exceeded
@@ -61,11 +64,15 @@ pub fn encode_payload(
 ) -> Result<(), EncodeError> {
     let Payload::HpkeMessage(data) = payload;
 
+    encode_count(TSP_PAYLOAD, 1, output);
     checked_encode_variable_data(TSP_PLAINTEXT, data.as_ref(), output)
 }
 
 /// Decode a TSP Payload
 pub fn decode_payload(mut stream: &[u8]) -> Result<Payload<&[u8]>, DecodeError> {
+    let Some(1) = decode_count(TSP_PAYLOAD, &mut stream) else {
+        return Err(DecodeError::VersionMismatch);
+    };
     let payload = decode_variable_data(TSP_PLAINTEXT, &mut stream)
         .map(Payload::HpkeMessage)
         .ok_or(DecodeError::UnexpectedData)?;
@@ -83,6 +90,8 @@ pub fn encode_envelope<'a, Vid: AsRef<[u8]>>(
     envelope: Envelope<'a, Vid>,
     output: &mut impl for<'b> Extend<&'b u8>,
 ) -> Result<(), EncodeError> {
+    encode_count(TSP_WRAPPER, 1, output);
+    encode_fixed_data(TSP_VERSION, &[0, 0], output);
     checked_encode_variable_data(TSP_DEVELOPMENT_VID, envelope.sender.as_ref(), output)?;
     checked_encode_variable_data(TSP_DEVELOPMENT_VID, envelope.receiver.as_ref(), output)?;
     if let Some(data) = envelope.nonconfidential_data {
@@ -106,6 +115,22 @@ pub fn encode_ciphertext(
     checked_encode_variable_data(TSP_CIPHERTEXT, ciphertext, output)
 }
 
+/// Checks whether the expected TSP header is present and returns its size
+fn detected_tsp_header_size(stream: &mut &[u8]) -> Result<usize, DecodeError> {
+    let origin = stream as &[u8];
+    match decode_count(TSP_WRAPPER, stream) {
+        Some(1) => {}
+        _ => return Err(DecodeError::VersionMismatch),
+    }
+    match decode_fixed_data(TSP_VERSION, stream) {
+        Some([0, 0]) => {}
+        _ => return Err(DecodeError::VersionMismatch),
+    }
+
+    debug_assert_eq!(origin.len() - stream.len(), 6);
+    Ok(6)
+}
+
 /// A structure representing a siganture + data that needs to be verified
 #[derive(Clone, Debug)]
 #[must_use]
@@ -125,6 +150,7 @@ pub fn decode_envelope<'a, Vid: TryFrom<&'a [u8]>>(
     DecodeError,
 > {
     let origin = stream;
+    detected_tsp_header_size(&mut stream)?;
     let sender = decode_variable_data(TSP_DEVELOPMENT_VID, &mut stream)
         .ok_or(DecodeError::UnexpectedData)?
         .try_into()
@@ -216,9 +242,11 @@ impl<'a> CipherView<'a> {
 /// Decode an encrypted TSP message plus Envelope & Signature
 /// Produces the ciphertext as a mutable stream.
 pub fn decode_envelope_mut<'a>(stream: &'a mut [u8]) -> Result<CipherView<'a>, DecodeError> {
-    let mut pos = 0;
-    let sender = decode_variable_data_index(TSP_DEVELOPMENT_VID, &stream[pos..])
+    let mut pos = detected_tsp_header_size(&mut (stream as &[u8]))?;
+    let mut sender = decode_variable_data_index(TSP_DEVELOPMENT_VID, &stream[pos..])
         .ok_or(DecodeError::UnexpectedData)?;
+    sender.start += pos;
+    sender.end += pos;
     pos = sender.end;
 
     let mut receiver = decode_variable_data_index(TSP_DEVELOPMENT_VID, &stream[pos..])

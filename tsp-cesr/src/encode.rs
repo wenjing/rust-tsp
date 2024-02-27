@@ -68,7 +68,6 @@ pub fn encode_variable_data(
 }
 
 /// Encode a frame with known identifier and count code
-#[allow(dead_code)]
 pub fn encode_count(identifier: u16, count: u16, stream: &mut impl for<'a> Extend<&'a u8>) {
     let word = DASH << 18 | bits(identifier, 6) << 12 | bits(count, 12);
 
