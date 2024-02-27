@@ -7,7 +7,7 @@ pub type PublicKeyData<'a> = &'a [u8; 32];
 pub type VidData<'a> = &'a [u8];
 pub type NonConfidentialData<'a> = &'a [u8];
 pub type Payload<'a> = &'a [u8];
-pub type Ciphertext = Vec<u8>;
+pub type TSPMessage = Vec<u8>;
 
 pub trait ResolvedVid {
     fn vid(&self) -> VidData;

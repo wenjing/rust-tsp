@@ -18,7 +18,7 @@ pub enum Payload<Bytes: AsRef<[u8]>> {
 pub struct Envelope<'a, Vid> {
     pub sender: Vid,
     pub receiver: Vid,
-    pub nonconfidential_header: Option<&'a [u8]>,
+    pub nonconfidential_data: Option<&'a [u8]>,
 }
 
 pub struct DecodedEnvelope<'a, Vid, Bytes> {
@@ -85,7 +85,7 @@ pub fn encode_envelope<'a, Vid: AsRef<[u8]>>(
 ) -> Result<(), EncodeError> {
     checked_encode_variable_data(TSP_DEVELOPMENT_VID, envelope.sender.as_ref(), output)?;
     checked_encode_variable_data(TSP_DEVELOPMENT_VID, envelope.receiver.as_ref(), output)?;
-    if let Some(data) = envelope.nonconfidential_header {
+    if let Some(data) = envelope.nonconfidential_data {
         checked_encode_variable_data(TSP_PLAINTEXT, data, output)?;
     }
 
@@ -133,7 +133,7 @@ pub fn decode_envelope<'a, Vid: TryFrom<&'a [u8]>>(
         .ok_or(DecodeError::UnexpectedData)?
         .try_into()
         .map_err(|_| DecodeError::VidError)?;
-    let nonconfidential_header = decode_variable_data(TSP_PLAINTEXT, &mut stream);
+    let nonconfidential_data = decode_variable_data(TSP_PLAINTEXT, &mut stream);
     let raw_header = &origin[..origin.len() - stream.len()];
 
     let ciphertext =
@@ -151,7 +151,7 @@ pub fn decode_envelope<'a, Vid: TryFrom<&'a [u8]>>(
             envelope: Envelope {
                 sender,
                 receiver,
-                nonconfidential_header,
+                nonconfidential_data,
             },
             raw_header,
             ciphertext,
@@ -170,7 +170,7 @@ pub struct CipherView<'a> {
 
     sender: Range<usize>,
     receiver: Range<usize>,
-    nonconfidential_header: Option<Range<usize>>,
+    nonconfidential_data: Option<Range<usize>>,
 
     associated_data: Range<usize>,
     signature: &'a Signature,
@@ -192,8 +192,8 @@ impl<'a> CipherView<'a> {
         let envelope = Envelope {
             sender: header[self.sender.clone()].try_into()?,
             receiver: header[self.receiver.clone()].try_into()?,
-            nonconfidential_header: self
-                .nonconfidential_header
+            nonconfidential_data: self
+                .nonconfidential_data
                 .as_ref()
                 .map(|range| &header[range.clone()]),
         };
@@ -227,8 +227,8 @@ pub fn decode_envelope_mut<'a>(stream: &'a mut [u8]) -> Result<CipherView<'a>, D
     receiver.end += pos;
     pos = receiver.end;
 
-    let mut nonconfidential_header = decode_variable_data_index(TSP_PLAINTEXT, &stream[pos..]);
-    if let Some(range) = &mut nonconfidential_header {
+    let mut nonconfidential_data = decode_variable_data_index(TSP_PLAINTEXT, &stream[pos..]);
+    if let Some(range) = &mut nonconfidential_data {
         range.start += pos;
         range.end += pos;
         pos = range.end;
@@ -260,7 +260,7 @@ pub fn decode_envelope_mut<'a>(stream: &'a mut [u8]) -> Result<CipherView<'a>, D
 
         sender,
         receiver,
-        nonconfidential_header,
+        nonconfidential_data,
 
         associated_data,
         signature,
@@ -297,7 +297,7 @@ pub fn encode_envelope_vec<Vid: AsRef<[u8]>>(
 pub struct Message<'a, Vid, Bytes: AsRef<[u8]>> {
     pub sender: Vid,
     pub receiver: Vid,
-    pub nonconfidential_header: Option<&'a [u8]>,
+    pub nonconfidential_data: Option<&'a [u8]>,
     pub message: Payload<Bytes>,
 }
 
@@ -307,7 +307,7 @@ pub fn encode_tsp_message<Vid: AsRef<[u8]>>(
     Message {
         ref sender,
         ref receiver,
-        nonconfidential_header,
+        nonconfidential_data,
         message,
     }: Message<Vid, impl AsRef<[u8]>>,
     encrypt: impl FnOnce(&Vid, Vec<u8>) -> Vec<u8>,
@@ -316,7 +316,7 @@ pub fn encode_tsp_message<Vid: AsRef<[u8]>>(
     let mut cesr = encode_envelope_vec(Envelope {
         sender,
         receiver,
-        nonconfidential_header,
+        nonconfidential_data,
     })?;
 
     let ciphertext = &encrypt(receiver, encode_payload_vec(message)?);
@@ -340,7 +340,7 @@ pub fn decode_tsp_message<'a, Vid: TryFrom<&'a [u8]>>(
                 Envelope {
                     sender,
                     receiver,
-                    nonconfidential_header,
+                    nonconfidential_data,
                 },
             ciphertext,
             ..
@@ -365,7 +365,7 @@ pub fn decode_tsp_message<'a, Vid: TryFrom<&'a [u8]>>(
     Ok(Message {
         sender,
         receiver,
-        nonconfidential_header,
+        nonconfidential_data,
         message,
     })
 }
@@ -375,7 +375,7 @@ mod test {
     use super::*;
 
     #[test]
-    fn envelope_without_nonconfidential_header() {
+    fn envelope_without_nonconfidential_data() {
         fn dummy_crypt(data: &[u8]) -> &[u8] {
             data
         }
@@ -386,7 +386,7 @@ mod test {
         let mut outer = encode_envelope_vec(Envelope {
             sender: &b"Alister"[..],
             receiver: &b"Bobbi"[..],
-            nonconfidential_header: None,
+            nonconfidential_data: None,
         })
         .unwrap();
         let ciphertext = dummy_crypt(&cesr_payload);
@@ -407,14 +407,14 @@ mod test {
         assert_eq!(ver.signature, &fixed_sig);
         assert_eq!(env.sender, &b"Alister"[..]);
         assert_eq!(env.receiver, &b"Bobbi"[..]);
-        assert_eq!(env.nonconfidential_header, None);
+        assert_eq!(env.nonconfidential_data, None);
 
         let Payload::HpkeMessage(data) = decode_payload(dummy_crypt(ciphertext)).unwrap();
         assert_eq!(data, b"Hello TSP!");
     }
 
     #[test]
-    fn envelope_with_nonconfidential_header() {
+    fn envelope_with_nonconfidential_data() {
         fn dummy_crypt(data: &[u8]) -> &[u8] {
             data
         }
@@ -425,7 +425,7 @@ mod test {
         let mut outer = encode_envelope_vec(Envelope {
             sender: &b"Alister"[..],
             receiver: &b"Bobbi"[..],
-            nonconfidential_header: Some(b"treasure"),
+            nonconfidential_data: Some(b"treasure"),
         })
         .unwrap();
         let ciphertext = dummy_crypt(&cesr_payload);
@@ -446,7 +446,7 @@ mod test {
         assert_eq!(ver.signature, &fixed_sig);
         assert_eq!(env.sender, &b"Alister"[..]);
         assert_eq!(env.receiver, &b"Bobbi"[..]);
-        assert_eq!(env.nonconfidential_header, Some(&b"treasure"[..]));
+        assert_eq!(env.nonconfidential_data, Some(&b"treasure"[..]));
 
         let Payload::HpkeMessage(data) = decode_payload(dummy_crypt(ciphertext)).unwrap();
         assert_eq!(data, b"Hello TSP!");
@@ -461,7 +461,7 @@ mod test {
             Envelope {
                 sender: &b"Alister"[..],
                 receiver: &b"Bobbi"[..],
-                nonconfidential_header: Some(b"treasure"),
+                nonconfidential_data: Some(b"treasure"),
             },
             &mut outer,
         )
@@ -479,7 +479,7 @@ mod test {
         let mut outer = encode_envelope_vec(Envelope {
             sender: &b"Alister"[..],
             receiver: &b"Bobbi"[..],
-            nonconfidential_header: Some(b"treasure"),
+            nonconfidential_data: Some(b"treasure"),
         })
         .unwrap();
         encode_ciphertext(&[], &mut outer).unwrap();
@@ -499,7 +499,7 @@ mod test {
             Message {
                 sender,
                 receiver,
-                nonconfidential_header: None,
+                nonconfidential_data: None,
                 message: Payload::HpkeMessage(payload),
             },
             |_, vec| vec,
@@ -522,7 +522,7 @@ mod test {
     }
 
     #[test]
-    fn mut_envelope_with_nonconfidential_header() {
+    fn mut_envelope_with_nonconfidential_data() {
         fn dummy_crypt(data: &[u8]) -> &[u8] {
             data
         }
@@ -533,7 +533,7 @@ mod test {
         let mut outer = encode_envelope_vec(Envelope {
             sender: &b"Alister"[..],
             receiver: &b"Bobbi"[..],
-            nonconfidential_header: Some(b"treasure"),
+            nonconfidential_data: Some(b"treasure"),
         })
         .unwrap();
         let ciphertext = dummy_crypt(&cesr_payload);
@@ -553,7 +553,7 @@ mod test {
 
         assert_eq!(env.sender, &b"Alister"[..]);
         assert_eq!(env.receiver, &b"Bobbi"[..]);
-        assert_eq!(env.nonconfidential_header, Some(&b"treasure"[..]));
+        assert_eq!(env.nonconfidential_data, Some(&b"treasure"[..]));
         let Payload::HpkeMessage(data) = decode_payload(dummy_crypt(ciphertext)).unwrap();
         assert_eq!(data, b"Hello TSP!");
     }
