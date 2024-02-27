@@ -2,8 +2,9 @@ mod error;
 
 pub use crate::error::Error;
 
-pub type PrivateKeyData<'a> = &'a [u8; 32];
-pub type PublicKeyData<'a> = &'a [u8; 32];
+pub type KeyData = [u8; 32];
+pub type PrivateKeyData<'a> = &'a KeyData;
+pub type PublicKeyData<'a> = &'a KeyData;
 pub type VidData<'a> = &'a [u8];
 pub type NonConfidentialData<'a> = &'a [u8];
 pub type Payload<'a> = &'a [u8];

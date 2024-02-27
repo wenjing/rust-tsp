@@ -1,8 +1,9 @@
 use ed25519_dalek::{self as Ed};
 use hpke::{kem::X25519HkdfSha256 as KemType, Kem, Serializable};
 use rand::rngs::OsRng;
+use tsp_definitions::{KeyData, ResolvedVid};
 
-use tsp_definitions::ResolvedVid;
+pub mod resolve;
 
 /// A Vid represents a *verified* Identifier
 /// (so it doesn't carry any information that allows to verify it)
@@ -11,7 +12,7 @@ pub struct Vid<Identifier> {
     id: Identifier,
     transport: url::Url,
     public_sigkey: Ed::VerifyingKey,
-    public_enckey: [u8; 32],
+    public_enckey: KeyData,
 }
 
 /// A VidController represents the 'owner' of a particular Vid
@@ -19,7 +20,7 @@ pub struct Vid<Identifier> {
 pub struct VidController<Identifier> {
     vid: Vid<Identifier>,
     sigkey: Ed::SigningKey,
-    enckey: [u8; 32],
+    enckey: KeyData,
 }
 
 /// A custom implementation of Debug for VidController to avoid key material from leaking during panics.
@@ -42,11 +43,11 @@ impl<Identifier: AsRef<[u8]>> tsp_definitions::ResolvedVid for Vid<Identifier> {
         &self.transport
     }
 
-    fn verifying_key(&self) -> &[u8; 32] {
+    fn verifying_key(&self) -> &KeyData {
         self.public_sigkey.as_bytes()
     }
 
-    fn encryption_key(&self) -> &[u8; 32] {
+    fn encryption_key(&self) -> &KeyData {
         &self.public_enckey
     }
 }
@@ -60,23 +61,23 @@ impl<Identifier: AsRef<[u8]>> tsp_definitions::ResolvedVid for VidController<Ide
         self.vid.endpoint()
     }
 
-    fn verifying_key(&self) -> &[u8; 32] {
+    fn verifying_key(&self) -> &KeyData {
         self.vid.verifying_key()
     }
 
-    fn encryption_key(&self) -> &[u8; 32] {
+    fn encryption_key(&self) -> &KeyData {
         self.vid.encryption_key()
     }
 }
 
 impl<Identifier: AsRef<[u8]>> tsp_definitions::Sender for VidController<Identifier> {
-    fn signing_key(&self) -> &[u8; 32] {
+    fn signing_key(&self) -> &KeyData {
         self.sigkey.as_bytes()
     }
 }
 
 impl<Identifier: AsRef<[u8]>> tsp_definitions::Receiver for VidController<Identifier> {
-    fn decryption_key(&self) -> &[u8; 32] {
+    fn decryption_key(&self) -> &KeyData {
         &self.enckey
     }
 }

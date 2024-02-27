@@ -8,8 +8,16 @@ pub enum Error {
     Cryptographic(#[from] hpke::HpkeError),
     #[error("{0}")]
     Verify(#[from] ed25519_dalek::ed25519::Error),
-    #[error("Unexpected recipient specified")]
-    UnexpectedRecipientSpecified,
+    #[error("{0}")]
+    Request(#[from] reqwest::Error),
+    #[error("could not resolve VID {0}")]
+    ResolveVID(&'static str),
+    #[error("unexpected recipient")]
+    UnexpectedRecipient,
+    #[error("unknown VID type")]
+    UnknownVIDType,
+    #[error("invalid VID")]
+    InvalidVID,
     #[error("unknown error")]
     Unknown,
 }
