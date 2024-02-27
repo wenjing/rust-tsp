@@ -67,4 +67,4 @@ jobs:
 
       - name: Build
         if: ${{ !matrix.cross }}
-        run: cargo build --release --locked --target ${{ matrix.target }} --manifest-path Cargo.toml
+        run: cargo build --release --target ${{ matrix.target }} --manifest-path Cargo.toml
