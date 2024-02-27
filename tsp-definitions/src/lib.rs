@@ -11,7 +11,7 @@ pub type TSPMessage = Vec<u8>;
 
 pub trait ResolvedVid {
     /// A identifier of the Vid as bytes (for inclusion in TSP packets)
-    fn vid(&self) -> &[u8];
+    fn identifier(&self) -> &[u8];
 
     /// The transport layer endpoint in the transport layer associated with this Vid
     fn endpoint(&self) -> &url::Url;
