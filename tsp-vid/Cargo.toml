@@ -12,5 +12,8 @@ rust-version.workspace = true
 tsp-definitions = { path = "../tsp-definitions" }
 url = { workspace = true }
 hpke = { workspace = true }
-ed25519-dalek = { version = "2.1.1", default-features = false, features = ["fast", "zeroize", "rand_core"] }
-rand.workspace = true
+rand ={ workspace = true }
+reqwest = { workspace = true }
+serde = { workspace = true }
+ed25519-dalek = { workspace = true, features = ["fast", "zeroize", "rand_core"] }
+base64ct = { workspace = true }

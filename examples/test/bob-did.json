@@ -6,9 +6,16 @@
   "authentication": [
     "did:web:did.tweede.golf:user:bob#verification-key"
   ],
-  "id": "did:web:did.tweede.golf",
+  "id": "did:web:did.tweede.golf:user:bob",
   "keyAgreement": [
     "did:web:did.tweede.golf:user:bob#encryption-key"
+  ],
+  "service": [
+    {
+      "id": "#tsp-transport",
+      "serviceEndpoint": "tcp://127.0.0.1:1337",
+      "type": "TSPTransport"
+    }
   ],
   "verificationMethod": [
     {
@@ -18,7 +25,7 @@
         "crv": "Ed25519",
         "kty": "OKP",
         "use": "sig",
-        "x": "tpDZlutEfmm5A1sXBUAaTP2ZNfgJp03BRJiaWEn4iGo="
+        "x": "yvKlTXLdWcZhKjg3vc4_QQeIn_mTOd3GprAc2gnQB0Y="
       },
       "type": "JsonWebKey2020"
     },
@@ -29,7 +36,7 @@
         "crv": "X25519",
         "kty": "OKP",
         "use": "enc",
-        "x": "OJzognSolmucTAi2LZNJir5oKyEhC1ab4QrHnV913j8="
+        "x": "_uxJU4qjejwclw3Qs0DWH58kLzNcEAa7nTgkIiVWRW8="
       },
       "type": "JsonWebKey2020"
     }

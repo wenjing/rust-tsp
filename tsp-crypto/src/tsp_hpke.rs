@@ -107,7 +107,7 @@ where
 
     // verify the message was intended for the specified receiver
     if envelope.receiver != receiver.identifier() {
-        return Err(Error::UnexpectedRecipientSpecified);
+        return Err(Error::UnexpectedRecipient);
     }
 
     // split encapsulated key and authenticated encryption tag length

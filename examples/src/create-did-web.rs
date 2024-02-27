@@ -1,7 +1,6 @@
-use std::fs;
-
 use base64ct::{Base64Url, Encoding};
 use serde_json::json;
+use std::fs;
 use tsp_crypto::dummy::Dummy;
 use tsp_definitions::{Receiver, ResolvedVid, Sender};
 
@@ -21,7 +20,7 @@ fn create_dummy(name: &str) {
             "https://www.w3.org/ns/did/v1",
             "https://w3id.org/security/suites/jws-2020/v1"
         ],
-        "id": format!("did:web:{domain}"),
+        "id": did,
         "verificationMethod": [
             {
                 "id": format!("{did}#verification-key"),
@@ -51,7 +50,12 @@ fn create_dummy(name: &str) {
         ],
         "keyAgreement": [
             format!("{did}#encryption-key"),
-          ]
+        ],
+        "service": [{
+            "id": "#tsp-transport",
+            "type": "TSPTransport",
+            "serviceEndpoint": "tcp://127.0.0.1:1337"
+        }]
     });
 
     fs::write(
