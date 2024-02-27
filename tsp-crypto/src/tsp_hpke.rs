@@ -40,6 +40,15 @@ where
         &mut data,
     )?;
 
+    #[cfg(test)]
+    eprintln!(
+        "Message (with prepadding): {}",
+        match secret_payload {
+            Payload::Content(data) => base64ct::Base64Url::encode_string(&prepad(&data)),
+            Payload::Reject => "TSP_CANCEL".to_string(),
+        }
+    );
+
     let secret_payload = match secret_payload {
         Payload::Content(data) => tsp_cesr::Payload::GenericMessage(data),
         Payload::Reject => tsp_cesr::Payload::RelationshipCancel,
@@ -54,12 +63,13 @@ where
         // encapsulated key length
         + Kem::EncappedKey::size(),
     );
-    #[cfg(test)]
-    eprintln!("Message (with prepadding): {}", base64ct::Base64Url::encode_string(&prepad(&secret_payload)));
     tsp_cesr::encode_payload(secret_payload, &mut cesr_message)?;
 
     #[cfg(test)]
-    eprintln!("CESR payload: {}", base64ct::Base64Url::encode_string(&cesr_message));
+    eprintln!(
+        "CESR payload: {}",
+        base64ct::Base64Url::encode_string(&cesr_message)
+    );
 
     // HPKE sender mode: "Auth"
     let sender_decryption_key = Kem::PrivateKey::from_bytes(sender.decryption_key())?;
@@ -84,9 +94,15 @@ where
     cesr_message.extend(encapped_key.to_bytes());
 
     #[cfg(test)]
-    eprintln!("CESR envelope: {}", base64ct::Base64Url::encode_string(&data));
+    eprintln!(
+        "CESR envelope: {}",
+        base64ct::Base64Url::encode_string(&data)
+    );
     #[cfg(test)]
-    eprintln!("Encrypted payload: {}", base64ct::Base64Url::encode_string(&cesr_message));
+    eprintln!(
+        "Encrypted payload: {}",
+        base64ct::Base64Url::encode_string(&cesr_message)
+    );
 
     // encode and append the ciphertext to the envelope data
     tsp_cesr::encode_ciphertext(&cesr_message, &mut data).expect("encoding error");
@@ -97,7 +113,10 @@ where
     tsp_cesr::encode_signature(&signature, &mut data);
 
     #[cfg(test)]
-    eprintln!("CESR message: {}", base64ct::Base64Url::encode_string(&data));
+    eprintln!(
+        "CESR message: {}",
+        base64ct::Base64Url::encode_string(&data)
+    );
 
     Ok(data)
 }

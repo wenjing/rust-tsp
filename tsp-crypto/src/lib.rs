@@ -60,6 +60,18 @@ mod tests {
             Url::parse("tcp:://127.0.0.1:1337").unwrap(),
         );
 
+        use tsp_definitions::{Sender, VerifiedVid};
+        fn hex(data: &[u8]) -> String {
+            format!("{:0x?}", data)
+                .chars()
+                .filter(|x| x.is_digit(16))
+                .collect()
+        }
+        println!("alice public enc_key = {}", hex(alice.encryption_key()));
+        println!("alice private sign_key = {}", hex(alice.signing_key()));
+        println!("bob public enc_key = {}", hex(bob.encryption_key()));
+        println!("bob private sign_key = {}", hex(bob.signing_key()));
+
         let secret_message = b"hello world";
         let nonconfidential_data = b"extra header data";
 
