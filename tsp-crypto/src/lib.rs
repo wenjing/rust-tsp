@@ -1,6 +1,8 @@
 use tsp_definitions::{
-    Ciphertext, Error, NonConfidentialData, Payload, Receiver, ResolvedVid, Sender,
+    Error, NonConfidentialData, Payload, Receiver, ResolvedVid, Sender, TSPMessage,
 };
+
+mod nonconfidential;
 mod tsp_hpke;
 
 pub type Aead = hpke::aead::ChaCha20Poly1305;
@@ -12,18 +14,34 @@ pub fn seal(
     sender: &dyn Sender,
     receiver: &dyn ResolvedVid,
     nonconfidential_data: Option<NonConfidentialData>,
-    message: Payload,
-) -> Result<Ciphertext, Error> {
-    tsp_hpke::seal::<Aead, Kdf, Kem>(sender, receiver, nonconfidential_data, message)
+    payload: Payload,
+) -> Result<TSPMessage, Error> {
+    tsp_hpke::seal::<Aead, Kdf, Kem>(sender, receiver, nonconfidential_data, payload)
 }
 
 /// Decode a CESR Authentic Confidential Message, verify the signature and decrypt its contents
 pub fn open<'a>(
     receiver: &dyn Receiver,
     sender: &dyn ResolvedVid,
-    message: &'a mut [u8],
+    tsp_message: &'a mut [u8],
 ) -> Result<(Option<NonConfidentialData<'a>>, Payload<'a>), Error> {
-    tsp_hpke::open::<Aead, Kdf, Kem>(receiver, sender, message)
+    tsp_hpke::open::<Aead, Kdf, Kem>(receiver, sender, tsp_message)
+}
+
+/// Construct and sign a non-confidential TSP message
+pub fn sign(
+    sender: &dyn Sender,
+    nonconfidential_data: NonConfidentialData,
+) -> Result<TSPMessage, Error> {
+    nonconfidential::sign(sender, nonconfidential_data)
+}
+
+/// Decode a CESR Authentic Non-Confidential Message, verify the signature and return its contents
+pub fn verify<'a>(
+    sender: &dyn ResolvedVid,
+    tsp_message: &'a mut [u8],
+) -> Result<NonConfidentialData<'a>, Error> {
+    nonconfidential::verify(sender, tsp_message)
 }
 
 #[cfg(feature = "dummy")]

@@ -3,15 +3,15 @@ use hpke::{aead::AeadTag, Deserializable, OpModeR, OpModeS, Serializable};
 use rand::{rngs::StdRng, SeedableRng};
 use tsp_cesr::DecodedEnvelope;
 use tsp_definitions::{
-    Ciphertext, Error, NonConfidentialData, Payload, Receiver, ResolvedVid, Sender,
+    Error, NonConfidentialData, Payload, Receiver, ResolvedVid, Sender, TSPMessage,
 };
 
 pub(crate) fn seal<A, Kdf, Kem>(
     sender: &dyn Sender,
     receiver: &dyn ResolvedVid,
     nonconfidential_data: Option<NonConfidentialData>,
-    secret_message: Payload,
-) -> Result<Ciphertext, Error>
+    secret_payload: Payload,
+) -> Result<TSPMessage, Error>
 where
     A: hpke::aead::Aead,
     Kdf: hpke::kdf::Kdf,
@@ -24,7 +24,7 @@ where
         tsp_cesr::Envelope {
             sender: sender.vid(),
             receiver: receiver.vid(),
-            nonconfidential_header: nonconfidential_data,
+            nonconfidential_data: nonconfidential_data,
         },
         &mut data,
     )?;
@@ -32,7 +32,7 @@ where
     // prepare CESR encoded ciphertext
     let mut cesr_message = Vec::with_capacity(
         // plaintext size
-        secret_message.len()
+        secret_payload.len()
         // authenticated encryption tag length
         + AeadTag::<A>::size()
         // encapsulated key length
@@ -41,7 +41,7 @@ where
         + 6,
     );
     tsp_cesr::encode_payload(
-        tsp_cesr::Payload::HpkeMessage(secret_message),
+        tsp_cesr::Payload::HpkeMessage(secret_payload),
         &mut cesr_message,
     )?;
 
@@ -81,14 +81,14 @@ where
 pub(crate) fn open<'a, A, Kdf, Kem>(
     receiver: &dyn Receiver,
     sender: &dyn ResolvedVid,
-    message: &'a mut [u8],
+    tsp_message: &'a mut [u8],
 ) -> Result<(Option<NonConfidentialData<'a>>, Payload<'a>), Error>
 where
     A: hpke::aead::Aead,
     Kdf: hpke::kdf::Kdf,
     Kem: hpke::kem::Kem,
 {
-    let view = tsp_cesr::decode_envelope_mut(message)?;
+    let view = tsp_cesr::decode_envelope_mut(tsp_message)?;
 
     // verify outer signature
     let verification_challange = view.as_challenge();
@@ -104,6 +104,11 @@ where
     } = view
         .into_opened::<&[u8]>()
         .map_err(|_| tsp_cesr::error::DecodeError::VidError)?;
+
+    // verify the message was intended for the specified receiver
+    if envelope.receiver != receiver.vid() {
+        return Err(Error::UnexpectedRecipientSpecified);
+    }
 
     // split encapsulated key and authenticated encryption tag length
     let (ciphertext, footer) =
@@ -127,7 +132,7 @@ where
         &tag,
     )?;
 
-    let tsp_cesr::Payload::HpkeMessage(secret_message) = tsp_cesr::decode_payload(ciphertext)?;
+    let tsp_cesr::Payload::HpkeMessage(secret_payload) = tsp_cesr::decode_payload(ciphertext)?;
 
-    Ok((envelope.nonconfidential_header, secret_message))
+    Ok((envelope.nonconfidential_data, secret_payload))
 }
