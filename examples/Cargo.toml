@@ -1,5 +1,5 @@
 [package]
-name = "example"
+name = "examples"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -8,16 +8,31 @@ homepage.workspace = true
 publish.workspace = true
 rust-version.workspace = true
 
+[[bin]]
+name = "create-did-web"
+path = "src/create-did-web.rs"
+
+[[bin]]
+name = "tcp-broadcast"
+path = "src/tcp-broadcast.rs"
+
 [dependencies]
 tsp-crypto = { path = "../tsp-crypto", features = ["dummy"] }
 tsp-transport = { path = "../tsp-transport" }
 tsp-definitions = { path = "../tsp-definitions" }
 
+# dummy data
 random_word = { version = "0.4.3", features = ["en"] }
 
+# tcp transport
 tokio-stream = { workspace = true }
 tokio = { workspace = true }
 tokio-util = { workspace = true }
 tracing = { workspace = true }
 rand = { workspace = true }
 hpke = { workspace = true }
+
+# did web
+serde = { version = "1.0" }
+serde_json = { version = "1.0" }
+base64ct = { workspace = true }

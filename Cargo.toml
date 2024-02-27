@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = [ "tsp-cesr", "tsp-transport", "tsp-crypto", "tsp-vid", "example" , "tsp-definitions"]
+members = [ "tsp-cesr", "tsp-transport", "tsp-crypto", "tsp-vid", "tsp-definitions", "examples"]
 
 [workspace.package]
 version = "0.0.1"
