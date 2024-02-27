@@ -86,7 +86,7 @@ pub mod dummy {
             unreachable!()
         }
 
-        fn vid(&self) -> tsp_definitions::VidData {
+        fn identifier(&self) -> tsp_definitions::VidData {
             self.vid.as_bytes()
         }
 

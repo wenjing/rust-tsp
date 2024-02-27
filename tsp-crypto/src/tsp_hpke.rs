@@ -22,8 +22,8 @@ where
     let mut data = Vec::with_capacity(64);
     tsp_cesr::encode_envelope(
         tsp_cesr::Envelope {
-            sender: sender.vid(),
-            receiver: receiver.vid(),
+            sender: sender.identifier(),
+            receiver: receiver.identifier(),
             nonconfidential_data,
         },
         &mut data,
@@ -106,7 +106,7 @@ where
         .map_err(|_| tsp_cesr::error::DecodeError::VidError)?;
 
     // verify the message was intended for the specified receiver
-    if envelope.receiver != receiver.vid() {
+    if envelope.receiver != receiver.identifier() {
         return Err(Error::UnexpectedRecipientSpecified);
     }
 
