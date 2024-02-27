@@ -10,3 +10,7 @@ rust-version.workspace = true
 
 [dependencies]
 tsp-definitions = { path = "../tsp-definitions" }
+url = { workspace = true }
+hpke = { workspace = true }
+ed25519-dalek = { version = "2.1.1", default-features = false, features = ["fast", "zeroize", "rand_core"] }
+rand.workspace = true
