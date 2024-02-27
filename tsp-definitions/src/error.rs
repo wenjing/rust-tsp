@@ -8,6 +8,8 @@ pub enum Error {
     Cryptographic(#[from] hpke::HpkeError),
     #[error("{0}")]
     Verify(#[from] ed25519_dalek::ed25519::Error),
+    #[error("Unexpected recipient specified")]
+    UnexpectedRecipientSpecified,
     #[error("unknown error")]
     Unknown,
 }
