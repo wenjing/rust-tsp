@@ -34,7 +34,7 @@ impl<I: std::fmt::Debug> std::fmt::Debug for VidController<I> {
 }
 
 impl<Identifier: AsRef<[u8]>> tsp_definitions::ResolvedVid for Vid<Identifier> {
-    fn vid(&self) -> &[u8] {
+    fn identifier(&self) -> &[u8] {
         self.id.as_ref()
     }
 
@@ -52,8 +52,8 @@ impl<Identifier: AsRef<[u8]>> tsp_definitions::ResolvedVid for Vid<Identifier> {
 }
 
 impl<Identifier: AsRef<[u8]>> tsp_definitions::ResolvedVid for VidController<Identifier> {
-    fn vid(&self) -> &[u8] {
-        self.vid.vid()
+    fn identifier(&self) -> &[u8] {
+        self.vid.identifier()
     }
 
     fn endpoint(&self) -> &url::Url {
@@ -83,7 +83,7 @@ impl<Identifier: AsRef<[u8]>> tsp_definitions::Receiver for VidController<Identi
 
 impl<Identifier: AsRef<[u8]>> AsRef<[u8]> for Vid<Identifier> {
     fn as_ref(&self) -> &[u8] {
-        self.vid()
+        self.identifier()
     }
 }
 

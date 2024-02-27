@@ -54,7 +54,7 @@ async fn main() {
                 };
 
                 // check the message was not sent by us
-                if String::from_utf8_lossy(&message[7..(7 + receiver_me.vid().len())])
+                if String::from_utf8_lossy(&message[7..(7 + receiver_me.identifier().len())])
                     == receiver_me.name()
                 {
                     continue;
