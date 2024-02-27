@@ -1366,7 +1366,11 @@ dependencies = [
 name = "tsp-vid"
 version = "0.0.1"
 dependencies = [
+ "ed25519-dalek",
+ "hpke",
+ "rand",
  "tsp-definitions",
+ "url",
 ]
 
 [[package]]
