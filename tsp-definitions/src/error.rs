@@ -10,6 +10,10 @@ pub enum Error {
     Verify(#[from] ed25519_dalek::ed25519::Error),
     #[error("{0}")]
     Request(#[from] reqwest::Error),
+    #[error("{0}")]
+    ParseUrl(#[from] url::ParseError),
+    #[error("{0}")]
+    Io(#[from] std::io::Error),
     #[error("could not resolve VID {0}")]
     ResolveVID(&'static str),
     #[error("unexpected recipient")]
@@ -18,6 +22,10 @@ pub enum Error {
     UnknownVIDType,
     #[error("invalid VID")]
     InvalidVID,
+    #[error("invalid address")]
+    InvalidAddress,
+    #[error("invalid transport scheme")]
+    InvalidTransportScheme,
     #[error("unknown error")]
     Unknown,
 }

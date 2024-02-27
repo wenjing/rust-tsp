@@ -9,12 +9,13 @@ pub async fn resolve_vid<Identifier: ToString>(id: Identifier) -> Result<Vid<Ide
     let parts = id_string.split(':').collect::<Vec<&str>>();
 
     match parts.as_slice() {
-        ["did", "web", _] => {
+        [did::SCHEME, did::web::SCHEME, _] => {
             let url = did::web::resolve_url(&parts)?;
             let did_document = reqwest::get(url)
                 .await?
                 .json::<did::web::DidDocument>()
                 .await?;
+
             did::web::resolve_document(did_document, id)
         }
         _ => Err(Error::UnknownVIDType),
