@@ -5,6 +5,8 @@ use url::Url;
 
 use crate::Vid;
 
+pub(crate) const SCHEME: &str = "web";
+
 const PROTOCOL: &str = "https://";
 const DEFAULT_PATH: &str = ".well-known";
 const DOCUMENT: &str = "did.json";
@@ -50,14 +52,15 @@ pub struct PublicKeyJwk {
     pub x: String,
 }
 
-pub fn resolve_url(parts: &[&str]) -> Result<String, Error> {
-    match parts {
-        ["did", "web", domain] => Ok(format!("{PROTOCOL}{domain}/{DEFAULT_PATH}/{DOCUMENT}")),
+pub fn resolve_url(parts: &[&str]) -> Result<Url, Error> {
+    Ok(match parts {
+        ["did", "web", domain] => format!("{PROTOCOL}{domain}/{DEFAULT_PATH}/{DOCUMENT}"),
         ["did", "web", domain, "user", username] => {
-            Ok(format!("{PROTOCOL}{domain}/user/{username}/{DOCUMENT}"))
+            format!("{PROTOCOL}{domain}/user/{username}/{DOCUMENT}")
         }
-        _ => Err(Error::InvalidVID),
+        _ => return Err(Error::InvalidVID),
     }
+    .parse()?)
 }
 
 pub fn resolve_document<Identifier: ToString>(
@@ -130,6 +133,60 @@ pub fn resolve_document<Identifier: ToString>(
 
 #[cfg(test)]
 mod tests {
+    use std::fs;
+    use tsp_definitions::{Error, ResolvedVid};
+    use url::Url;
+
+    use crate::resolve::did::web::{resolve_document, DidDocument};
+
+    use super::resolve_url;
+
+    fn resolve_did_string(did: &str) -> Result<Url, Error> {
+        let parts = did.split(':').collect::<Vec<&str>>();
+
+        resolve_url(&parts)
+    }
+
     #[test]
-    fn resolve_did_url() {}
+    fn test_resolve_url() {
+        assert_eq!(
+            resolve_did_string("did:web:example.com")
+                .unwrap()
+                .to_string(),
+            "https://example.com/.well-known/did.json"
+        );
+
+        assert_eq!(
+            resolve_did_string("did:web:example.com:user:bob")
+                .unwrap()
+                .to_string(),
+            "https://example.com/user/bob/did.json"
+        );
+
+        assert!(resolve_did_string("did:web:example%20.com").is_err());
+        assert!(resolve_did_string("did:web:example.com:user:user:user").is_err());
+    }
+
+    #[test]
+    fn test_resolve_document() {
+        let alice_did_doc = fs::read_to_string("../examples/test/alice-did.json").unwrap();
+        let alice_did_doc: DidDocument = serde_json::from_str(&alice_did_doc).unwrap();
+
+        let alice = resolve_document(alice_did_doc, "did:web:did.tweede.golf:user:alice");
+
+        assert_eq!(
+            alice.unwrap().identifier(),
+            "did:web:did.tweede.golf:user:alice".as_bytes()
+        );
+
+        let bob_did_doc = fs::read_to_string("../examples/test/bob-did.json").unwrap();
+        let bob_did_doc: DidDocument = serde_json::from_str(&bob_did_doc).unwrap();
+
+        let bob = resolve_document(bob_did_doc, "did:web:did.tweede.golf:user:bob");
+
+        assert_eq!(
+            bob.unwrap().identifier(),
+            "did:web:did.tweede.golf:user:bob".as_bytes()
+        );
+    }
 }

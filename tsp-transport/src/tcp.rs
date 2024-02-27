@@ -1,7 +1,7 @@
-use std::{collections::HashMap, error::Error, fmt::Display, io, net::SocketAddr, sync::Arc};
-
 use futures::SinkExt;
+use std::{collections::HashMap, fmt::Display, io, net::SocketAddr, sync::Arc};
 use tokio::{
+    io::AsyncWriteExt,
     net::{TcpListener, TcpStream, ToSocketAddrs},
     sync::{mpsc, Mutex},
 };
@@ -11,11 +11,27 @@ use tokio_util::{
     codec::{BytesCodec, Framed},
 };
 use tracing_subscriber::EnvFilter;
+use url::Url;
+
+use tsp_definitions::Error;
+
+pub(crate) const SCHEME: &str = "tcp";
+
+pub(crate) async fn send_message(tsp_message: &[u8], url: Url) -> Result<(), Error> {
+    if let Some(address) = url.socket_addrs(|| None)?.first() {
+        let mut stream = tokio::net::TcpStream::connect(address).await?;
+        stream.write_all(tsp_message).await?;
+
+        Ok(())
+    } else {
+        Err(Error::InvalidAddress)
+    }
+}
 
 /// Start a broadcast server, that will forward all messages to all open tcp connections
-pub async fn broadcast_server<A: ToSocketAddrs + Display>(addr: A) -> Result<(), Box<dyn Error>> {
+pub async fn broadcast_server<A: ToSocketAddrs + Display>(addr: A) -> Result<(), Error> {
     tracing_subscriber::fmt()
-        .with_env_filter(EnvFilter::from_default_env().add_directive("info".parse()?))
+        .with_env_filter(EnvFilter::from_default_env().add_directive("info".parse().unwrap()))
         .init();
 
     let state = Arc::new(Mutex::new(Shared::new()));
@@ -83,7 +99,7 @@ async fn process(
     state: Arc<Mutex<Shared>>,
     stream: TcpStream,
     addr: SocketAddr,
-) -> Result<(), Box<dyn Error>> {
+) -> Result<(), Error> {
     let peer_id = addr.to_string();
 
     tracing::info!("{} connected", peer_id);
