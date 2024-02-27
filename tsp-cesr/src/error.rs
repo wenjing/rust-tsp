@@ -11,6 +11,7 @@ pub enum DecodeError {
     TrailingGarbage,
     SignatureError,
     VidError,
+    VersionMismatch,
 }
 
 #[cfg(feature = "std")]
