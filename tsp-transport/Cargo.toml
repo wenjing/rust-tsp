@@ -9,6 +9,9 @@ publish.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+tsp-definitions = { path = "../tsp-definitions" }
+url = { workspace = true }
+#tcp
 tokio = { workspace = true }
 tokio-util = { workspace = true }
 tokio-stream = { workspace = true }
