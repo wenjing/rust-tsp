@@ -1,0 +1,37 @@
+{
+  "@context": [
+    "https://www.w3.org/ns/did/v1",
+    "https://w3id.org/security/suites/jws-2020/v1"
+  ],
+  "authentication": [
+    "did:web:did.tweede.golf:user:bob#verification-key"
+  ],
+  "id": "did:web:did.tweede.golf",
+  "keyAgreement": [
+    "did:web:did.tweede.golf:user:bob#encryption-key"
+  ],
+  "verificationMethod": [
+    {
+      "controller": "did:web:did.tweede.golf:user:bob",
+      "id": "did:web:did.tweede.golf:user:bob#verification-key",
+      "publicKeyJwk": {
+        "crv": "Ed25519",
+        "kty": "OKP",
+        "use": "sig",
+        "x": "tpDZlutEfmm5A1sXBUAaTP2ZNfgJp03BRJiaWEn4iGo="
+      },
+      "type": "JsonWebKey2020"
+    },
+    {
+      "controller": "did:web:did.tweede.golf:user:bob",
+      "id": "did:web:did.tweede.golf:user:bob#encryption-key",
+      "publicKeyJwk": {
+        "crv": "X25519",
+        "kty": "OKP",
+        "use": "enc",
+        "x": "OJzognSolmucTAi2LZNJir5oKyEhC1ab4QrHnV913j8="
+      },
+      "type": "JsonWebKey2020"
+    }
+  ]
+}
