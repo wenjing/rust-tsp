@@ -1,13 +1,22 @@
-use base64ct::Encoding;
+use std::fs;
+
+use base64ct::{Base64Url, Encoding};
 use serde_json::json;
 use tsp_crypto::dummy::Dummy;
-use tsp_definitions::ResolvedVid;
+use tsp_definitions::{Receiver, ResolvedVid, Sender};
 
 fn create_dummy(name: &str) {
     let domain = "did.tweede.golf";
-    let dummy = Dummy::new(&format!("did:web:{domain}:user:{name}"));
+    let did = format!("did:web:{domain}:user:{name}");
+    let dummy = Dummy::new(&did);
 
-    let doc = json!({
+    let private_doc = json!({
+        "vid": did,
+        "decryption-key": Base64Url::encode_string(dummy.decryption_key()),
+        "signing-key": Base64Url::encode_string(dummy.signing_key()),
+    });
+
+    let did_doc = json!({
         "@context": [
             "https://www.w3.org/ns/did/v1",
             "https://w3id.org/security/suites/jws-2020/v1"
@@ -15,39 +24,54 @@ fn create_dummy(name: &str) {
         "id": format!("did:web:{domain}"),
         "verificationMethod": [
             {
-                "id": format!("did:web:{domain}#verification-key"),
+                "id": format!("{did}#verification-key"),
                 "type": "JsonWebKey2020",
-                "controller":  format!("did:web:{domain}"),
+                "controller":  format!("{did}"),
                 "publicKeyJwk": {
                     "kty": "OKP",
                     "crv": "Ed25519",
                     "use": "sig",
-                    "x": base64ct::Base64Url::encode_string(dummy.verifying_key()),
+                    "x": Base64Url::encode_string(dummy.verifying_key()),
                 }
             },
             {
-                "id": format!("did:web:{domain}#encryption-key"),
+                "id": format!("{did}#encryption-key"),
                 "type": "JsonWebKey2020",
-                "controller": format!("did:web:{domain}"),
+                "controller": format!("{did}"),
                 "publicKeyJwk": {
                     "kty": "OKP",
                     "crv": "X25519",
                     "use": "enc",
-                    "x": base64ct::Base64Url::encode_string(dummy.encryption_key()),
+                    "x": Base64Url::encode_string(dummy.encryption_key()),
                 }
             },
         ],
         "authentication": [
-            format!("did:web:{domain}#verification-key"),
+            format!("{did}#verification-key"),
         ],
         "keyAgreement": [
-            format!("did:web:{domain}#encryption-key"), 
+            format!("{did}#encryption-key"),
           ]
     });
 
-    println!("{}", serde_json::to_string_pretty(&doc).unwrap())
+    fs::write(
+        format!("examples/test/{name}-did.json"),
+        serde_json::to_string_pretty(&did_doc).unwrap(),
+    )
+    .unwrap();
+    fs::write(
+        format!("examples/test/{name}.identity"),
+        serde_json::to_string_pretty(&private_doc).unwrap(),
+    )
+    .unwrap();
 }
 
 fn main() {
-    create_dummy("bob");
+    let args: Vec<String> = std::env::args().collect();
+
+    if args.len() < 2 {
+        eprintln!("Please provide a username");
+    }
+
+    create_dummy(&args[1]);
 }
