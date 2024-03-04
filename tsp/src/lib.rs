@@ -2,7 +2,10 @@ use futures::{Stream, StreamExt};
 use tsp_definitions::{Error, ReceivedTspMessage, Receiver, ResolvedVid, Sender};
 use tsp_vid::Vid;
 
-// resolve the key matarial of a provided VID
+mod vid_database;
+
+pub use vid_database::VidDatabase;
+
 pub async fn resolve_vid(vid: &str) -> Result<Vid, Error> {
     tsp_vid::resolve::resolve_vid(vid).await
 }
