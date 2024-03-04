@@ -55,6 +55,16 @@ mod selector {
     pub const DASH: u32 = 62;
 }
 
+/// (Temporary) interface to get Sender/Receiver VID's information from a CESR-encoded message
+pub fn get_sender_receiver(stream: &mut [u8]) -> Result<(&[u8], &[u8]), error::DecodeError> {
+    let envelope = decode_envelope_mut(stream)?
+        .into_opened()
+        .expect("Infallible")
+        .envelope;
+
+    Ok((envelope.sender, envelope.receiver))
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
