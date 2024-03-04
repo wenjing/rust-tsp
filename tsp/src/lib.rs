@@ -1,5 +1,4 @@
-use async_stream::try_stream;
-use futures::{pin_mut, Stream, StreamExt};
+use futures::{Stream, StreamExt};
 use tsp_definitions::{Error, ReceivedTspMessage, Receiver, ResolvedVid, Sender};
 use tsp_vid::Vid;
 
@@ -22,38 +21,35 @@ pub async fn send(
 pub fn receive(
     receiver: &impl Receiver,
     listening: Option<tokio::sync::oneshot::Sender<()>>,
-) -> impl Stream<Item = Result<ReceivedTspMessage<Vid>, Error>> + '_ {
-    try_stream! {
-        let messages = tsp_transport::receive_messages(receiver.endpoint())?;
-        pin_mut!(messages);
+) -> Result<impl Stream<Item = Result<ReceivedTspMessage<Vid>, Error>> + '_, Error> {
+    let messages = tsp_transport::receive_messages(receiver.endpoint())?;
 
-        listening.map(|s| s.send(()));
+    listening.map(|s| s.send(()));
 
-        while let Some(m) = messages.next().await {
-            let mut message = m?;
+    Ok(messages.then(|data| async {
+        let mut message = data?;
 
-            let (sender, intended_receiver) = tsp_cesr::get_sender_receiver(&mut message)?;
+        let (sender, intended_receiver) = tsp_cesr::get_sender_receiver(&mut message)?;
 
-            if intended_receiver != receiver.identifier() {
-                Err(Error::UnexpectedRecipient)?
-            }
-
-            let sender = resolve_vid(std::str::from_utf8(sender)?).await?;
-            let (nonconfidential_data, payload) = tsp_crypto::open(receiver, &sender, &mut message)?;
-
-            yield ReceivedTspMessage::<Vid> {
-                sender,
-                nonconfidential_data: nonconfidential_data.map(|v| v.to_vec()),
-                payload: payload.to_owned(),
-            };
+        if intended_receiver != receiver.identifier() {
+            return Err(Error::UnexpectedRecipient);
         }
-    }
+
+        let sender = resolve_vid(std::str::from_utf8(sender).unwrap()).await?;
+        let (nonconfidential_data, payload) = tsp_crypto::open(receiver, &sender, &mut message)?;
+
+        Ok(ReceivedTspMessage::<Vid> {
+            sender,
+            nonconfidential_data: nonconfidential_data.map(|v| v.to_vec()),
+            payload: payload.to_owned(),
+        })
+    }))
 }
 
 #[cfg(test)]
 mod test {
     use crate::{receive, resolve_vid, send};
-    use futures::{pin_mut, StreamExt};
+    use futures::StreamExt;
     use tokio::sync::oneshot;
 
     #[tokio::test]
@@ -82,8 +78,8 @@ mod test {
                 .await
                 .unwrap();
 
-            let stream = receive(&bob_receiver, Some(receiver_tx));
-            pin_mut!(stream);
+            let stream = receive(&bob_receiver, Some(receiver_tx)).unwrap();
+            tokio::pin!(stream);
 
             let message = stream.next().await.unwrap().unwrap();
 

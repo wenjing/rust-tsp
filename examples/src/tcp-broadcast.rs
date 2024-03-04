@@ -1,9 +1,9 @@
-use futures_util::{pin_mut, StreamExt};
+use futures_util::StreamExt;
 use rand::Rng;
 use std::time::Duration;
 use tokio::time::sleep;
-use tsp_crypto::dummy::Dummy;
-use tsp_definitions::Error;
+use tsp_definitions::{Error, ResolvedVid};
+use tsp_vid::VidController;
 
 const SERVER_ADDRESS: &str = "127.0.0.1:1337";
 
@@ -22,19 +22,26 @@ async fn main() {
     rx.await.unwrap();
 
     // setup crypto
-    let (alice, bobbi) = (Dummy::new("alice"), Dummy::new("bobbi"));
+    let alice: &'static VidController = Box::leak(Box::new(
+        VidController::from_file("./examples/test/alice.identity")
+            .await
+            .unwrap(),
+    ));
+    let bob: &'static VidController = Box::leak(Box::new(
+        VidController::from_file("./examples/test/bob.identity")
+            .await
+            .unwrap(),
+    ));
 
-    for (me, other) in [(alice.clone(), bobbi.clone()), (bobbi, alice)] {
-        let (receiver_me, receiver_other) = (me.clone(), other.clone());
+    for (me, you) in [(alice, bob), (bob, alice)] {
         tokio::spawn(async move {
-            let stream = tsp::receive(&receiver_me, None);
-            pin_mut!(stream);
+            let stream = tsp::receive(me, None).unwrap();
+            tokio::pin!(stream);
 
             loop {
                 let message = match stream.next().await {
                     Some(Ok(m)) => m,
                     Some(Err(Error::UnexpectedRecipient)) => {
-                        //pass
                         continue;
                     }
                     Some(Err(e)) => {
@@ -42,15 +49,16 @@ async fn main() {
                         continue;
                     }
                     None => {
+                        tracing::error!("connection closed");
                         break;
                     }
                 };
 
                 tracing::info!(
                     "{} decrypted {} from {}",
-                    receiver_me.name(),
+                    String::from_utf8_lossy(me.identifier()),
                     String::from_utf8_lossy(&message.payload),
-                    receiver_other.name()
+                    String::from_utf8_lossy(message.sender.identifier())
                 );
             }
         });
@@ -61,12 +69,12 @@ async fn main() {
                 sleep(Duration::from_millis(2000 + random_wait)).await;
                 let word = random_word::gen(random_word::Lang::En);
 
-                tsp::send(&me, &other, None, word.as_bytes()).await.unwrap();
+                tsp::send(me, you, None, word.as_bytes()).await.unwrap();
 
                 tracing::info!(
                     "{} encrypted and sent {word} for {}",
-                    me.name(),
-                    other.name()
+                    String::from_utf8_lossy(me.identifier()),
+                    String::from_utf8_lossy(you.identifier()),
                 );
             }
         });
