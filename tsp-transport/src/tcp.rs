@@ -1,4 +1,4 @@
-use async_stream::try_stream;
+use async_stream::stream;
 use futures::{SinkExt, Stream};
 use std::{collections::HashMap, fmt::Display, io, net::SocketAddr, sync::Arc};
 use tokio::{
@@ -38,12 +38,13 @@ pub(crate) fn receive_messages(
         return Err(Error::InvalidAddress);
     };
 
-    Ok(try_stream! {
-        let stream = tokio::net::TcpStream::connect(address).await?;
-        let mut messages = Framed::new(stream, BytesCodec::new());
+    Ok(stream! {
+        if let Ok(stream) = tokio::net::TcpStream::connect(address).await {
+            let mut messages = Framed::new(stream, BytesCodec::new());
 
-        while let Some(m) = messages.next().await {
-            yield m?;
+            while let Some(m) = messages.next().await {
+                yield m.map_err(Error::from);
+            }
         }
     })
 }
