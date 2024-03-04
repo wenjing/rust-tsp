@@ -1,6 +1,6 @@
 use tsp_definitions::{Error, ResolvedVid, Sender};
 
-pub async fn resolve_vid(vid: String) -> Result<impl ResolvedVid, Error> {
+pub async fn resolve_vid(vid: &str) -> Result<impl ResolvedVid, Error> {
     tsp_vid::resolve::resolve_vid(vid).await
 }
 
@@ -30,7 +30,7 @@ mod test {
         let alice = tsp_vid::VidController::from_file("../examples/test/alice.identity")
             .await
             .unwrap();
-        let bob = resolve_vid("did:web:did.tweede.golf:user:bob".to_string())
+        let bob = resolve_vid("did:web:did.tweede.golf:user:bob")
             .await
             .unwrap();
         let payload = b"hello world";

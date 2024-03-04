@@ -4,9 +4,8 @@ use crate::Vid;
 
 mod did;
 
-pub async fn resolve_vid<Identifier: ToString>(id: Identifier) -> Result<Vid<Identifier>, Error> {
-    let id_string = id.to_string();
-    let parts = id_string.split(':').collect::<Vec<&str>>();
+pub async fn resolve_vid(id: &str) -> Result<Vid, Error> {
+    let parts = id.split(':').collect::<Vec<&str>>();
 
     match parts.get(0..2) {
         Some([did::SCHEME, did::web::SCHEME]) => {

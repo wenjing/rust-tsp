@@ -63,16 +63,13 @@ pub fn resolve_url(parts: &[&str]) -> Result<Url, Error> {
     .parse()?)
 }
 
-pub fn resolve_document<Identifier: ToString>(
-    did_document: DidDocument,
-    id: Identifier,
-) -> Result<Vid<Identifier>, Error> {
+pub fn resolve_document(did_document: DidDocument, target_id: &str) -> Result<Vid, Error> {
     let transport = match did_document.service.into_iter().next() {
         Some(service) => service.service_endpoint,
         None => return Err(Error::ResolveVID("No transport found in the DID document")),
     };
 
-    if did_document.id != id.to_string() {
+    if did_document.id != target_id {
         return Err(Error::ResolveVID("Invalid id specified in DID document"));
     }
 
@@ -124,7 +121,7 @@ pub fn resolve_document<Identifier: ToString>(
     };
 
     Ok(Vid {
-        id,
+        id: did_document.id,
         transport,
         public_sigkey,
         public_enckey,
