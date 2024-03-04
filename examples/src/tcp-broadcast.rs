@@ -19,15 +19,17 @@ async fn send(msg: &[u8]) {
 
 #[tokio::main]
 async fn main() {
+    let (tx, rx) = tokio::sync::oneshot::channel();
+
     // start broadcast server
     let server_handle = tokio::spawn(async move {
-        tsp_transport::tcp::broadcast_server(SERVER_ADDRESS)
+        tsp_transport::tcp::broadcast_server(SERVER_ADDRESS, Some(tx))
             .await
             .unwrap();
     });
 
     // wait for server to start
-    sleep(Duration::from_secs(2)).await;
+    rx.await.unwrap();
 
     // setup crypto
     let (alice, bobbi) = (Dummy::new("alice"), Dummy::new("bobbi"));

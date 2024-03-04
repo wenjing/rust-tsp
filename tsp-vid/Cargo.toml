@@ -20,3 +20,5 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 ed25519-dalek = { workspace = true, features = ["fast", "zeroize", "rand_core"] }
 base64ct = { workspace = true }
+# deserialize
+tokio = { workspace = true }

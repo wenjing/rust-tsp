@@ -13,7 +13,13 @@ pub enum Error {
     #[error("{0}")]
     ParseUrl(#[from] url::ParseError),
     #[error("{0}")]
+    ParseJson(#[from] serde_json::Error),
+    #[error("{0}")]
+    Base64(#[from] base64ct::Error),
+    #[error("{0}")]
     Io(#[from] std::io::Error),
+    #[error("could not deserialize key {0}")]
+    ParseKey(#[from] std::array::TryFromSliceError),
     #[error("could not resolve VID {0}")]
     ResolveVID(&'static str),
     #[error("unexpected recipient")]
