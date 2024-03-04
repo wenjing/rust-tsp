@@ -22,6 +22,4 @@ tokio = { workspace = true }
 futures-core = { workspace = true }
 async-stream = { workspace = true }
 futures = { workspace = true }
-
-[dev-dependencies]
 tokio-util = { workspace = true }

@@ -22,6 +22,8 @@ pub enum Error {
     Io(#[from] std::io::Error),
     #[error("{0}")]
     Utf8(#[from] std::str::Utf8Error),
+    #[error("unresolved vid {0}")]
+    UnresolvedVid(String),
     #[error("could not deserialize key {0}")]
     ParseKey(#[from] std::array::TryFromSliceError),
     #[error("could not resolve VID {0}")]
