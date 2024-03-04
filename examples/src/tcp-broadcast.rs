@@ -1,21 +1,11 @@
-use std::time::Duration;
-
+use futures_util::{pin_mut, StreamExt};
 use rand::Rng;
-use tokio::{io::AsyncWriteExt, time::sleep};
-use tokio_stream::StreamExt;
-use tokio_util::codec::{BytesCodec, Framed};
+use std::time::Duration;
+use tokio::time::sleep;
 use tsp_crypto::dummy::Dummy;
-use tsp_definitions::ResolvedVid;
+use tsp_definitions::Error;
 
 const SERVER_ADDRESS: &str = "127.0.0.1:1337";
-
-async fn send(msg: &[u8]) {
-    let mut stream = tokio::net::TcpStream::connect(SERVER_ADDRESS)
-        .await
-        .unwrap();
-
-    stream.write_all(msg).await.unwrap();
-}
 
 #[tokio::main]
 async fn main() {
@@ -37,15 +27,16 @@ async fn main() {
     for (me, other) in [(alice.clone(), bobbi.clone()), (bobbi, alice)] {
         let (receiver_me, receiver_other) = (me.clone(), other.clone());
         tokio::spawn(async move {
-            let stream = tokio::net::TcpStream::connect(SERVER_ADDRESS)
-                .await
-                .unwrap();
-
-            let mut messages = Framed::new(stream, BytesCodec::new());
+            let stream = tsp::receive(&receiver_me, None);
+            pin_mut!(stream);
 
             loop {
-                let mut message = match messages.next().await {
+                let message = match stream.next().await {
                     Some(Ok(m)) => m,
+                    Some(Err(Error::UnexpectedRecipient)) => {
+                        //pass
+                        continue;
+                    }
                     Some(Err(e)) => {
                         tracing::error!("{e}");
                         continue;
@@ -55,37 +46,12 @@ async fn main() {
                     }
                 };
 
-                // check the message was not sent by us
-                if String::from_utf8_lossy(&message[7..(7 + receiver_me.identifier().len())])
-                    == receiver_me.name()
-                {
-                    continue;
-                }
-
                 tracing::info!(
-                    "{} received {} bytes from {}",
+                    "{} decrypted {} from {}",
                     receiver_me.name(),
-                    message.len(),
+                    String::from_utf8_lossy(&message.payload),
                     receiver_other.name()
                 );
-
-                match tsp_crypto::open(&receiver_me, &receiver_other, &mut message) {
-                    Ok((_, payload)) => {
-                        tracing::info!(
-                            "{} decrypted {} from {}",
-                            receiver_me.name(),
-                            String::from_utf8_lossy(payload),
-                            receiver_other.name()
-                        );
-                    }
-                    Err(e) => {
-                        tracing::error!(
-                            "{} encountered an error decrypting from {} {e:?}",
-                            receiver_me.name(),
-                            receiver_other.name()
-                        );
-                    }
-                }
             }
         });
 
@@ -93,22 +59,13 @@ async fn main() {
             loop {
                 let random_wait = rand::thread_rng().gen_range(0..2000);
                 sleep(Duration::from_millis(2000 + random_wait)).await;
-
                 let word = random_word::gen(random_word::Lang::En);
-                let ciphertext = match tsp_crypto::seal(&me, &other, None, word.as_bytes()) {
-                    Ok(c) => c,
-                    Err(e) => {
-                        tracing::error!("error encrypting a message {e}");
-                        continue;
-                    }
-                };
 
-                send(&ciphertext).await;
-                tracing::info!("{} encrypted {word} for {}", me.name(), other.name());
+                tsp::send(&me, &other, None, word.as_bytes()).await.unwrap();
+
                 tracing::info!(
-                    "{} sent {} bytes to {}",
+                    "{} encrypted and sent {word} for {}",
                     me.name(),
-                    ciphertext.len(),
                     other.name()
                 );
             }
