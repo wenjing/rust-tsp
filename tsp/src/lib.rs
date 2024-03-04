@@ -1,6 +1,9 @@
-use tsp_definitions::{Error, ResolvedVid, Sender};
+use async_stream::try_stream;
+use futures::{pin_mut, Stream, StreamExt};
+use tsp_definitions::{Error, ReceivedTspMessage, Receiver, ResolvedVid, Sender};
+use tsp_vid::Vid;
 
-pub async fn resolve_vid(vid: &str) -> Result<impl ResolvedVid, Error> {
+pub async fn resolve_vid(vid: &str) -> Result<Vid, Error> {
     tsp_vid::resolve::resolve_vid(vid).await
 }
 
@@ -16,12 +19,41 @@ pub async fn send(
     Ok(())
 }
 
-// pub fn receive<V: ResolvedVid>(receiver: &impl Receiver) -> impl Stream<Item = ReceivedTspMessage<V>> {
-// }
+pub fn receive(
+    receiver: &impl Receiver,
+    listening: Option<tokio::sync::oneshot::Sender<()>>,
+) -> impl Stream<Item = Result<ReceivedTspMessage<Vid>, Error>> + '_ {
+    try_stream! {
+        let messages = tsp_transport::receive_messages(receiver.endpoint())?;
+        pin_mut!(messages);
+
+        listening.map(|s| s.send(()));
+
+        while let Some(m) = messages.next().await {
+            let mut message = m?;
+
+            let (sender, intended_receiver) = tsp_cesr::get_sender_receiver(&mut message)?;
+
+            if intended_receiver != receiver.identifier() {
+                Err(Error::UnexpectedRecipient)?
+            }
+
+            let sender = resolve_vid(std::str::from_utf8(sender)?).await?;
+            let (nonconfidential_data, payload) = tsp_crypto::open(receiver, &sender, &mut message)?;
+
+            yield ReceivedTspMessage::<Vid> {
+                sender,
+                nonconfidential_data: nonconfidential_data.map(|v| v.to_vec()),
+                payload: payload.to_owned(),
+            };
+        }
+    }
+}
 
 #[cfg(test)]
 mod test {
-    use crate::{resolve_vid, send};
+    use crate::{receive, resolve_vid, send};
+    use futures::{pin_mut, StreamExt};
     use tokio::sync::oneshot;
 
     #[tokio::test]
@@ -44,6 +76,24 @@ mod test {
 
         rx.await.unwrap();
 
+        let (receiver_tx, receiver_rx) = oneshot::channel::<()>();
+        let handle = tokio::task::spawn(async {
+            let bob_receiver = tsp_vid::VidController::from_file("../examples/test/bob.identity")
+                .await
+                .unwrap();
+
+            let stream = receive(&bob_receiver, Some(receiver_tx));
+            pin_mut!(stream);
+
+            let message = stream.next().await.unwrap().unwrap();
+
+            assert_eq!(message.payload, b"hello world");
+        });
+
+        receiver_rx.await.unwrap();
+
         send(&alice, &bob, None, payload).await.unwrap();
+
+        handle.await.unwrap();
     }
 }

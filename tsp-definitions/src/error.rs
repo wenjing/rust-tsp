@@ -18,6 +18,8 @@ pub enum Error {
     Base64(#[from] base64ct::Error),
     #[error("{0}")]
     Io(#[from] std::io::Error),
+    #[error("{0}")]
+    Utf8(#[from] std::str::Utf8Error),
     #[error("could not deserialize key {0}")]
     ParseKey(#[from] std::array::TryFromSliceError),
     #[error("could not resolve VID {0}")]
