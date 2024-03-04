@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = [ "tsp-cesr", "tsp-transport", "tsp-crypto", "tsp-vid", "tsp-definitions", "examples"]
+members = [ "tsp-cesr", "tsp-transport", "tsp-crypto", "tsp-vid", "tsp-definitions", "examples", "tsp"]
 
 [workspace.package]
 version = "0.0.1"
@@ -18,10 +18,11 @@ hpke = { git = "https://github.com/marlonbaeten/rust-hpke", branch = "keys-by-re
 crypto_box = { version = "0.9", features = ["alloc", "seal", "chacha20"] }
 rand = "0.8"
 ed25519-dalek = { version = "2", features = [ "rand_core", "pkcs8" ] }
-base64ct = { version = "1.6", features = ["alloc"] }
+base64ct = { version = "1.6", features = ["alloc", "std"] }
 thiserror = "1.0"
 # transport
 tokio = { version = "1.0", features = ["full", "tracing"] }
+futures-core = { version = "0.3"}
 tokio-util = { version = "0.7", features = ["full"] }
 tokio-stream = { version = "0.1" }
 futures = { version = "0.3.0", features = ["thread-pool"]}

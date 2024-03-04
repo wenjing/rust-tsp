@@ -10,6 +10,12 @@ pub type NonConfidentialData<'a> = &'a [u8];
 pub type Payload<'a> = &'a [u8];
 pub type TSPMessage = Vec<u8>;
 
+pub struct ReceivedTspMessage<V: ResolvedVid> {
+    pub sender: V,
+    pub nonconfidential_data: Option<Vec<u8>>,
+    pub payload: Vec<u8>,
+}
+
 pub trait ResolvedVid {
     /// A identifier of the Vid as bytes (for inclusion in TSP packets)
     fn identifier(&self) -> &[u8];
