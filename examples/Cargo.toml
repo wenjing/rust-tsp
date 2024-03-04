@@ -20,6 +20,8 @@ path = "src/tcp-broadcast.rs"
 tsp-crypto = { path = "../tsp-crypto", features = ["dummy"] }
 tsp-transport = { path = "../tsp-transport" }
 tsp-definitions = { path = "../tsp-definitions" }
+tsp-vid = { path = "../tsp-vid" }
+tsp = { path = "../tsp" }
 
 # dummy data
 random_word = { version = "0.4.3", features = ["en"] }
@@ -31,6 +33,8 @@ tokio-util = { workspace = true }
 tracing = { workspace = true }
 rand = { workspace = true }
 hpke = { workspace = true }
+futures-util = { workspace = true }
+url = { workspace = true }
 
 # did web
 serde = { version = "1.0" }

@@ -10,6 +10,7 @@ pub type NonConfidentialData<'a> = &'a [u8];
 pub type Payload<'a> = &'a [u8];
 pub type TSPMessage = Vec<u8>;
 
+#[derive(Debug)]
 pub struct ReceivedTspMessage<V: ResolvedVid> {
     pub sender: V,
     pub nonconfidential_data: Option<Vec<u8>>,

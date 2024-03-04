@@ -15,10 +15,13 @@ rust-version.workspace = true
 [dependencies]
 tsp-transport = { path = "../tsp-transport" }
 tsp-vid = { path = "../tsp-vid" }
+tsp-cesr = { path = "../tsp-cesr" }
 tsp-crypto = { path = "../tsp-crypto" }
 tsp-definitions = { path = "../tsp-definitions" }
 tokio = { workspace = true }
 futures-core = { workspace = true }
+async-stream = { workspace = true }
+futures = { workspace = true }
 
 [dev-dependencies]
 tokio-util = { workspace = true }

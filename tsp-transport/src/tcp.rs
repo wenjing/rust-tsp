@@ -1,4 +1,5 @@
-use futures::SinkExt;
+use async_stream::try_stream;
+use futures::{SinkExt, Stream};
 use std::{collections::HashMap, fmt::Display, io, net::SocketAddr, sync::Arc};
 use tokio::{
     io::AsyncWriteExt,
@@ -18,14 +19,33 @@ use tsp_definitions::Error;
 pub(crate) const SCHEME: &str = "tcp";
 
 pub(crate) async fn send_message(tsp_message: &[u8], url: &Url) -> Result<(), Error> {
-    if let Some(address) = url.socket_addrs(|| None)?.first() {
-        let mut stream = tokio::net::TcpStream::connect(address).await?;
-        stream.write_all(tsp_message).await?;
+    let addresses = url.socket_addrs(|| None)?;
+    let Some(address) = addresses.first() else {
+        return Err(Error::InvalidAddress);
+    };
 
-        Ok(())
-    } else {
-        Err(Error::InvalidAddress)
-    }
+    let mut stream = tokio::net::TcpStream::connect(address).await?;
+    stream.write_all(tsp_message).await?;
+
+    Ok(())
+}
+
+pub(crate) fn receive_messages(
+    address: &Url,
+) -> Result<impl Stream<Item = Result<BytesMut, Error>>, Error> {
+    let addresses = address.socket_addrs(|| None)?;
+    let Some(address) = addresses.into_iter().next() else {
+        return Err(Error::InvalidAddress);
+    };
+
+    Ok(try_stream! {
+        let stream = tokio::net::TcpStream::connect(address).await?;
+        let mut messages = Framed::new(stream, BytesCodec::new());
+
+        while let Some(m) = messages.next().await {
+            yield m?;
+        }
+    })
 }
 
 /// Start a broadcast server, that will forward all messages to all open tcp connections
