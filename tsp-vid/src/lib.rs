@@ -3,6 +3,7 @@ use hpke::{kem::X25519HkdfSha256 as KemType, Kem, Serializable};
 use rand::rngs::OsRng;
 use tsp_definitions::{KeyData, ResolvedVid};
 
+pub mod deserialize;
 pub mod resolve;
 
 /// A Vid represents a *verified* Identifier
