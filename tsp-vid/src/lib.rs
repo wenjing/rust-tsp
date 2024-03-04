@@ -9,8 +9,8 @@ pub mod resolve;
 /// A Vid represents a *verified* Identifier
 /// (so it doesn't carry any information that allows to verify it)
 #[derive(Clone, Debug)]
-pub struct Vid<Identifier> {
-    id: Identifier,
+pub struct Vid {
+    id: String,
     transport: url::Url,
     public_sigkey: Ed::VerifyingKey,
     public_enckey: KeyData,
@@ -18,14 +18,14 @@ pub struct Vid<Identifier> {
 
 /// A VidController represents the 'owner' of a particular Vid
 #[derive(Clone)]
-pub struct VidController<Identifier> {
-    vid: Vid<Identifier>,
+pub struct VidController {
+    vid: Vid,
     sigkey: Ed::SigningKey,
     enckey: KeyData,
 }
 
 /// A custom implementation of Debug for VidController to avoid key material from leaking during panics.
-impl<I: std::fmt::Debug> std::fmt::Debug for VidController<I> {
+impl std::fmt::Debug for VidController {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
         f.debug_struct("VidController")
             .field("vid", &self.vid)
@@ -35,7 +35,7 @@ impl<I: std::fmt::Debug> std::fmt::Debug for VidController<I> {
     }
 }
 
-impl<Identifier: AsRef<[u8]>> tsp_definitions::ResolvedVid for Vid<Identifier> {
+impl tsp_definitions::ResolvedVid for Vid {
     fn identifier(&self) -> &[u8] {
         self.id.as_ref()
     }
@@ -53,7 +53,7 @@ impl<Identifier: AsRef<[u8]>> tsp_definitions::ResolvedVid for Vid<Identifier> {
     }
 }
 
-impl<Identifier: AsRef<[u8]>> tsp_definitions::ResolvedVid for VidController<Identifier> {
+impl tsp_definitions::ResolvedVid for VidController {
     fn identifier(&self) -> &[u8] {
         self.vid.identifier()
     }
@@ -71,32 +71,32 @@ impl<Identifier: AsRef<[u8]>> tsp_definitions::ResolvedVid for VidController<Ide
     }
 }
 
-impl<Identifier: AsRef<[u8]>> tsp_definitions::Sender for VidController<Identifier> {
+impl tsp_definitions::Sender for VidController {
     fn signing_key(&self) -> &KeyData {
         self.sigkey.as_bytes()
     }
 }
 
-impl<Identifier: AsRef<[u8]>> tsp_definitions::Receiver for VidController<Identifier> {
+impl tsp_definitions::Receiver for VidController {
     fn decryption_key(&self) -> &KeyData {
         &self.enckey
     }
 }
 
-impl<Identifier: AsRef<[u8]>> AsRef<[u8]> for Vid<Identifier> {
+impl AsRef<[u8]> for Vid {
     fn as_ref(&self) -> &[u8] {
         self.identifier()
     }
 }
 
-impl<Identifier> VidController<Identifier> {
-    pub fn bind(id: Identifier, transport: url::Url) -> Self {
+impl VidController {
+    pub fn bind(id: impl Into<String>, transport: url::Url) -> Self {
         let sigkey = Ed::SigningKey::generate(&mut OsRng);
         let (enckey, public_enckey) = KemType::gen_keypair(&mut OsRng);
 
         Self {
             vid: Vid {
-                id,
+                id: id.into(),
                 transport,
                 public_sigkey: sigkey.verifying_key(),
                 public_enckey: public_enckey.to_bytes().into(),
@@ -106,11 +106,11 @@ impl<Identifier> VidController<Identifier> {
         }
     }
 
-    pub fn vid(&self) -> &Vid<Identifier> {
+    pub fn vid(&self) -> &Vid {
         &self.vid
     }
 
-    pub fn into_vid(self) -> Vid<Identifier> {
+    pub fn into_vid(self) -> Vid {
         self.vid
     }
 }
