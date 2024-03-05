@@ -1,18 +1,19 @@
 use base64ct::{Base64Url, Encoding};
 use serde_json::json;
 use std::fs;
-use tsp_crypto::dummy::Dummy;
 use tsp_definitions::{Receiver, ResolvedVid, Sender};
+use tsp_vid::VidController;
+use url::Url;
 
-fn create_dummy(name: &str) {
+fn create_identity(name: &str) {
     let domain = "did.tweede.golf";
     let did = format!("did:web:{domain}:user:{name}");
-    let dummy = Dummy::new(&did);
+    let identity = VidController::bind(&did, Url::parse("tcp://127.0.0.1:1337").unwrap());
 
     let private_doc = json!({
         "vid": did,
-        "decryption-key": Base64Url::encode_string(dummy.decryption_key()),
-        "signing-key": Base64Url::encode_string(dummy.signing_key()),
+        "decryption-key": Base64Url::encode_string(identity.decryption_key()),
+        "signing-key": Base64Url::encode_string(identity.signing_key()),
     });
 
     let did_doc = json!({
@@ -30,7 +31,7 @@ fn create_dummy(name: &str) {
                     "kty": "OKP",
                     "crv": "Ed25519",
                     "use": "sig",
-                    "x": Base64Url::encode_string(dummy.verifying_key()),
+                    "x": Base64Url::encode_string(identity.verifying_key()),
                 }
             },
             {
@@ -41,7 +42,7 @@ fn create_dummy(name: &str) {
                     "kty": "OKP",
                     "crv": "X25519",
                     "use": "enc",
-                    "x": Base64Url::encode_string(dummy.encryption_key()),
+                    "x": Base64Url::encode_string(identity.encryption_key()),
                 }
             },
         ],
@@ -77,5 +78,5 @@ fn main() {
         eprintln!("Please provide a username");
     }
 
-    create_dummy(&args[1]);
+    create_identity(&args[1]);
 }
