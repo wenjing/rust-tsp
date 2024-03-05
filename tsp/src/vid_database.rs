@@ -128,32 +128,33 @@ impl VidDatabase {
 
 #[cfg(test)]
 mod test {
-    use tsp_definitions::{Error, ReceivedTspMessage};
-    use tsp_vid::Vid;
-
     use crate::VidDatabase;
 
-    async fn setup_alice_bob() -> Result<ReceivedTspMessage<Vid>, Error> {
+    async fn test_send_receive() -> Result<(), tsp_definitions::Error> {
         let mut db1 = VidDatabase::new();
         db1.add_identity_from_file("test/bob.identity").await?;
-        db1.resolve_vid("did:web:did.tweede.golf:user:alice")
+        db1.resolve_vid("did:web:did.tsp-test.org:user:alice")
             .await?;
 
-        let mut bobs_messages = db1.receive("did:web:did.tweede.golf:user:bob").await?;
+        let mut bobs_messages = db1.receive("did:web:did.tsp-test.org:user:bob").await?;
 
         let mut db2 = VidDatabase::new();
         db2.add_identity_from_file("test/alice.identity").await?;
-        db2.resolve_vid("did:web:did.tweede.golf:user:bob").await?;
+        db2.resolve_vid("did:web:did.tsp-test.org:user:bob").await?;
 
         db2.send(
-            "did:web:did.tweede.golf:user:alice",
-            "did:web:did.tweede.golf:user:bob",
+            "did:web:did.tsp-test.org:user:alice",
+            "did:web:did.tsp-test.org:user:bob",
             Some(b"extra non-confidential data"),
             b"hello world",
         )
         .await?;
 
-        bobs_messages.recv().await.unwrap()
+        let message = bobs_messages.recv().await.unwrap()?;
+
+        assert_eq!(message.payload, b"hello world");
+
+        Ok(())
     }
 
     #[tokio::test]
@@ -163,8 +164,6 @@ mod test {
             .await
             .unwrap();
 
-        let message = setup_alice_bob().await.unwrap();
-
-        assert_eq!(message.payload, b"hello world");
+        test_send_receive().await.unwrap();
     }
 }

@@ -44,7 +44,7 @@ mod test {
             .await
             .unwrap();
 
-        assert_eq!(alice.vid().id, "did:web:did.tweede.golf:user:alice");
+        assert_eq!(alice.vid().id, "did:web:did.tsp-test.org:user:alice");
         assert_eq!(alice.vid().transport.as_str(), "tcp://127.0.0.1:1337");
     }
 }
