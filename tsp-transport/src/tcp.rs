@@ -74,9 +74,9 @@ pub async fn broadcast_server<A: ToSocketAddrs + Display>(
     addr: A,
     startup_signal: Option<Sender<()>>,
 ) -> Result<(), Error> {
-    tracing_subscriber::fmt()
+    let _ = tracing_subscriber::fmt()
         .with_env_filter(EnvFilter::from_default_env().add_directive("info".parse().unwrap()))
-        .init();
+        .try_init();
 
     let state = Arc::new(Mutex::new(Shared::new()));
     let listener = TcpListener::bind(&addr).await?;
