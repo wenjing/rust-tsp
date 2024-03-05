@@ -5,6 +5,7 @@ use tokio::{
     io::AsyncWriteExt,
     net::{TcpListener, TcpStream, ToSocketAddrs},
     sync::{mpsc, oneshot::Sender, Mutex},
+    task::JoinHandle,
 };
 use tokio_stream::StreamExt;
 use tokio_util::{
@@ -47,6 +48,25 @@ pub(crate) fn receive_messages(
             }
         }
     })
+}
+
+pub async fn start_broadcast_server(addr: &str) -> Result<JoinHandle<()>, Error> {
+    let addr: SocketAddr = addr.parse()?;
+    let (tx, rx) = tokio::sync::oneshot::channel();
+
+    // start broadcast server
+    let handle = tokio::spawn(async move {
+        if let Err(e) = broadcast_server(addr, Some(tx)).await {
+            tracing::error!("tcp broadcast server error {e}");
+        }
+    });
+
+    // wait for server to start
+    if rx.await.is_err() {
+        return Err(Error::Unknown);
+    }
+
+    Ok(handle)
 }
 
 /// Start a broadcast server, that will forward all messages to all open tcp connections

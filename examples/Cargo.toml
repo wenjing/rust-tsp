@@ -17,7 +17,7 @@ name = "tcp-broadcast"
 path = "src/tcp-broadcast.rs"
 
 [dependencies]
-tsp-crypto = { path = "../tsp-crypto", features = ["dummy"] }
+tsp-crypto = { path = "../tsp-crypto" }
 tsp-transport = { path = "../tsp-transport" }
 tsp-definitions = { path = "../tsp-definitions" }
 tsp-vid = { path = "../tsp-vid" }

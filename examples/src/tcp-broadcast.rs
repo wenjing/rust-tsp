@@ -3,23 +3,13 @@ use rand::Rng;
 use std::time::Duration;
 use tokio::time::sleep;
 use tsp_definitions::{Error, ResolvedVid};
+use tsp_transport::tcp::start_broadcast_server;
 use tsp_vid::VidController;
-
-const SERVER_ADDRESS: &str = "127.0.0.1:1337";
 
 #[tokio::main]
 async fn main() {
-    let (tx, rx) = tokio::sync::oneshot::channel();
-
     // start broadcast server
-    let server_handle = tokio::spawn(async move {
-        tsp_transport::tcp::broadcast_server(SERVER_ADDRESS, Some(tx))
-            .await
-            .unwrap();
-    });
-
-    // wait for server to start
-    rx.await.unwrap();
+    let server_handle = start_broadcast_server("127.0.0.1:1337").await.unwrap();
 
     // setup crypto
     let alice: &'static VidController = Box::leak(Box::new(
