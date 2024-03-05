@@ -2,10 +2,12 @@ use futures::{Stream, StreamExt};
 use tsp_definitions::{Error, ReceivedTspMessage, Receiver, ResolvedVid, Sender};
 use tsp_vid::Vid;
 
+// resolve the key matarial of a provided VID
 pub async fn resolve_vid(vid: &str) -> Result<Vid, Error> {
     tsp_vid::resolve::resolve_vid(vid).await
 }
 
+// send data to a resolved VID using the TSP
 pub async fn send(
     sender: &impl Sender,
     receiver: &impl ResolvedVid,
@@ -18,6 +20,7 @@ pub async fn send(
     Ok(())
 }
 
+// listen for incopming TSP messages, given the transport provided by the receiver VID
 pub fn receive(
     receiver: &impl Receiver,
     listening: Option<tokio::sync::oneshot::Sender<()>>,
@@ -51,26 +54,21 @@ mod test {
     use crate::{receive, resolve_vid, send};
     use futures::StreamExt;
     use tokio::sync::oneshot;
+    use tsp_transport::tcp::start_broadcast_server;
 
     #[tokio::test]
     async fn highlevel() {
-        let address = "127.0.0.1:1337";
         let alice = tsp_vid::VidController::from_file("../examples/test/alice.identity")
             .await
             .unwrap();
+
         let bob = resolve_vid("did:web:did.tweede.golf:user:bob")
             .await
             .unwrap();
+
         let payload = b"hello world";
-        let (tx, rx) = oneshot::channel();
 
-        tokio::task::spawn(async move {
-            tsp_transport::tcp::broadcast_server(address, Some(tx))
-                .await
-                .unwrap();
-        });
-
-        rx.await.unwrap();
+        start_broadcast_server("127.0.0.1:1337").await.unwrap();
 
         let (receiver_tx, receiver_rx) = oneshot::channel::<()>();
         let handle = tokio::task::spawn(async {

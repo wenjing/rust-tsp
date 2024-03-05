@@ -13,6 +13,8 @@ pub enum Error {
     #[error("{0}")]
     ParseUrl(#[from] url::ParseError),
     #[error("{0}")]
+    ParseAddress(#[from] std::net::AddrParseError),
+    #[error("{0}")]
     ParseJson(#[from] serde_json::Error),
     #[error("{0}")]
     Base64(#[from] base64ct::Error),
