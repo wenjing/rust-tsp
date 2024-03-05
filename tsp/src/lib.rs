@@ -66,7 +66,7 @@ mod test {
             .await
             .unwrap();
 
-        let bob = resolve_vid("did:web:did.tweede.golf:user:bob")
+        let bob = resolve_vid("did:web:did.tsp-test.org:user:bob")
             .await
             .unwrap();
 

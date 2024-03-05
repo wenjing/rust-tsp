@@ -6,7 +6,7 @@ use tsp_vid::VidController;
 use url::Url;
 
 fn create_identity(name: &str) {
-    let domain = "did.tweede.golf";
+    let domain = "did.tsp-test.org";
     let did = format!("did:web:{domain}:user:{name}");
     let identity = VidController::bind(&did, Url::parse("tcp://127.0.0.1:1337").unwrap());
 

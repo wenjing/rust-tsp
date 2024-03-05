@@ -169,21 +169,21 @@ mod tests {
         let alice_did_doc = fs::read_to_string("../examples/test/alice-did.json").unwrap();
         let alice_did_doc: DidDocument = serde_json::from_str(&alice_did_doc).unwrap();
 
-        let alice = resolve_document(alice_did_doc, "did:web:did.tweede.golf:user:alice");
+        let alice = resolve_document(alice_did_doc, "did:web:did.tsp-test.org:user:alice");
 
         assert_eq!(
             alice.unwrap().identifier(),
-            "did:web:did.tweede.golf:user:alice".as_bytes()
+            "did:web:did.tsp-test.org:user:alice".as_bytes()
         );
 
         let bob_did_doc = fs::read_to_string("../examples/test/bob-did.json").unwrap();
         let bob_did_doc: DidDocument = serde_json::from_str(&bob_did_doc).unwrap();
 
-        let bob = resolve_document(bob_did_doc, "did:web:did.tweede.golf:user:bob");
+        let bob = resolve_document(bob_did_doc, "did:web:did.tsp-test.org:user:bob");
 
         assert_eq!(
             bob.unwrap().identifier(),
-            "did:web:did.tweede.golf:user:bob".as_bytes()
+            "did:web:did.tsp-test.org:user:bob".as_bytes()
         );
     }
 }
