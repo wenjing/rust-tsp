@@ -4,11 +4,11 @@
     "https://w3id.org/security/suites/jws-2020/v1"
   ],
   "authentication": [
-    "did:web:did.tweede.golf:user:alice#verification-key"
+    "did:web:did.tsp-test.org:user:alice#verification-key"
   ],
-  "id": "did:web:did.tweede.golf:user:alice",
+  "id": "did:web:did.tsp-test.org:user:alice",
   "keyAgreement": [
-    "did:web:did.tweede.golf:user:alice#encryption-key"
+    "did:web:did.tsp-test.org:user:alice#encryption-key"
   ],
   "service": [
     {
@@ -19,8 +19,8 @@
   ],
   "verificationMethod": [
     {
-      "controller": "did:web:did.tweede.golf:user:alice",
-      "id": "did:web:did.tweede.golf:user:alice#verification-key",
+      "controller": "did:web:did.tsp-test.org:user:alice",
+      "id": "did:web:did.tsp-test.org:user:alice#verification-key",
       "publicKeyJwk": {
         "crv": "Ed25519",
         "kty": "OKP",
@@ -30,8 +30,8 @@
       "type": "JsonWebKey2020"
     },
     {
-      "controller": "did:web:did.tweede.golf:user:alice",
-      "id": "did:web:did.tweede.golf:user:alice#encryption-key",
+      "controller": "did:web:did.tsp-test.org:user:alice",
+      "id": "did:web:did.tsp-test.org:user:alice#encryption-key",
       "publicKeyJwk": {
         "crv": "X25519",
         "kty": "OKP",
