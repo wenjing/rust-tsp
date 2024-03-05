@@ -20,6 +20,7 @@ impl VidDatabase {
         Default::default()
     }
 
+    /// Add a new identity (VID + private key material) to the database
     pub async fn add_identity(&self, vid_controller: VidController) -> Result<(), Error> {
         let mut identities = self.identities.write().await;
 
@@ -36,6 +37,7 @@ impl VidDatabase {
         self.add_identity(identity).await
     }
 
+    /// Resolve public key material for a VID and add it to the detabase as a relation
     pub async fn resolve_vid(&mut self, vid: &str) -> Result<(), Error> {
         let mut relations = self.relations.write().await;
 
@@ -45,6 +47,7 @@ impl VidDatabase {
         Ok(())
     }
 
+    /// Send a TSP message given earlier resolved VID's
     pub async fn send(
         &self,
         sender_vid: &str,
@@ -75,6 +78,9 @@ impl VidDatabase {
         }
     }
 
+    /// Receive TSP messages given the receivers transport
+    /// Messages will be queued in a channel
+    /// The returned channel contains a maximum of 16 messages
     pub async fn receive(
         &self,
         vid: &str,
@@ -131,6 +137,7 @@ mod test {
     use crate::VidDatabase;
 
     async fn test_send_receive() -> Result<(), tsp_definitions::Error> {
+        // bob database
         let mut db1 = VidDatabase::new();
         db1.add_identity_from_file("test/bob.identity").await?;
         db1.resolve_vid("did:web:did.tsp-test.org:user:alice")
@@ -138,10 +145,12 @@ mod test {
 
         let mut bobs_messages = db1.receive("did:web:did.tsp-test.org:user:bob").await?;
 
+        // alice database
         let mut db2 = VidDatabase::new();
         db2.add_identity_from_file("test/alice.identity").await?;
         db2.resolve_vid("did:web:did.tsp-test.org:user:bob").await?;
 
+        // send a message
         db2.send(
             "did:web:did.tsp-test.org:user:alice",
             "did:web:did.tsp-test.org:user:bob",
@@ -150,8 +159,8 @@ mod test {
         )
         .await?;
 
+        // receive a message
         let message = bobs_messages.recv().await.unwrap()?;
-
         assert_eq!(message.payload, b"hello world");
 
         Ok(())
