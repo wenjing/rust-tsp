@@ -92,7 +92,7 @@ mod test {
         let mut data = vec![];
         encode_genus([1, 2, 3], (4, 5, 6), &mut data);
         encode_fixed_data(2323, b"Hello world!", &mut data); // 0 lead bytes
-        encode_fixed_data(42, b"Tweede golf", &mut data); // 1 lead byte
+        encode_fixed_data(42, b"TrustSpanP!", &mut data); // 1 lead byte
         encode_fixed_data(57, b"TrustSpanP", &mut data); // 2 lead byte
         encode_variable_data(3, b"Where there is power, there is resistance.", &mut data); // 0 lead bytes
         encode_variable_data(
@@ -111,7 +111,7 @@ mod test {
             decode_fixed_data(2323, &mut input).unwrap(),
             b"Hello world!"
         );
-        assert_eq!(decode_fixed_data(42, &mut input).unwrap(), b"Tweede golf");
+        assert_eq!(decode_fixed_data(42, &mut input).unwrap(), b"TrustSpanP!");
         assert_eq!(decode_fixed_data(57, &mut input).unwrap(), b"TrustSpanP");
         assert_eq!(
             decode_variable_data(3, &mut input).unwrap(),
@@ -148,7 +148,7 @@ mod test {
     #[should_panic]
     #[test]
     fn identifier_failure_1() {
-        encode_fixed_data(64, b"Tweede golf", &mut vec![]); // 1 lead byte
+        encode_fixed_data(64, b"TrustSpanP!", &mut vec![]); // 1 lead byte
     }
 
     #[should_panic]
