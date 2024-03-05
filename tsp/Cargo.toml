@@ -23,3 +23,6 @@ futures-core = { workspace = true }
 async-stream = { workspace = true }
 futures = { workspace = true }
 tokio-util = { workspace = true }
+
+[dev-dependencies]
+serial_test = { version = "3.0" }

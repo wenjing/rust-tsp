@@ -60,6 +60,7 @@ mod test {
     use tsp_transport::tcp::start_broadcast_server;
 
     #[tokio::test]
+    #[serial_test::serial(tcp)]
     async fn highlevel() {
         let alice = tsp_vid::VidController::from_file("../examples/test/alice.identity")
             .await
