@@ -6,6 +6,24 @@ mod vid_database;
 
 pub use vid_database::VidDatabase;
 
+/// Resolved a VID given the VID as a string
+///
+/// # Arguments
+///
+/// * `vid` - A VID, for example `did:web:did.tsp-test.org:user:bob`
+///
+/// # Examples
+///
+/// ```
+/// #[tokio::main]
+/// async fn main() {
+///     use tsp_definitions::ResolvedVid;
+/// 
+///     let relation = tsp::resolve_vid("did:web:did.tsp-test.org:user:bob").await.unwrap();
+/// 
+///     assert_eq!(relation.endpoint().as_str(), "tcp://127.0.0.1:1337");
+/// }
+/// ```
 pub async fn resolve_vid(vid: &str) -> Result<Vid, Error> {
     tsp_vid::resolve::resolve_vid(vid).await
 }
