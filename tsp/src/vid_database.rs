@@ -1,7 +1,9 @@
-use async_stream::try_stream;
-use futures::{Stream, StreamExt};
-use std::collections::HashMap;
-use tokio::sync::{mpsc, RwLock};
+use futures::StreamExt;
+use std::{collections::HashMap, sync::Arc};
+use tokio::sync::{
+    mpsc::{self, Receiver},
+    RwLock,
+};
 use tsp_definitions::{Error, ReceivedTspMessage, ResolvedVid};
 use tsp_vid::{Vid, VidController};
 
@@ -9,90 +11,34 @@ use crate::resolve_vid;
 
 #[derive(Debug, Default)]
 pub struct VidDatabase {
-    identities: RwLock<HashMap<String, VidController>>,
-    relations: RwLock<HashMap<String, Vid>>,
+    identities: Arc<RwLock<HashMap<String, VidController>>>,
+    relations: Arc<RwLock<HashMap<String, Vid>>>,
 }
 
 impl VidDatabase {
-    const CHANNEL_SIZE: usize = 16;
-
     pub fn new() -> Self {
         Default::default()
     }
 
-    pub async fn receive(
-        &self,
-        vid: &str,
-    ) -> Result<mpsc::Receiver<ReceivedTspMessage<Vid>>, Error> {
-        let messages = self.receive_inner(vid).await?;
-        let (tx, rx) = mpsc::channel(Self::CHANNEL_SIZE);
-        tokio::pin!(messages);
-
-        while let Some(message) = messages.next().await {
-            match message {
-                Ok(message) => {
-                    if let Err(_e) = tx.send(message).await {
-                        // TODO: log send error
-                    }
-                }
-                Err(_) => {
-                    // TODO: log error
-                }
-            };
-        }
-
-        Ok(rx)
-    }
-
-    async fn receive_inner(
-        &self,
-        vid: &str,
-    ) -> Result<impl Stream<Item = Result<ReceivedTspMessage<Vid>, Error>> + '_, Error> {
-        let identities = self.identities.read().await;
-
-        let Some(receiver) = identities.get(vid).cloned() else {
-            return Err(Error::UnresolvedVid(vid.to_string()));
-        };
-
-        Ok(try_stream! {
-            let messages = tsp_transport::receive_messages(receiver.endpoint())?;
-            tokio::pin!(messages);
-
-            while let Some(m) = messages.next().await {
-                let mut message = m?;
-
-                let (sender, intended_receiver) = tsp_cesr::get_sender_receiver(&mut message)?;
-
-                if intended_receiver != receiver.identifier() {
-                    Err(Error::UnexpectedRecipient)?
-                }
-
-                let sender = std::str::from_utf8(sender)?;
-                let relations = self.relations.read().await;
-
-                let Some(sender) = relations.get(sender) else {
-                    Err(Error::UnresolvedVid(sender.to_string()))?
-                };
-
-                let (nonconfidential_data, payload) = tsp_crypto::open(&receiver, sender, &mut message)?;
-
-                yield ReceivedTspMessage::<Vid> {
-                    sender: sender.clone(),
-                    nonconfidential_data: nonconfidential_data.map(|v| v.to_vec()),
-                    payload: payload.to_owned(),
-                };
-            }
-        })
-    }
-
-    pub async fn add_identity(&self, vid_controller: VidController) {
+    pub async fn add_identity(&self, vid_controller: VidController) -> Result<(), Error> {
         let mut identities = self.identities.write().await;
-        let key = String::from_utf8_lossy(vid_controller.identifier());
+
+        let key = std::str::from_utf8(vid_controller.identifier())?;
         identities.insert(key.to_string(), vid_controller);
+
+        Ok(())
     }
 
-    pub async fn resolve_vid(&self, vid: &str) -> Result<(), Error> {
+    #[cfg(test)]
+    pub async fn add_identity_from_file(&self, name: &str) -> Result<(), Error> {
+        let identity = VidController::from_file(format!("../examples/{name}")).await?;
+
+        self.add_identity(identity).await
+    }
+
+    pub async fn resolve_vid(&mut self, vid: &str) -> Result<(), Error> {
         let mut relations = self.relations.write().await;
+
         let resolved_vid = resolve_vid(vid).await?;
         relations.insert(vid.to_string(), resolved_vid);
 
@@ -106,79 +52,145 @@ impl VidDatabase {
         nonconfidential_data: Option<&[u8]>,
         payload: &[u8],
     ) -> Result<(), Error> {
-        let identities = self.identities.read().await;
+        let sender = self.get_identity(sender_vid).await?;
+        let receiver = self.get_relation(receiver_vid).await?;
 
-        let Some(sender) = identities.get(sender_vid) else {
-            return Err(Error::UnresolvedVid(sender_vid.to_string()));
-        };
-
-        let relations = self.relations.read().await;
-
-        let Some(receiver) = relations.get(receiver_vid) else {
-            return Err(Error::UnresolvedVid(receiver_vid.to_string()));
-        };
-
-        let tsp_message = tsp_crypto::seal(sender, receiver, nonconfidential_data, payload)?;
+        let tsp_message = tsp_crypto::seal(&sender, &receiver, nonconfidential_data, payload)?;
         tsp_transport::send_message(receiver.endpoint(), &tsp_message).await?;
 
         Ok(())
+    }
+
+    async fn get_identity(&self, vid: &str) -> Result<VidController, Error> {
+        match self.identities.read().await.get(vid) {
+            Some(resolved) => Ok(resolved.clone()),
+            None => Err(Error::UnresolvedVid(vid.to_string())),
+        }
+    }
+
+    async fn get_relation(&self, vid: &str) -> Result<Vid, Error> {
+        match self.relations.read().await.get(vid) {
+            Some(resolved) => Ok(resolved.clone()),
+            None => Err(Error::UnresolvedVid(vid.to_string())),
+        }
+    }
+
+    pub async fn receive(
+        &self,
+        vid: &str,
+    ) -> Result<Receiver<Result<ReceivedTspMessage<Vid>, Error>>, Error> {
+        let receiver = self.get_identity(vid).await?;
+        let relations = self.relations.clone();
+        let (tx, rx) = mpsc::channel(16);
+
+        tokio::task::spawn(async move {
+            let messages = tsp_transport::receive_messages(receiver.endpoint()).unwrap();
+            tokio::pin!(messages);
+
+            while let Some(m) = messages.next().await {
+                let mut message = match m {
+                    Ok(m) => m,
+                    Err(e) => {
+                        let _ = tx.send(Err(e)).await;
+                        continue;
+                    }
+                };
+
+                let (sender, intended_receiver) = match tsp_cesr::get_sender_receiver(&mut message)
+                {
+                    Ok(m) => m,
+                    Err(e) => {
+                        let _ = tx.send(Err(e.into())).await;
+                        continue;
+                    }
+                };
+
+                if intended_receiver != receiver.identifier() {
+                    let _ = tx.send(Err(Error::UnexpectedRecipient)).await;
+                    continue;
+                }
+
+                let sender = match std::str::from_utf8(sender) {
+                    Ok(s) => s,
+                    Err(e) => {
+                        let _ = tx.send(Err(e.into())).await;
+                        continue;
+                    }
+                };
+
+                let sender = match relations.read().await.get(sender) {
+                    Some(s) => s.clone(),
+                    None => {
+                        let _ = tx.send(Err(Error::UnresolvedVid(sender.to_string()))).await;
+                        continue;
+                    }
+                };
+
+                let (nonconfidential_data, payload) =
+                    match tsp_crypto::open(&receiver, &sender, &mut message) {
+                        Ok(s) => s,
+                        Err(e) => {
+                            let _ = tx.send(Err(e)).await;
+                            continue;
+                        }
+                    };
+
+                let _ = tx
+                    .send(Ok(ReceivedTspMessage::<Vid> {
+                        sender: sender.clone(),
+                        nonconfidential_data: nonconfidential_data.map(|v| v.to_vec()),
+                        payload: payload.to_owned(),
+                    }))
+                    .await;
+            }
+
+            // explicitly close the channel
+            drop(tx);
+        });
+
+        Ok(rx)
     }
 }
 
 #[cfg(test)]
 mod test {
-    use tokio::sync::oneshot;
+    use tsp_definitions::{Error, ReceivedTspMessage};
+    use tsp_vid::Vid;
 
     use crate::VidDatabase;
 
-    #[ignore]
+    async fn setup_alice_bob() -> Result<ReceivedTspMessage<Vid>, Error> {
+        let mut db1 = VidDatabase::new();
+        db1.add_identity_from_file("test/bob.identity").await?;
+        db1.resolve_vid("did:web:did.tweede.golf:user:alice")
+            .await?;
+
+        let mut bobs_messages = db1.receive("did:web:did.tweede.golf:user:bob").await?;
+
+        let mut db2 = VidDatabase::new();
+        db2.add_identity_from_file("test/alice.identity").await?;
+        db2.resolve_vid("did:web:did.tweede.golf:user:bob").await?;
+
+        db2.send(
+            "did:web:did.tweede.golf:user:alice",
+            "did:web:did.tweede.golf:user:bob",
+            Some(b"extra non-confidential data"),
+            b"hello world",
+        )
+        .await?;
+
+        bobs_messages.recv().await.unwrap()
+    }
+
     #[tokio::test]
+    #[serial_test::serial(tcp)]
     async fn vid_database() {
-        let address = "127.0.0.1:1337";
-        let (tx, rx) = oneshot::channel();
-        tokio::task::spawn(async move {
-            tsp_transport::tcp::broadcast_server(address, Some(tx))
-                .await
-                .unwrap();
-        });
-        rx.await.unwrap();
-
-        let alice = tsp_vid::VidController::from_file("../examples/test/alice.identity")
-            .await
-            .unwrap();
-        let bob = tsp_vid::VidController::from_file("../examples/test/bob.identity")
+        tsp_transport::tcp::start_broadcast_server("127.0.0.1:1337")
             .await
             .unwrap();
 
-        let bob_db = VidDatabase::new();
-        bob_db.add_identity(bob).await;
-        bob_db
-            .resolve_vid("did:web:did.tweede.golf:user:alice")
-            .await
-            .unwrap();
-        let mut bob_receiver = bob_db
-            .receive("did:web:did.tweede.golf:user:bob")
-            .await
-            .unwrap();
+        let message = setup_alice_bob().await.unwrap();
 
-        let alice_db = VidDatabase::new();
-        alice_db.add_identity(alice).await;
-        alice_db
-            .resolve_vid("did:web:did.tweede.golf:user:bob")
-            .await
-            .unwrap();
-        alice_db
-            .send(
-                "did:web:did.tweede.golf:user:alice",
-                "did:web:did.tweede.golf:user:bob",
-                None,
-                b"hello world",
-            )
-            .await
-            .unwrap();
-
-        let message = bob_receiver.recv().await.unwrap();
-
-        dbg!(message);
+        assert_eq!(message.payload, b"hello world");
     }
 }
