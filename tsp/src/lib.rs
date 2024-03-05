@@ -41,7 +41,7 @@ pub fn receive(
             return Err(Error::UnexpectedRecipient);
         }
 
-        let sender = resolve_vid(std::str::from_utf8(sender).unwrap()).await?;
+        let sender = resolve_vid(std::str::from_utf8(sender)?).await?;
         let (nonconfidential_data, payload) = tsp_crypto::open(receiver, &sender, &mut message)?;
 
         Ok(ReceivedTspMessage::<Vid> {

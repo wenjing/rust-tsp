@@ -79,73 +79,47 @@ impl VidDatabase {
         &self,
         vid: &str,
     ) -> Result<Receiver<Result<ReceivedTspMessage<Vid>, Error>>, Error> {
-        let receiver = self.get_identity(vid).await?;
+        let receiver = Arc::new(self.get_identity(vid).await?);
         let relations = self.relations.clone();
         let (tx, rx) = mpsc::channel(16);
+        let messages = tsp_transport::receive_messages(receiver.endpoint())?;
 
         tokio::task::spawn(async move {
-            let messages = tsp_transport::receive_messages(receiver.endpoint()).unwrap();
-            tokio::pin!(messages);
+            let decrypted_messages = messages.then(move |data| {
+                let receiver = receiver.clone();
+                let relations = relations.clone();
 
-            while let Some(m) = messages.next().await {
-                let mut message = match m {
-                    Ok(m) => m,
-                    Err(e) => {
-                        let _ = tx.send(Err(e)).await;
-                        continue;
+                async move {
+                    let mut message = data?;
+
+                    let (sender, intended_receiver) = tsp_cesr::get_sender_receiver(&mut message)?;
+
+                    if intended_receiver != receiver.identifier() {
+                        return Err(Error::UnexpectedRecipient);
                     }
-                };
 
-                let (sender, intended_receiver) = match tsp_cesr::get_sender_receiver(&mut message)
-                {
-                    Ok(m) => m,
-                    Err(e) => {
-                        let _ = tx.send(Err(e.into())).await;
-                        continue;
-                    }
-                };
+                    let sender = std::str::from_utf8(sender)?;
 
-                if intended_receiver != receiver.identifier() {
-                    let _ = tx.send(Err(Error::UnexpectedRecipient)).await;
-                    continue;
-                }
-
-                let sender = match std::str::from_utf8(sender) {
-                    Ok(s) => s,
-                    Err(e) => {
-                        let _ = tx.send(Err(e.into())).await;
-                        continue;
-                    }
-                };
-
-                let sender = match relations.read().await.get(sender) {
-                    Some(s) => s.clone(),
-                    None => {
-                        let _ = tx.send(Err(Error::UnresolvedVid(sender.to_string()))).await;
-                        continue;
-                    }
-                };
-
-                let (nonconfidential_data, payload) =
-                    match tsp_crypto::open(&receiver, &sender, &mut message) {
-                        Ok(s) => s,
-                        Err(e) => {
-                            let _ = tx.send(Err(e)).await;
-                            continue;
-                        }
+                    let Some(sender) = relations.read().await.get(sender).cloned() else {
+                        return Err(Error::UnresolvedVid(sender.to_string()));
                     };
 
-                let _ = tx
-                    .send(Ok(ReceivedTspMessage::<Vid> {
-                        sender: sender.clone(),
+                    let (nonconfidential_data, payload) =
+                        tsp_crypto::open(receiver.as_ref(), &sender, &mut message)?;
+
+                    Ok(ReceivedTspMessage::<Vid> {
+                        sender,
                         nonconfidential_data: nonconfidential_data.map(|v| v.to_vec()),
                         payload: payload.to_owned(),
-                    }))
-                    .await;
-            }
+                    })
+                }
+            });
 
-            // explicitly close the channel
-            drop(tx);
+            tokio::pin!(decrypted_messages);
+
+            while let Some(m) = decrypted_messages.next().await {
+                let _ = tx.send(m).await;
+            }
         });
 
         Ok(rx)
