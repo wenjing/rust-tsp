@@ -4,13 +4,23 @@ use crate::{
     error::{DecodeError, EncodeError},
 };
 
+pub type Nonce = [u8; 32];
+
 ///TODO: add control messages
 /// A type to distinguish "normal" TSP messages from "control" messages
 #[repr(u32)]
 #[derive(Debug, Clone)]
-pub enum Payload<Bytes: AsRef<[u8]>> {
+pub enum Payload<'a, Bytes: AsRef<[u8]>> {
     /// A TSP message which consists only of a message which will be protected using HPKE
-    HpkeMessage(Bytes),
+    GenericMessage(Bytes),
+    /// A TSP message requesting a relationship
+    DirectRelationProposal { nonce: &'a Nonce },
+    /// A TSP message confiming a relationship
+    DirectRelationAffirm { reply: &'a [u8] },
+    /// A TSP message requesting a nested relationship
+    NestedRelationProposal { nonce: &'a Nonce, vid: &'a str },
+    /// A TSP message confiming a relationship
+    NestedRelationAffirm { reply: &'a [u8], vid: &'a str },
 }
 
 /// Type representing a TSP Envelope
@@ -62,7 +72,9 @@ pub fn encode_payload(
     payload: Payload<impl AsRef<[u8]>>,
     output: &mut impl for<'a> Extend<&'a u8>,
 ) -> Result<(), EncodeError> {
-    let Payload::HpkeMessage(data) = payload;
+    let Payload::GenericMessage(data) = payload else {
+        todo!()
+    };
 
     encode_count(TSP_PAYLOAD, 1, output);
     checked_encode_variable_data(TSP_PLAINTEXT, data.as_ref(), output)
@@ -73,8 +85,9 @@ pub fn decode_payload(mut stream: &[u8]) -> Result<Payload<&[u8]>, DecodeError> 
     let Some(1) = decode_count(TSP_PAYLOAD, &mut stream) else {
         return Err(DecodeError::VersionMismatch);
     };
+    //TODO: not everything is a GenericMessage
     let payload = decode_variable_data(TSP_PLAINTEXT, &mut stream)
-        .map(Payload::HpkeMessage)
+        .map(Payload::GenericMessage)
         .ok_or(DecodeError::UnexpectedData)?;
 
     if !stream.is_empty() {
@@ -387,8 +400,8 @@ pub fn decode_tsp_message<'a, Vid: TryFrom<&'a [u8]>>(
 
     // This illustrates a challenge: unless decryption happens in place, either a needless
     // allocation or at the very least moving the contents of the payload around must occur.
-    let Payload::HpkeMessage(message) = decode_payload(&decrypted)?;
-    let message = Payload::HpkeMessage(message.to_owned());
+    let Payload::GenericMessage(message) = decode_payload(&decrypted)?;
+    let message = Payload::GenericMessage(message.to_owned());
 
     Ok(Message {
         sender,
@@ -409,7 +422,7 @@ mod test {
         }
         let fixed_sig = [1; 64];
 
-        let cesr_payload = { encode_payload_vec(Payload::HpkeMessage(b"Hello TSP!")).unwrap() };
+        let cesr_payload = { encode_payload_vec(Payload::GenericMessage(b"Hello TSP!")).unwrap() };
 
         let mut outer = encode_envelope_vec(Envelope {
             sender: &b"Alister"[..],
@@ -437,7 +450,9 @@ mod test {
         assert_eq!(env.receiver, &b"Bobbi"[..]);
         assert_eq!(env.nonconfidential_data, None);
 
-        let Payload::HpkeMessage(data) = decode_payload(dummy_crypt(ciphertext)).unwrap();
+        let Payload::GenericMessage(data) = decode_payload(dummy_crypt(ciphertext)).unwrap() else {
+            unreachable!();
+        };
         assert_eq!(data, b"Hello TSP!");
     }
 
@@ -448,7 +463,7 @@ mod test {
         }
         let fixed_sig = [1; 64];
 
-        let cesr_payload = { encode_payload_vec(Payload::HpkeMessage(b"Hello TSP!")).unwrap() };
+        let cesr_payload = { encode_payload_vec(Payload::GenericMessage(b"Hello TSP!")).unwrap() };
 
         let mut outer = encode_envelope_vec(Envelope {
             sender: &b"Alister"[..],
@@ -476,7 +491,9 @@ mod test {
         assert_eq!(env.receiver, &b"Bobbi"[..]);
         assert_eq!(env.nonconfidential_data, Some(&b"treasure"[..]));
 
-        let Payload::HpkeMessage(data) = decode_payload(dummy_crypt(ciphertext)).unwrap();
+        let Payload::GenericMessage(data) = decode_payload(dummy_crypt(ciphertext)).unwrap() else {
+            unreachable!();
+        };
         assert_eq!(data, b"Hello TSP!");
     }
 
@@ -528,7 +545,7 @@ mod test {
                 sender,
                 receiver,
                 nonconfidential_data: None,
-                message: Payload::HpkeMessage(payload),
+                message: Payload::GenericMessage(payload),
             },
             |_, vec| vec,
             |_, _| [5; 64],
@@ -545,7 +562,7 @@ mod test {
         assert_eq!(tsp.sender, b"Alister".as_slice());
         assert_eq!(tsp.receiver, b"Bobbi");
 
-        let Payload::HpkeMessage(content) = tsp.message;
+        let Payload::GenericMessage(content) = tsp.message;
         assert_eq!(&content[..], b"Hello TSP!");
     }
 
@@ -556,7 +573,7 @@ mod test {
         }
         let fixed_sig = [1; 64];
 
-        let cesr_payload = { encode_payload_vec(Payload::HpkeMessage(b"Hello TSP!")).unwrap() };
+        let cesr_payload = { encode_payload_vec(Payload::GenericMessage(b"Hello TSP!")).unwrap() };
 
         let mut outer = encode_envelope_vec(Envelope {
             sender: &b"Alister"[..],
@@ -582,7 +599,9 @@ mod test {
         assert_eq!(env.sender, &b"Alister"[..]);
         assert_eq!(env.receiver, &b"Bobbi"[..]);
         assert_eq!(env.nonconfidential_data, Some(&b"treasure"[..]));
-        let Payload::HpkeMessage(data) = decode_payload(dummy_crypt(ciphertext)).unwrap();
+        let Payload::GenericMessage(data) = decode_payload(dummy_crypt(ciphertext)).unwrap() else {
+            unreachable!();
+        };
         assert_eq!(data, b"Hello TSP!");
     }
 }

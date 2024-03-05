@@ -41,7 +41,7 @@ where
         + 6,
     );
     tsp_cesr::encode_payload(
-        tsp_cesr::Payload::HpkeMessage(secret_payload),
+        tsp_cesr::Payload::GenericMessage(secret_payload),
         &mut cesr_message,
     )?;
 
@@ -132,7 +132,10 @@ where
         &tag,
     )?;
 
-    let tsp_cesr::Payload::HpkeMessage(secret_payload) = tsp_cesr::decode_payload(ciphertext)?;
+    let tsp_cesr::Payload::GenericMessage(secret_payload) = tsp_cesr::decode_payload(ciphertext)?
+    else {
+        todo!("control messages cannot be opened yet")
+    };
 
     Ok((envelope.nonconfidential_data, secret_payload))
 }
