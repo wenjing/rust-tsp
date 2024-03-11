@@ -11,6 +11,15 @@ const ED25519_SIGNATURE: u32 = (b'B' - b'A') as u32;
 const TSP_WRAPPER: u16 = (b'E' - b'A') as u16;
 const TSP_PAYLOAD: u16 = (b'Z' - b'A') as u16;
 
+/// Constants to encode message types
+mod msgtype {
+    pub(super) const GEN_MSG: [u8; 2] = [0, 0];
+    pub(super) const NEW_REL: [u8; 2] = [1, 0];
+    pub(super) const NEW_REL_REPLY: [u8; 2] = [1, 1];
+    pub(super) const NEW_NEST_REL: [u8; 2] = [1, 2];
+    pub(super) const NEW_NEST_REL_REPLY: [u8; 2] = [1, 3];
+}
+
 use crate::{
     decode::{decode_count, decode_fixed_data, decode_variable_data, decode_variable_data_index},
     encode::{encode_count, encode_fixed_data},
@@ -76,12 +85,16 @@ pub fn encode_payload(
     payload: Payload<impl AsRef<[u8]>>,
     output: &mut impl for<'a> Extend<&'a u8>,
 ) -> Result<(), EncodeError> {
-    let Payload::GenericMessage(data) = payload else {
-        todo!()
-    };
-
     encode_count(TSP_PAYLOAD, 1, output);
-    checked_encode_variable_data(TSP_PLAINTEXT, data.as_ref(), output)
+    match payload {
+        Payload::GenericMessage(data) => {
+            encode_fixed_data(TSP_TYPECODE, &msgtype::GEN_MSG, output);
+            checked_encode_variable_data(TSP_PLAINTEXT, data.as_ref(), output)?;
+        }
+        _ => todo!(),
+    }
+
+    Ok(())
 }
 
 /// Decode a TSP Payload
@@ -89,16 +102,22 @@ pub fn decode_payload(mut stream: &[u8]) -> Result<Payload<&[u8]>, DecodeError> 
     let Some(1) = decode_count(TSP_PAYLOAD, &mut stream) else {
         return Err(DecodeError::VersionMismatch);
     };
-    //TODO: not everything is a GenericMessage
-    let payload = decode_variable_data(TSP_PLAINTEXT, &mut stream)
-        .map(Payload::GenericMessage)
-        .ok_or(DecodeError::UnexpectedData)?;
+
+    let payload =
+        match decode_fixed_data(TSP_TYPECODE, &mut stream).ok_or(DecodeError::UnexpectedData)? {
+            &msgtype::GEN_MSG => {
+                decode_variable_data(TSP_PLAINTEXT, &mut stream).map(Payload::GenericMessage)
+            }
+            _ => {
+                todo!()
+            }
+        };
 
     if !stream.is_empty() {
-        return Err(DecodeError::TrailingGarbage);
+        Err(DecodeError::TrailingGarbage)
+    } else {
+        payload.ok_or(DecodeError::UnexpectedData)
     }
-
-    Ok(payload)
 }
 
 /// Encode a encrypted TSP message plus Envelope into CESR
