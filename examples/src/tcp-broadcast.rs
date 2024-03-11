@@ -2,9 +2,9 @@ use futures_util::StreamExt;
 use rand::Rng;
 use std::time::Duration;
 use tokio::time::sleep;
-use tsp_definitions::{Error, ResolvedVid};
+use tsp_definitions::{Error, VerifiedVid};
 use tsp_transport::tcp::start_broadcast_server;
-use tsp_vid::VidController;
+use tsp_vid::PrivateVid;
 
 #[tokio::main]
 async fn main() {
@@ -12,13 +12,13 @@ async fn main() {
     let server_handle = start_broadcast_server("127.0.0.1:1337").await.unwrap();
 
     // setup crypto
-    let alice: &'static VidController = Box::leak(Box::new(
-        VidController::from_file("./examples/test/alice.identity")
+    let alice: &'static PrivateVid = Box::leak(Box::new(
+        PrivateVid::from_file("./examples/test/alice.json")
             .await
             .unwrap(),
     ));
-    let bob: &'static VidController = Box::leak(Box::new(
-        VidController::from_file("./examples/test/bob.identity")
+    let bob: &'static PrivateVid = Box::leak(Box::new(
+        PrivateVid::from_file("./examples/test/bob.json")
             .await
             .unwrap(),
     ));
