@@ -1,3 +1,16 @@
+/// Constants that determine the specific CESR types for "variable length data"
+const TSP_PLAINTEXT: u32 = (b'B' - b'A') as u32;
+const TSP_CIPHERTEXT: u32 = (b'C' - b'A') as u32;
+const TSP_DEVELOPMENT_VID: u32 = (21 << 6 | 8) << 6 | 3; // "VID"
+
+/// Constants that determine the specific CESR types for "fixed length dat"
+const TSP_TYPECODE: u32 = (b'X' - b'A') as u32;
+const ED25519_SIGNATURE: u32 = (b'B' - b'A') as u32;
+
+/// Constants that determine the specific CESR types for the framing codes
+const TSP_WRAPPER: u16 = (b'E' - b'A') as u16;
+const TSP_PAYLOAD: u16 = (b'Z' - b'A') as u16;
+
 use crate::{
     decode::{decode_count, decode_fixed_data, decode_variable_data, decode_variable_data_index},
     encode::{encode_count, encode_fixed_data},
@@ -39,15 +52,6 @@ pub struct DecodedEnvelope<'a, Vid, Bytes> {
 
 /// TODO: something more type safe
 pub type Signature = [u8; 64];
-
-const TSP_VERSION: u32 = (b'X' - b'A') as u32;
-const TSP_PLAINTEXT: u32 = (b'B' - b'A') as u32;
-const TSP_CIPHERTEXT: u32 = (b'C' - b'A') as u32;
-const ED25519_SIGNATURE: u32 = (b'B' - b'A') as u32;
-
-const TSP_WRAPPER: u16 = (b'E' - b'A') as u16;
-const TSP_PAYLOAD: u16 = (b'Z' - b'A') as u16;
-const TSP_DEVELOPMENT_VID: u32 = 183236;
 
 /// Safely encode variable data, returning a soft error in case the size limit is exceeded
 fn checked_encode_variable_data(
@@ -104,7 +108,7 @@ pub fn encode_envelope<'a, Vid: AsRef<[u8]>>(
     output: &mut impl for<'b> Extend<&'b u8>,
 ) -> Result<(), EncodeError> {
     encode_count(TSP_WRAPPER, 1, output);
-    encode_fixed_data(TSP_VERSION, &[0, 0], output);
+    encode_fixed_data(TSP_TYPECODE, &[0, 0], output);
     checked_encode_variable_data(TSP_DEVELOPMENT_VID, envelope.sender.as_ref(), output)?;
     checked_encode_variable_data(TSP_DEVELOPMENT_VID, envelope.receiver.as_ref(), output)?;
     if let Some(data) = envelope.nonconfidential_data {
@@ -135,7 +139,7 @@ fn detected_tsp_header_size(stream: &mut &[u8]) -> Result<usize, DecodeError> {
         Some(1) => {}
         _ => return Err(DecodeError::VersionMismatch),
     }
-    match decode_fixed_data(TSP_VERSION, stream) {
+    match decode_fixed_data(TSP_TYPECODE, stream) {
         Some([0, 0]) => {}
         _ => return Err(DecodeError::VersionMismatch),
     }
