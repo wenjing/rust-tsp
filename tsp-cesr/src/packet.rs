@@ -3,9 +3,14 @@ const TSP_PLAINTEXT: u32 = (b'B' - b'A') as u32;
 const TSP_CIPHERTEXT: u32 = (b'C' - b'A') as u32;
 const TSP_DEVELOPMENT_VID: u32 = (21 << 6 | 8) << 6 | 3; // "VID"
 
-/// Constants that determine the specific CESR types for "fixed length dat"
+/// Constants that determine the specific CESR types for "fixed length data"
 const TSP_TYPECODE: u32 = (b'X' - b'A') as u32;
 const ED25519_SIGNATURE: u32 = (b'B' - b'A') as u32;
+#[allow(clippy::eq_op)]
+const TSP_NONCE: u32 = (b'A' - b'A') as u32;
+const TSP_SHA256: u32 = (b'I' - b'A') as u32;
+const ED25519_PUBLICKEY: u32 = (b'D' - b'A') as u32;
+const HPKE_PUBLICKEY: u32 = (b'Q' - b'A') as u32;
 
 /// Constants that determine the specific CESR types for the framing codes
 const TSP_WRAPPER: u16 = (b'E' - b'A') as u16;
@@ -26,6 +31,8 @@ use crate::{
     error::{DecodeError, EncodeError},
 };
 
+/// A type to enforce that a random nonce contains enough bits of security
+/// (128bits via a birthday attack -> 256bits needed)
 pub type Nonce = [u8; 32];
 
 ///TODO: add control messages
@@ -40,9 +47,14 @@ pub enum Payload<'a, Bytes: AsRef<[u8]>> {
     /// A TSP message confiming a relationship
     DirectRelationAffirm { reply: &'a [u8] },
     /// A TSP message requesting a nested relationship
-    NestedRelationProposal { nonce: &'a Nonce, vid: &'a str },
+    NestedRelationProposal {
+        public_keys: (&'a [u8; 32], &'a [u8; 32]),
+    },
     /// A TSP message confiming a relationship
-    NestedRelationAffirm { reply: &'a [u8], vid: &'a str },
+    NestedRelationAffirm {
+        reply: &'a [u8],
+        public_keys: (&'a [u8; 32], &'a [u8; 32]),
+    },
 }
 
 /// Type representing a TSP Envelope
@@ -91,7 +103,30 @@ pub fn encode_payload(
             encode_fixed_data(TSP_TYPECODE, &msgtype::GEN_MSG, output);
             checked_encode_variable_data(TSP_PLAINTEXT, data.as_ref(), output)?;
         }
-        _ => todo!(),
+        Payload::DirectRelationProposal { nonce } => {
+            encode_fixed_data(TSP_TYPECODE, &msgtype::NEW_REL, output);
+            encode_fixed_data(TSP_NONCE, nonce, output);
+        }
+        Payload::DirectRelationAffirm { reply } => {
+            encode_fixed_data(TSP_TYPECODE, &msgtype::NEW_REL_REPLY, output);
+            encode_fixed_data(TSP_SHA256, reply, output);
+        }
+        Payload::NestedRelationProposal {
+            public_keys: (sign, encrypt),
+        } => {
+            encode_fixed_data(TSP_TYPECODE, &msgtype::NEW_NEST_REL, output);
+            encode_fixed_data(ED25519_PUBLICKEY, sign, output);
+            encode_fixed_data(HPKE_PUBLICKEY, encrypt, output);
+        }
+        Payload::NestedRelationAffirm {
+            reply,
+            public_keys: (sign, encrypt),
+        } => {
+            encode_fixed_data(TSP_TYPECODE, &msgtype::NEW_NEST_REL_REPLY, output);
+            encode_fixed_data(TSP_SHA256, reply, output);
+            encode_fixed_data(ED25519_PUBLICKEY, sign, output);
+            encode_fixed_data(HPKE_PUBLICKEY, encrypt, output);
+        }
     }
 
     Ok(())
