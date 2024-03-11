@@ -29,7 +29,7 @@ pub struct Service {
     pub id: String,
     pub service_endpoint: Url,
     #[serde(rename = "type")]
-    pub type_field: String,
+    pub service_type: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -39,7 +39,7 @@ pub struct VerificationMethod {
     pub id: String,
     pub public_key_jwk: PublicKeyJwk,
     #[serde(rename = "type")]
-    pub type_field: String,
+    pub method_type: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -48,7 +48,7 @@ pub struct PublicKeyJwk {
     pub crv: String,
     pub kty: String,
     #[serde(rename = "use")]
-    pub use_field: String,
+    pub usage: String,
     pub x: String,
 }
 
@@ -63,61 +63,63 @@ pub fn resolve_url(parts: &[&str]) -> Result<Url, Error> {
     .parse()?)
 }
 
-pub fn resolve_document(did_document: DidDocument, target_id: &str) -> Result<Vid, Error> {
-    let transport = match did_document.service.into_iter().next() {
-        Some(service) => service.service_endpoint,
-        None => return Err(Error::ResolveVID("No transport found in the DID document")),
-    };
+pub fn find_first_key(
+    did_document: &DidDocument,
+    method: &[String],
+    curve: &str,
+    usage: &str,
+) -> Option<[u8; 32]> {
+    method
+        .iter()
+        .next()
+        .and_then(|id| {
+            did_document
+                .verification_method
+                .iter()
+                .find(|item| &item.id == id)
+        })
+        .and_then(|method| {
+            if method.public_key_jwk.crv == curve && method.public_key_jwk.usage == usage {
+                Base64Url::decode_vec(&method.public_key_jwk.x).ok()
+            } else {
+                None
+            }
+        })
+        .and_then(|key| <[u8; 32]>::try_from(key).ok())
+}
 
+pub fn resolve_document(did_document: DidDocument, target_id: &str) -> Result<Vid, Error> {
     if did_document.id != target_id {
         return Err(Error::ResolveVID("Invalid id specified in DID document"));
     }
 
-    let Some(public_sigkey) = did_document
-        .authentication
-        .into_iter()
-        .next()
-        .and_then(|id| {
-            did_document
-                .verification_method
-                .iter()
-                .find(|item| item.id == id)
-        })
-        .and_then(|method| {
-            if method.public_key_jwk.crv == "Ed25519" && method.public_key_jwk.use_field == "sig" {
-                Base64Url::decode_vec(&method.public_key_jwk.x).ok()
-            } else {
-                None
-            }
-        })
-        .and_then(|key| <[u8; 32]>::try_from(key).ok())
-        .and_then(|key| ed25519_dalek::VerifyingKey::from_bytes(&key).ok())
-    else {
+    let Some(public_sigkey) = find_first_key(
+        &did_document,
+        &did_document.authentication,
+        "Ed25519",
+        "sig",
+    )
+    .and_then(|key| ed25519_dalek::VerifyingKey::from_bytes(&key).ok()) else {
         return Err(Error::ResolveVID("No valid sign key found in DID document"));
     };
 
-    let Some(public_enckey) = did_document
-        .key_agreement
-        .into_iter()
-        .next()
-        .and_then(|id| {
-            did_document
-                .verification_method
-                .iter()
-                .find(|item| item.id == id)
-        })
-        .and_then(|method| {
-            if method.public_key_jwk.crv == "X25519" && method.public_key_jwk.use_field == "enc" {
-                Base64Url::decode_vec(&method.public_key_jwk.x).ok()
-            } else {
-                None
-            }
-        })
-        .and_then(|key| <[u8; 32]>::try_from(key).ok())
+    let Some(public_enckey) =
+        find_first_key(&did_document, &did_document.key_agreement, "X25519", "enc")
     else {
         return Err(Error::ResolveVID(
             "No valid encryption key found in DID document",
         ));
+    };
+
+    let transport = match did_document.service.into_iter().next().and_then(|service| {
+        if service.service_type == "TSPTransport" {
+            Some(service)
+        } else {
+            None
+        }
+    }) {
+        Some(service) => service.service_endpoint,
+        None => return Err(Error::ResolveVID("No transport found in the DID document")),
     };
 
     Ok(Vid {
