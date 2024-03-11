@@ -3,12 +3,12 @@ use hpke::{aead::AeadTag, Deserializable, OpModeR, OpModeS, Serializable};
 use rand::{rngs::StdRng, SeedableRng};
 use tsp_cesr::DecodedEnvelope;
 use tsp_definitions::{
-    Error, NonConfidentialData, Payload, Receiver, ResolvedVid, Sender, TSPMessage,
+    Error, NonConfidentialData, Payload, Receiver, Sender, TSPMessage, VerifiedVid,
 };
 
 pub(crate) fn seal<A, Kdf, Kem>(
     sender: &dyn Sender,
-    receiver: &dyn ResolvedVid,
+    receiver: &dyn VerifiedVid,
     nonconfidential_data: Option<NonConfidentialData>,
     secret_payload: Payload,
 ) -> Result<TSPMessage, Error>
@@ -80,7 +80,7 @@ where
 
 pub(crate) fn open<'a, A, Kdf, Kem>(
     receiver: &dyn Receiver,
-    sender: &dyn ResolvedVid,
+    sender: &dyn VerifiedVid,
     tsp_message: &'a mut [u8],
 ) -> Result<(Option<NonConfidentialData<'a>>, Payload<'a>), Error>
 where

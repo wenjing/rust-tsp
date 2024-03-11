@@ -1,5 +1,5 @@
 use futures::{Stream, StreamExt};
-use tsp_definitions::{Error, ReceivedTspMessage, Receiver, ResolvedVid, Sender};
+use tsp_definitions::{Error, ReceivedTspMessage, Receiver, Sender, VerifiedVid};
 use tsp_vid::Vid;
 
 mod vid_database;
@@ -17,7 +17,7 @@ pub use vid_database::VidDatabase;
 /// ```
 /// #[tokio::main]
 /// async fn main() {
-///     use tsp_definitions::ResolvedVid;
+///     use tsp_definitions::VerifiedVid;
 ///
 ///     let relation = tsp::resolve_vid("did:web:did.tsp-test.org:user:bob").await.unwrap();
 ///
@@ -43,9 +43,9 @@ pub async fn resolve_vid(vid: &str) -> Result<Vid, Error> {
 /// ```
 /// #[tokio::main]
 /// async fn main() {
-///     use tsp_vid::VidController;
+///     use tsp_vid::PrivateVid;
 ///
-///     let sender = VidController::from_file("../examples/test/alice.identity").await.unwrap();
+///     let sender = PrivateVid::from_file("../examples/test/alice.json").await.unwrap();
 ///     let receiver = tsp::resolve_vid("did:web:did.tsp-test.org:user:bob").await.unwrap();
 ///
 ///     let result = tsp::send(&sender, &receiver, None, b"hello world").await;
@@ -53,7 +53,7 @@ pub async fn resolve_vid(vid: &str) -> Result<Vid, Error> {
 /// ```
 pub async fn send(
     sender: &impl Sender,
-    receiver: &impl ResolvedVid,
+    receiver: &impl VerifiedVid,
     nonconfidential_data: Option<&[u8]>,
     payload: &[u8],
 ) -> Result<(), Error> {
@@ -75,10 +75,10 @@ pub async fn send(
 /// ```
 /// #[tokio::main]
 /// async fn main() {
-///     use tsp_vid::VidController;
+///     use tsp_vid::PrivateVid;
 ///     use futures::StreamExt;
 ///
-///     let receiver = VidController::from_file("../examples/test/bob.identity").await.unwrap();
+///     let receiver = PrivateVid::from_file("../examples/test/bob.json").await.unwrap();
 ///
 ///     let messages = tsp::receive(&receiver, None).unwrap();
 ///     tokio::pin!(messages);
@@ -126,7 +126,7 @@ mod test {
     #[tokio::test]
     #[serial_test::serial(tcp)]
     async fn highlevel() {
-        let alice = tsp_vid::VidController::from_file("../examples/test/alice.identity")
+        let alice = tsp_vid::PrivateVid::from_file("../examples/test/alice.json")
             .await
             .unwrap();
 
@@ -140,7 +140,7 @@ mod test {
 
         let (receiver_tx, receiver_rx) = oneshot::channel::<()>();
         let handle = tokio::task::spawn(async {
-            let bob_receiver = tsp_vid::VidController::from_file("../examples/test/bob.identity")
+            let bob_receiver = tsp_vid::PrivateVid::from_file("../examples/test/bob.json")
                 .await
                 .unwrap();
 

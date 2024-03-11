@@ -1,19 +1,19 @@
 use base64ct::{Base64Url, Encoding};
 use serde_json::json;
 use std::fs;
-use tsp_definitions::{Receiver, ResolvedVid, Sender};
-use tsp_vid::VidController;
+use tsp_definitions::{Receiver, Sender, VerifiedVid};
+use tsp_vid::PrivateVid;
 use url::Url;
 
 fn create_identity(name: &str) {
     let domain = "did.tsp-test.org";
     let did = format!("did:web:{domain}:user:{name}");
-    let identity = VidController::bind(&did, Url::parse("tcp://127.0.0.1:1337").unwrap());
+    let private_vid = PrivateVid::bind(&did, Url::parse("tcp://127.0.0.1:1337").unwrap());
 
     let private_doc = json!({
         "vid": did,
-        "decryption-key": Base64Url::encode_string(identity.decryption_key()),
-        "signing-key": Base64Url::encode_string(identity.signing_key()),
+        "decryption-key": Base64Url::encode_string(private_vid.decryption_key()),
+        "signing-key": Base64Url::encode_string(private_vid.signing_key()),
     });
 
     let did_doc = json!({
@@ -31,7 +31,7 @@ fn create_identity(name: &str) {
                     "kty": "OKP",
                     "crv": "Ed25519",
                     "use": "sig",
-                    "x": Base64Url::encode_string(identity.verifying_key()),
+                    "x": Base64Url::encode_string(private_vid.verifying_key()),
                 }
             },
             {
@@ -42,7 +42,7 @@ fn create_identity(name: &str) {
                     "kty": "OKP",
                     "crv": "X25519",
                     "use": "enc",
-                    "x": Base64Url::encode_string(identity.encryption_key()),
+                    "x": Base64Url::encode_string(private_vid.encryption_key()),
                 }
             },
         ],
@@ -65,7 +65,7 @@ fn create_identity(name: &str) {
     )
     .unwrap();
     fs::write(
-        format!("examples/test/{name}.identity"),
+        format!("examples/test/{name}.json"),
         serde_json::to_string_pretty(&private_doc).unwrap(),
     )
     .unwrap();

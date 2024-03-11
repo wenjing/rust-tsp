@@ -131,7 +131,7 @@ pub fn resolve_document(did_document: DidDocument, target_id: &str) -> Result<Vi
 #[cfg(test)]
 mod tests {
     use std::fs;
-    use tsp_definitions::{Error, ResolvedVid};
+    use tsp_definitions::{Error, VerifiedVid};
     use url::Url;
 
     use crate::resolve::did::web::{resolve_document, DidDocument};

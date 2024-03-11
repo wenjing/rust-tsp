@@ -4,14 +4,14 @@ use tokio::sync::{
     mpsc::{self, Receiver},
     RwLock,
 };
-use tsp_definitions::{Error, ReceivedTspMessage, ResolvedVid};
-use tsp_vid::{Vid, VidController};
+use tsp_definitions::{Error, ReceivedTspMessage, VerifiedVid};
+use tsp_vid::{PrivateVid, Vid};
 
 use crate::resolve_vid;
 
 #[derive(Debug, Default)]
 pub struct VidDatabase {
-    identities: Arc<RwLock<HashMap<String, VidController>>>,
+    identities: Arc<RwLock<HashMap<String, PrivateVid>>>,
     relations: Arc<RwLock<HashMap<String, Vid>>>,
 }
 
@@ -20,21 +20,20 @@ impl VidDatabase {
         Default::default()
     }
 
-    /// Add a new identity (VID + private key material) to the database
-    pub async fn add_identity(&self, vid_controller: VidController) -> Result<(), Error> {
+    pub async fn add_private_vid(&self, private_vid: PrivateVid) -> Result<(), Error> {
         let mut identities = self.identities.write().await;
 
-        let key = std::str::from_utf8(vid_controller.identifier())?;
-        identities.insert(key.to_string(), vid_controller);
+        let key = std::str::from_utf8(private_vid.identifier())?;
+        identities.insert(key.to_string(), private_vid);
 
         Ok(())
     }
 
     #[cfg(test)]
-    pub async fn add_identity_from_file(&self, name: &str) -> Result<(), Error> {
-        let identity = VidController::from_file(format!("../examples/{name}")).await?;
+    pub async fn add_private_vid_from_file(&self, name: &str) -> Result<(), Error> {
+        let private_vid = PrivateVid::from_file(format!("../examples/{name}")).await?;
 
-        self.add_identity(identity).await
+        self.add_private_vid(private_vid).await
     }
 
     /// Resolve public key material for a VID and add it to the detabase as a relation
@@ -55,8 +54,8 @@ impl VidDatabase {
         nonconfidential_data: Option<&[u8]>,
         payload: &[u8],
     ) -> Result<(), Error> {
-        let sender = self.get_identity(sender_vid).await?;
-        let receiver = self.get_relation(receiver_vid).await?;
+        let sender = self.get_private_vid(sender_vid).await?;
+        let receiver = self.get_verified_vid(receiver_vid).await?;
 
         let tsp_message = tsp_crypto::seal(&sender, &receiver, nonconfidential_data, payload)?;
         tsp_transport::send_message(receiver.endpoint(), &tsp_message).await?;
@@ -64,17 +63,17 @@ impl VidDatabase {
         Ok(())
     }
 
-    async fn get_identity(&self, vid: &str) -> Result<VidController, Error> {
+    async fn get_private_vid(&self, vid: &str) -> Result<PrivateVid, Error> {
         match self.identities.read().await.get(vid) {
             Some(resolved) => Ok(resolved.clone()),
-            None => Err(Error::UnresolvedVid(vid.to_string())),
+            None => Err(Error::UnVerifiedVid(vid.to_string())),
         }
     }
 
-    async fn get_relation(&self, vid: &str) -> Result<Vid, Error> {
+    async fn get_verified_vid(&self, vid: &str) -> Result<Vid, Error> {
         match self.relations.read().await.get(vid) {
             Some(resolved) => Ok(resolved.clone()),
-            None => Err(Error::UnresolvedVid(vid.to_string())),
+            None => Err(Error::UnVerifiedVid(vid.to_string())),
         }
     }
 
@@ -85,7 +84,7 @@ impl VidDatabase {
         &self,
         vid: &str,
     ) -> Result<Receiver<Result<ReceivedTspMessage<Vid>, Error>>, Error> {
-        let receiver = Arc::new(self.get_identity(vid).await?);
+        let receiver = Arc::new(self.get_private_vid(vid).await?);
         let relations = self.relations.clone();
         let (tx, rx) = mpsc::channel(16);
         let messages = tsp_transport::receive_messages(receiver.endpoint())?;
@@ -107,7 +106,7 @@ impl VidDatabase {
                     let sender = std::str::from_utf8(sender)?;
 
                     let Some(sender) = relations.read().await.get(sender).cloned() else {
-                        return Err(Error::UnresolvedVid(sender.to_string()));
+                        return Err(Error::UnVerifiedVid(sender.to_string()));
                     };
 
                     let (nonconfidential_data, payload) =
@@ -139,7 +138,7 @@ mod test {
     async fn test_send_receive() -> Result<(), tsp_definitions::Error> {
         // bob database
         let mut db1 = VidDatabase::new();
-        db1.add_identity_from_file("test/bob.identity").await?;
+        db1.add_private_vid_from_file("test/bob.json").await?;
         db1.resolve_vid("did:web:did.tsp-test.org:user:alice")
             .await?;
 
@@ -147,7 +146,7 @@ mod test {
 
         // alice database
         let mut db2 = VidDatabase::new();
-        db2.add_identity_from_file("test/alice.identity").await?;
+        db2.add_private_vid_from_file("test/alice.json").await?;
         db2.resolve_vid("did:web:did.tsp-test.org:user:bob").await?;
 
         // send a message
