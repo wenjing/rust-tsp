@@ -11,13 +11,13 @@ pub type Payload<'a> = &'a [u8];
 pub type TSPMessage = Vec<u8>;
 
 #[derive(Debug)]
-pub struct ReceivedTspMessage<V: ResolvedVid> {
+pub struct ReceivedTspMessage<V: VerifiedVid> {
     pub sender: V,
     pub nonconfidential_data: Option<Vec<u8>>,
     pub payload: Vec<u8>,
 }
 
-pub trait ResolvedVid {
+pub trait VerifiedVid {
     /// A identifier of the Vid as bytes (for inclusion in TSP packets)
     fn identifier(&self) -> &[u8];
 
@@ -31,7 +31,7 @@ pub trait ResolvedVid {
     fn encryption_key(&self) -> PublicKeyData;
 }
 
-pub trait Receiver: ResolvedVid {
+pub trait Receiver: VerifiedVid {
     /// The PRIVATE key used to decrypt data
     fn decryption_key(&self) -> PrivateKeyData;
 }

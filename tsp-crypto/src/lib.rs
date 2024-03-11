@@ -1,5 +1,5 @@
 use tsp_definitions::{
-    Error, NonConfidentialData, Payload, Receiver, ResolvedVid, Sender, TSPMessage,
+    Error, NonConfidentialData, Payload, Receiver, Sender, TSPMessage, VerifiedVid,
 };
 
 mod nonconfidential;
@@ -12,7 +12,7 @@ pub type Kem = hpke::kem::X25519HkdfSha256;
 /// Encrypt, authenticate and sign and CESR encode a TSP message
 pub fn seal(
     sender: &dyn Sender,
-    receiver: &dyn ResolvedVid,
+    receiver: &dyn VerifiedVid,
     nonconfidential_data: Option<NonConfidentialData>,
     payload: Payload,
 ) -> Result<TSPMessage, Error> {
@@ -22,7 +22,7 @@ pub fn seal(
 /// Decode a CESR Authentic Confidential Message, verify the signature and decrypt its contents
 pub fn open<'a>(
     receiver: &dyn Receiver,
-    sender: &dyn ResolvedVid,
+    sender: &dyn VerifiedVid,
     tsp_message: &'a mut [u8],
 ) -> Result<(Option<NonConfidentialData<'a>>, Payload<'a>), Error> {
     tsp_hpke::open::<Aead, Kdf, Kem>(receiver, sender, tsp_message)
@@ -38,7 +38,7 @@ pub fn sign(
 
 /// Decode a CESR Authentic Non-Confidential Message, verify the signature and return its contents
 pub fn verify<'a>(
-    sender: &dyn ResolvedVid,
+    sender: &dyn VerifiedVid,
     tsp_message: &'a mut [u8],
 ) -> Result<NonConfidentialData<'a>, Error> {
     nonconfidential::verify(sender, tsp_message)
@@ -46,15 +46,15 @@ pub fn verify<'a>(
 
 #[cfg(test)]
 mod tests {
-    use tsp_vid::VidController;
+    use tsp_vid::PrivateVid;
     use url::Url;
 
     use crate::{open, seal};
 
     #[test]
     fn seal_open_message() {
-        let bob = VidController::bind("did:test:bob", Url::parse("tcp:://127.0.0.1:1337").unwrap());
-        let alice = VidController::bind(
+        let bob = PrivateVid::bind("did:test:bob", Url::parse("tcp:://127.0.0.1:1337").unwrap());
+        let alice = PrivateVid::bind(
             "did:test:alice",
             Url::parse("tcp:://127.0.0.1:1337").unwrap(),
         );

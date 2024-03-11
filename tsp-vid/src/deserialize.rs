@@ -5,7 +5,7 @@ use std::path::Path;
 use tokio::fs;
 use tsp_definitions::Error;
 
-use crate::{resolve::resolve_vid, VidController};
+use crate::{resolve::resolve_vid, PrivateVid};
 
 #[derive(Deserialize)]
 struct SecretVidData {
@@ -16,7 +16,7 @@ struct SecretVidData {
     vid: String,
 }
 
-impl VidController {
+impl PrivateVid {
     pub async fn from_file(path: impl AsRef<Path>) -> Result<Self, Error> {
         let vid_data = fs::read_to_string(path).await?;
         let vid_data: SecretVidData = serde_json::from_str(&vid_data)?;
@@ -36,11 +36,11 @@ impl VidController {
 
 #[cfg(test)]
 mod test {
-    use crate::VidController;
+    use crate::PrivateVid;
 
     #[tokio::test]
     async fn deserialize() {
-        let alice = VidController::from_file("../examples/test/alice.identity")
+        let alice = PrivateVid::from_file("../examples/test/alice.json")
             .await
             .unwrap();
 

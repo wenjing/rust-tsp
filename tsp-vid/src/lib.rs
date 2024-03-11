@@ -1,7 +1,7 @@
 use ed25519_dalek::{self as Ed};
 use hpke::{kem::X25519HkdfSha256 as KemType, Kem, Serializable};
 use rand::rngs::OsRng;
-use tsp_definitions::{KeyData, ResolvedVid};
+use tsp_definitions::{KeyData, VerifiedVid};
 
 pub mod deserialize;
 pub mod resolve;
@@ -16,18 +16,18 @@ pub struct Vid {
     public_enckey: KeyData,
 }
 
-/// A VidController represents the 'owner' of a particular Vid
+/// A PrivateVid represents the 'owner' of a particular Vid
 #[derive(Clone)]
-pub struct VidController {
+pub struct PrivateVid {
     vid: Vid,
     sigkey: Ed::SigningKey,
     enckey: KeyData,
 }
 
-/// A custom implementation of Debug for VidController to avoid key material from leaking during panics.
-impl std::fmt::Debug for VidController {
+/// A custom implementation of Debug for PrivateVid to avoid key material from leaking during panics.
+impl std::fmt::Debug for PrivateVid {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
-        f.debug_struct("VidController")
+        f.debug_struct("PrivateVid")
             .field("vid", &self.vid)
             .field("sigkey", &"<secret>")
             .field("enckey", &"<secret>")
@@ -35,7 +35,7 @@ impl std::fmt::Debug for VidController {
     }
 }
 
-impl tsp_definitions::ResolvedVid for Vid {
+impl tsp_definitions::VerifiedVid for Vid {
     fn identifier(&self) -> &[u8] {
         self.id.as_ref()
     }
@@ -53,7 +53,7 @@ impl tsp_definitions::ResolvedVid for Vid {
     }
 }
 
-impl tsp_definitions::ResolvedVid for VidController {
+impl tsp_definitions::VerifiedVid for PrivateVid {
     fn identifier(&self) -> &[u8] {
         self.vid.identifier()
     }
@@ -71,13 +71,13 @@ impl tsp_definitions::ResolvedVid for VidController {
     }
 }
 
-impl tsp_definitions::Sender for VidController {
+impl tsp_definitions::Sender for PrivateVid {
     fn signing_key(&self) -> &KeyData {
         self.sigkey.as_bytes()
     }
 }
 
-impl tsp_definitions::Receiver for VidController {
+impl tsp_definitions::Receiver for PrivateVid {
     fn decryption_key(&self) -> &KeyData {
         &self.enckey
     }
@@ -89,7 +89,7 @@ impl AsRef<[u8]> for Vid {
     }
 }
 
-impl VidController {
+impl PrivateVid {
     pub fn bind(id: impl Into<String>, transport: url::Url) -> Self {
         let sigkey = Ed::SigningKey::generate(&mut OsRng);
         let (enckey, public_enckey) = KemType::gen_keypair(&mut OsRng);
