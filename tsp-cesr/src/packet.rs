@@ -35,6 +35,15 @@ use crate::{
 /// (128bits via a birthday attack -> 256bits needed)
 pub type Nonce = [u8; 32];
 
+/// A *public* key pair
+//TODO: this probably belongs in tsp-definitions; but that's not possible right now
+//due to a circular dependency; this can be solved by removing the workspaces
+#[derive(Clone, Copy, Debug)]
+pub struct PairedKeys<'a> {
+    pub signing: &'a [u8; 32],
+    pub encrypting: &'a [u8; 32],
+}
+
 ///TODO: add control messages
 /// A type to distinguish "normal" TSP messages from "control" messages
 #[repr(u32)]
@@ -47,13 +56,11 @@ pub enum Payload<'a, Bytes: AsRef<[u8]>> {
     /// A TSP message confiming a relationship
     DirectRelationAffirm { reply: &'a [u8] },
     /// A TSP message requesting a nested relationship
-    NestedRelationProposal {
-        public_keys: (&'a [u8; 32], &'a [u8; 32]),
-    },
+    NestedRelationProposal { public_keys: PairedKeys<'a> },
     /// A TSP message confiming a relationship
     NestedRelationAffirm {
         reply: &'a [u8],
-        public_keys: (&'a [u8; 32], &'a [u8; 32]),
+        public_keys: PairedKeys<'a>,
     },
 }
 
@@ -111,21 +118,16 @@ pub fn encode_payload(
             encode_fixed_data(TSP_TYPECODE, &msgtype::NEW_REL_REPLY, output);
             encode_fixed_data(TSP_SHA256, reply, output);
         }
-        Payload::NestedRelationProposal {
-            public_keys: (sign, encrypt),
-        } => {
+        Payload::NestedRelationProposal { public_keys } => {
             encode_fixed_data(TSP_TYPECODE, &msgtype::NEW_NEST_REL, output);
-            encode_fixed_data(ED25519_PUBLICKEY, sign, output);
-            encode_fixed_data(HPKE_PUBLICKEY, encrypt, output);
+            encode_fixed_data(ED25519_PUBLICKEY, public_keys.signing, output);
+            encode_fixed_data(HPKE_PUBLICKEY, public_keys.encrypting, output);
         }
-        Payload::NestedRelationAffirm {
-            reply,
-            public_keys: (sign, encrypt),
-        } => {
+        Payload::NestedRelationAffirm { reply, public_keys } => {
             encode_fixed_data(TSP_TYPECODE, &msgtype::NEW_NEST_REL_REPLY, output);
             encode_fixed_data(TSP_SHA256, reply, output);
-            encode_fixed_data(ED25519_PUBLICKEY, sign, output);
-            encode_fixed_data(HPKE_PUBLICKEY, encrypt, output);
+            encode_fixed_data(ED25519_PUBLICKEY, public_keys.signing, output);
+            encode_fixed_data(HPKE_PUBLICKEY, public_keys.encrypting, output);
         }
     }
 
