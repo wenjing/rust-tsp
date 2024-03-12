@@ -39,6 +39,7 @@ pub type Nonce = [u8; 32];
 //TODO: this probably belongs in tsp-definitions; but that's not possible right now
 //due to a circular dependency; this can be solved by removing the workspaces
 #[derive(Clone, Copy, Debug)]
+#[cfg_attr(test, derive(PartialEq, Eq))]
 pub struct PairedKeys<'a> {
     pub signing: &'a [u8; 32],
     pub encrypting: &'a [u8; 32],
@@ -48,6 +49,7 @@ pub struct PairedKeys<'a> {
 /// A type to distinguish "normal" TSP messages from "control" messages
 #[repr(u32)]
 #[derive(Debug, Clone)]
+#[cfg_attr(test, derive(PartialEq, Eq))]
 pub enum Payload<'a, Bytes: AsRef<[u8]>> {
     /// A TSP message which consists only of a message which will be protected using HPKE
     GenericMessage(Bytes),
@@ -628,12 +630,16 @@ mod test {
 
     #[test]
     fn mut_envelope_with_nonconfidential_data() {
+        test_turn_around(Payload::GenericMessage(&b"Hello TSP!"[..]));
+    }
+
+    fn test_turn_around(payload: Payload<&[u8]>) {
         fn dummy_crypt(data: &[u8]) -> &[u8] {
             data
         }
         let fixed_sig = [1; 64];
 
-        let cesr_payload = { encode_payload_vec(Payload::GenericMessage(b"Hello TSP!")).unwrap() };
+        let cesr_payload = encode_payload_vec(payload.clone()).unwrap();
 
         let mut outer = encode_envelope_vec(Envelope {
             sender: &b"Alister"[..],
@@ -659,9 +665,15 @@ mod test {
         assert_eq!(env.sender, &b"Alister"[..]);
         assert_eq!(env.receiver, &b"Bobbi"[..]);
         assert_eq!(env.nonconfidential_data, Some(&b"treasure"[..]));
-        let Payload::GenericMessage(data) = decode_payload(dummy_crypt(ciphertext)).unwrap() else {
-            unreachable!();
-        };
-        assert_eq!(data, b"Hello TSP!");
+
+        assert_eq!(decode_payload(dummy_crypt(ciphertext)).unwrap(), payload);
+    }
+
+    #[test]
+    fn test_relation_forming() {
+        let temp = (1u8..33).collect::<Vec<u8>>();
+        let nonce: &[u8; 32] = temp.as_slice().try_into().unwrap();
+        test_turn_around(Payload::DirectRelationProposal { nonce });
+        test_turn_around(Payload::DirectRelationAffirm { reply: nonce });
     }
 }
