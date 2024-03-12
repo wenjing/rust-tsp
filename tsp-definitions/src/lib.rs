@@ -10,15 +10,21 @@ pub type NonConfidentialData<'a> = &'a [u8];
 pub type TSPMessage = Vec<u8>;
 
 #[derive(Debug)]
-pub struct ReceivedTspMessage<V: VerifiedVid> {
+pub struct ReceivedTspMessage<Bytes: AsRef<[u8]>, V: VerifiedVid> {
     pub sender: V,
     pub nonconfidential_data: Option<Vec<u8>>,
-    pub message: Vec<u8>,
+    pub message: Payload<Bytes>,
+}
+
+impl<B: AsRef<[u8]>, T: VerifiedVid> ReceivedTspMessage<B, T> {
+    pub fn is_relationship_proposal() {
+        todo!();
+    }
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub enum Payload<'a> {
-    Content(&'a [u8]),
+pub enum Payload<Bytes: AsRef<[u8]>> {
+    Content(Bytes),
     CancelRelationship,
 }
 
