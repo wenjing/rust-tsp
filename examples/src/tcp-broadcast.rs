@@ -47,7 +47,7 @@ async fn main() {
                 tracing::info!(
                     "{} decrypted {} from {}",
                     me.identifier(),
-                    String::from_utf8_lossy(&message.payload),
+                    String::from_utf8_lossy(&message.message),
                     message.sender.identifier()
                 );
             }
