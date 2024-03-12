@@ -14,6 +14,8 @@ pub struct Vid {
     transport: url::Url,
     public_sigkey: Ed::VerifyingKey,
     public_enckey: KeyData,
+    sender_vid: Option<String>,
+    parent_vid: Option<String>,
 }
 
 /// A PrivateVid represents the 'owner' of a particular Vid
@@ -36,7 +38,7 @@ impl std::fmt::Debug for PrivateVid {
 }
 
 impl tsp_definitions::VerifiedVid for Vid {
-    fn identifier(&self) -> &[u8] {
+    fn identifier(&self) -> &str {
         self.id.as_ref()
     }
 
@@ -51,10 +53,18 @@ impl tsp_definitions::VerifiedVid for Vid {
     fn encryption_key(&self) -> &KeyData {
         &self.public_enckey
     }
+
+    fn parent_vid(&self) -> Option<&str> {
+        self.parent_vid.as_deref()
+    }
+
+    fn sender_vid(&self) -> Option<&str> {
+        self.sender_vid.as_deref()
+    }
 }
 
 impl tsp_definitions::VerifiedVid for PrivateVid {
-    fn identifier(&self) -> &[u8] {
+    fn identifier(&self) -> &str {
         self.vid.identifier()
     }
 
@@ -68,6 +78,14 @@ impl tsp_definitions::VerifiedVid for PrivateVid {
 
     fn encryption_key(&self) -> &KeyData {
         self.vid.encryption_key()
+    }
+
+    fn parent_vid(&self) -> Option<&str> {
+        self.vid.parent_vid()
+    }
+
+    fn sender_vid(&self) -> Option<&str> {
+        self.vid.sender_vid()
     }
 }
 
@@ -85,7 +103,7 @@ impl tsp_definitions::Receiver for PrivateVid {
 
 impl AsRef<[u8]> for Vid {
     fn as_ref(&self) -> &[u8] {
-        self.identifier()
+        self.identifier().as_bytes()
     }
 }
 
@@ -100,6 +118,8 @@ impl PrivateVid {
                 transport,
                 public_sigkey: sigkey.verifying_key(),
                 public_enckey: public_enckey.to_bytes().into(),
+                sender_vid: None,
+                parent_vid: None,
             },
             sigkey,
             enckey: enckey.to_bytes().into(),

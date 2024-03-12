@@ -106,7 +106,7 @@ where
         .map_err(|_| tsp_cesr::error::DecodeError::VidError)?;
 
     // verify the message was intended for the specified receiver
-    if envelope.receiver != receiver.identifier() {
+    if envelope.receiver != receiver.identifier().as_bytes() {
         return Err(Error::UnexpectedRecipient);
     }
 

@@ -127,6 +127,8 @@ pub fn resolve_document(did_document: DidDocument, target_id: &str) -> Result<Vi
         transport,
         public_sigkey,
         public_enckey,
+        sender_vid: None,
+        parent_vid: None,
     })
 }
 
@@ -175,7 +177,7 @@ mod tests {
 
         assert_eq!(
             alice.unwrap().identifier(),
-            "did:web:did.tsp-test.org:user:alice".as_bytes()
+            "did:web:did.tsp-test.org:user:alice"
         );
 
         let bob_did_doc = fs::read_to_string("../examples/test/bob-did.json").unwrap();
@@ -185,7 +187,7 @@ mod tests {
 
         assert_eq!(
             bob.unwrap().identifier(),
-            "did:web:did.tsp-test.org:user:bob".as_bytes()
+            "did:web:did.tsp-test.org:user:bob"
         );
     }
 }

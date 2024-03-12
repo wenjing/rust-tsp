@@ -24,7 +24,7 @@ pub enum Payload<'a> {
 
 pub trait VerifiedVid {
     /// A identifier of the Vid as bytes (for inclusion in TSP packets)
-    fn identifier(&self) -> &[u8];
+    fn identifier(&self) -> &str;
 
     /// The transport layer endpoint in the transport layer associated with this Vid
     fn endpoint(&self) -> &url::Url;
@@ -34,6 +34,12 @@ pub trait VerifiedVid {
 
     /// The encryption key associated with this Vid
     fn encryption_key(&self) -> PublicKeyData;
+
+    /// The parent VID of this inner VID
+    fn parent_vid(&self) -> Option<&str>;
+
+    /// The related sender inner VID for this receiver VID
+    fn sender_vid(&self) -> Option<&str>;
 }
 
 pub trait Receiver: VerifiedVid {
