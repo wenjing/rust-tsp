@@ -23,6 +23,7 @@ mod msgtype {
     pub(super) const NEW_REL_REPLY: [u8; 2] = [1, 1];
     pub(super) const NEW_NEST_REL: [u8; 2] = [1, 2];
     pub(super) const NEW_NEST_REL_REPLY: [u8; 2] = [1, 3];
+    pub(super) const REL_CANCEL: [u8; 2] = [1, 255];
 }
 
 use crate::{
@@ -68,6 +69,8 @@ pub enum Payload<'a, Bytes: AsRef<[u8]>> {
         reply: &'a Sha256Digest,
         public_keys: PairedKeys<'a>,
     },
+    /// A TSP cancellation message
+    RelationshipCancel,
 }
 
 /// Type representing a TSP Envelope
@@ -135,6 +138,9 @@ pub fn encode_payload(
             encode_fixed_data(ED25519_PUBLICKEY, public_keys.signing, output);
             encode_fixed_data(HPKE_PUBLICKEY, public_keys.encrypting, output);
         }
+        Payload::RelationshipCancel => {
+            encode_fixed_data(TSP_TYPECODE, &msgtype::REL_CANCEL, output)
+        }
     }
 
     Ok(())
@@ -179,6 +185,7 @@ pub fn decode_payload(mut stream: &[u8]) -> Result<Payload<&[u8]>, DecodeError> 
                     })
                 })
             }
+            msgtype::REL_CANCEL => Some(Payload::RelationshipCancel),
             _ => return Err(DecodeError::UnexpectedMsgType),
         };
 
@@ -716,5 +723,7 @@ mod test {
             reply: nonce,
             public_keys,
         });
+
+        test_turn_around(Payload::RelationshipCancel);
     }
 }
