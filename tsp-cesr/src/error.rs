@@ -8,6 +8,7 @@ pub enum EncodeError {
 #[derive(Clone, Copy, Debug)]
 pub enum DecodeError {
     UnexpectedData,
+    UnexpectedMsgType,
     TrailingGarbage,
     SignatureError,
     VidError,
