@@ -46,9 +46,9 @@ async fn main() {
 
                 tracing::info!(
                     "{} decrypted {} from {}",
-                    String::from_utf8_lossy(me.identifier()),
-                    String::from_utf8_lossy(&message.message),
-                    String::from_utf8_lossy(message.sender.identifier())
+                    me.identifier(),
+                    String::from_utf8_lossy(&message.payload),
+                    message.sender.identifier()
                 );
             }
         });
@@ -63,8 +63,8 @@ async fn main() {
 
                 tracing::info!(
                     "{} encrypted and sent {word} for {}",
-                    String::from_utf8_lossy(me.identifier()),
-                    String::from_utf8_lossy(you.identifier()),
+                    me.identifier(),
+                    you.identifier(),
                 );
             }
         });

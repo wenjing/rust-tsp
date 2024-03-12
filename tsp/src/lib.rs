@@ -106,7 +106,7 @@ pub fn receive(
 
         let (sender, intended_receiver) = tsp_cesr::get_sender_receiver(&mut message)?;
 
-        if intended_receiver != receiver.identifier() {
+        if intended_receiver != receiver.identifier().as_bytes() {
             return Err(Error::UnexpectedRecipient);
         }
 
