@@ -1,5 +1,5 @@
 use futures::{Stream, StreamExt};
-use tsp_definitions::{Error, ReceivedTspMessage, Receiver, Sender, VerifiedVid};
+use tsp_definitions::{Error, Payload, ReceivedTspMessage, Receiver, Sender, VerifiedVid};
 use tsp_vid::Vid;
 
 mod vid_database;
@@ -55,9 +55,14 @@ pub async fn send(
     sender: &impl Sender,
     receiver: &impl VerifiedVid,
     nonconfidential_data: Option<&[u8]>,
-    payload: &[u8],
+    message: &[u8],
 ) -> Result<(), Error> {
-    let tsp_message = tsp_crypto::seal(sender, receiver, nonconfidential_data, payload)?;
+    let tsp_message = tsp_crypto::seal(
+        sender,
+        receiver,
+        nonconfidential_data,
+        Payload::Content(message),
+    )?;
     tsp_transport::send_message(receiver.endpoint(), &tsp_message).await?;
 
     Ok(())
@@ -84,7 +89,7 @@ pub async fn send(
 ///     tokio::pin!(messages);
 ///
 ///     while let Some(Ok(msg)) = messages.next().await {
-///         println!("Received {:?}", msg.payload);
+///         println!("Received {:?}", msg.message);
 ///     }
 /// }
 /// ```
@@ -108,11 +113,14 @@ pub fn receive(
         let sender = resolve_vid(std::str::from_utf8(sender)?).await?;
         let (nonconfidential_data, payload) = tsp_crypto::open(receiver, &sender, &mut message)?;
 
-        Ok(ReceivedTspMessage::<Vid> {
-            sender,
-            nonconfidential_data: nonconfidential_data.map(|v| v.to_vec()),
-            payload: payload.to_owned(),
-        })
+        match payload {
+            Payload::Content(message) => Ok(ReceivedTspMessage::<Vid> {
+                sender,
+                nonconfidential_data: nonconfidential_data.map(|v| v.to_vec()),
+                message: message.to_owned(),
+            }),
+            _ => unimplemented!("receiving control messages not supported yet"),
+        }
     }))
 }
 
@@ -149,7 +157,7 @@ mod test {
 
             let message = stream.next().await.unwrap().unwrap();
 
-            assert_eq!(message.payload, b"hello world");
+            assert_eq!(message.message, b"hello world");
         });
 
         receiver_rx.await.unwrap();

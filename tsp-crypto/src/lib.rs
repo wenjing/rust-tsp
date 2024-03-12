@@ -46,6 +46,7 @@ pub fn verify<'a>(
 
 #[cfg(test)]
 mod tests {
+    use tsp_definitions::Payload;
     use tsp_vid::PrivateVid;
     use url::Url;
 
@@ -62,12 +63,18 @@ mod tests {
         let secret_message = b"hello world";
         let nonconfidential_data = b"extra header data";
 
-        let mut message = seal(&bob, &alice, Some(nonconfidential_data), secret_message).unwrap();
+        let mut message = seal(
+            &bob,
+            &alice,
+            Some(nonconfidential_data),
+            Payload::Content(secret_message),
+        )
+        .unwrap();
 
         let (received_nonconfidential_data, received_secret_message) =
             open(&alice, &bob, &mut message).unwrap();
 
         assert_eq!(received_nonconfidential_data.unwrap(), nonconfidential_data);
-        assert_eq!(received_secret_message, secret_message);
+        assert_eq!(received_secret_message, Payload::Content(secret_message));
     }
 }
