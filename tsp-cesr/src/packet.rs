@@ -35,6 +35,10 @@ use crate::{
 /// (128bits via a birthday attack -> 256bits needed)
 pub type Nonce = [u8; 32];
 
+/// A SHA256 Digest
+//TODO: this should probably be in tsp-definitions
+pub type Sha256Digest = [u8; 32];
+
 /// A *public* key pair
 //TODO: this probably belongs in tsp-definitions; but that's not possible right now
 //due to a circular dependency; this can be solved by removing the workspaces
@@ -56,12 +60,12 @@ pub enum Payload<'a, Bytes: AsRef<[u8]>> {
     /// A TSP message requesting a relationship
     DirectRelationProposal { nonce: &'a Nonce },
     /// A TSP message confiming a relationship
-    DirectRelationAffirm { reply: &'a [u8] },
+    DirectRelationAffirm { reply: &'a Sha256Digest },
     /// A TSP message requesting a nested relationship
     NestedRelationProposal { public_keys: PairedKeys<'a> },
     /// A TSP message confiming a relationship
     NestedRelationAffirm {
-        reply: &'a [u8],
+        reply: &'a Sha256Digest,
         public_keys: PairedKeys<'a>,
     },
 }
@@ -143,13 +147,39 @@ pub fn decode_payload(mut stream: &[u8]) -> Result<Payload<&[u8]>, DecodeError> 
     };
 
     let payload =
-        match decode_fixed_data(TSP_TYPECODE, &mut stream).ok_or(DecodeError::UnexpectedData)? {
-            &msgtype::GEN_MSG => {
+        match *decode_fixed_data(TSP_TYPECODE, &mut stream).ok_or(DecodeError::UnexpectedData)? {
+            msgtype::GEN_MSG => {
                 decode_variable_data(TSP_PLAINTEXT, &mut stream).map(Payload::GenericMessage)
             }
-            _ => {
-                todo!()
+            msgtype::NEW_REL => decode_fixed_data(TSP_NONCE, &mut stream)
+                .map(|nonce| Payload::DirectRelationProposal { nonce }),
+            msgtype::NEW_REL_REPLY => decode_fixed_data(TSP_SHA256, &mut stream)
+                .map(|reply| Payload::DirectRelationAffirm { reply }),
+            msgtype::NEW_NEST_REL => {
+                decode_fixed_data(ED25519_PUBLICKEY, &mut stream).and_then(|signing| {
+                    decode_fixed_data(HPKE_PUBLICKEY, &mut stream).map(|encrypting| {
+                        let public_keys = PairedKeys {
+                            signing,
+                            encrypting,
+                        };
+                        Payload::NestedRelationProposal { public_keys }
+                    })
+                })
             }
+            msgtype::NEW_NEST_REL_REPLY => {
+                decode_fixed_data(TSP_SHA256, &mut stream).and_then(|reply| {
+                    decode_fixed_data(ED25519_PUBLICKEY, &mut stream).and_then(|signing| {
+                        decode_fixed_data(HPKE_PUBLICKEY, &mut stream).map(|encrypting| {
+                            let public_keys = PairedKeys {
+                                signing,
+                                encrypting,
+                            };
+                            Payload::NestedRelationAffirm { reply, public_keys }
+                        })
+                    })
+                })
+            }
+            _ => return Err(DecodeError::UnexpectedMsgType),
         };
 
     if !stream.is_empty() {
@@ -672,8 +702,19 @@ mod test {
     #[test]
     fn test_relation_forming() {
         let temp = (1u8..33).collect::<Vec<u8>>();
+        let pk1 = (33u8..65).collect::<Vec<u8>>();
+        let pk2 = (65u8..97).collect::<Vec<u8>>();
         let nonce: &[u8; 32] = temp.as_slice().try_into().unwrap();
         test_turn_around(Payload::DirectRelationProposal { nonce });
         test_turn_around(Payload::DirectRelationAffirm { reply: nonce });
+        let public_keys = PairedKeys {
+            signing: pk1.as_slice().try_into().unwrap(),
+            encrypting: pk2.as_slice().try_into().unwrap(),
+        };
+        test_turn_around(Payload::NestedRelationProposal { public_keys });
+        test_turn_around(Payload::NestedRelationAffirm {
+            reply: nonce,
+            public_keys,
+        });
     }
 }
