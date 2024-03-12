@@ -73,6 +73,12 @@ pub enum Payload<'a, Bytes: AsRef<[u8]>> {
     RelationshipCancel,
 }
 
+impl<'a, Bytes: AsRef<[u8]>> Payload<'a, Bytes> {
+    pub fn estimate_size(&self) -> usize {
+        0 // TODO
+    }
+}
+
 /// Type representing a TSP Envelope
 #[derive(Debug, Clone)]
 pub struct Envelope<'a, Vid> {
