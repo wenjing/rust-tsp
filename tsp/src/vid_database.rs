@@ -4,7 +4,7 @@ use tokio::sync::{
     mpsc::{self, Receiver},
     RwLock,
 };
-use tsp_definitions::{Error, ReceivedTspMessage, VerifiedVid};
+use tsp_definitions::{Error, Payload, ReceivedTspMessage, VerifiedVid};
 use tsp_vid::{PrivateVid, Vid};
 
 use crate::resolve_vid;
@@ -52,12 +52,17 @@ impl VidDatabase {
         sender_vid: &str,
         receiver_vid: &str,
         nonconfidential_data: Option<&[u8]>,
-        payload: &[u8],
+        message: &[u8],
     ) -> Result<(), Error> {
         let sender = self.get_private_vid(sender_vid).await?;
         let receiver = self.get_verified_vid(receiver_vid).await?;
 
-        let tsp_message = tsp_crypto::seal(&sender, &receiver, nonconfidential_data, payload)?;
+        let tsp_message = tsp_crypto::seal(
+            &sender,
+            &receiver,
+            nonconfidential_data,
+            Payload::Content(message),
+        )?;
         tsp_transport::send_message(receiver.endpoint(), &tsp_message).await?;
 
         Ok(())
@@ -112,11 +117,14 @@ impl VidDatabase {
                     let (nonconfidential_data, payload) =
                         tsp_crypto::open(receiver.as_ref(), &sender, &mut message)?;
 
-                    Ok(ReceivedTspMessage::<Vid> {
-                        sender,
-                        nonconfidential_data: nonconfidential_data.map(|v| v.to_vec()),
-                        payload: payload.to_owned(),
-                    })
+                    match payload {
+                        Payload::Content(message) => Ok(ReceivedTspMessage::<Vid> {
+                            sender,
+                            nonconfidential_data: nonconfidential_data.map(|v| v.to_vec()),
+                            message: message.to_owned(),
+                        }),
+                        _ => unimplemented!("control messages are not supported at this level yet"),
+                    }
                 }
             });
 
@@ -160,7 +168,7 @@ mod test {
 
         // receive a message
         let message = bobs_messages.recv().await.unwrap()?;
-        assert_eq!(message.payload, b"hello world");
+        assert_eq!(message.message, b"hello world");
 
         Ok(())
     }

@@ -29,21 +29,21 @@ where
         &mut data,
     )?;
 
+    let secret_payload = match secret_payload {
+        Payload::Content(data) => tsp_cesr::Payload::GenericMessage(data),
+        Payload::Reject => tsp_cesr::Payload::RelationshipCancel,
+    };
+
     // prepare CESR encoded ciphertext
     let mut cesr_message = Vec::with_capacity(
         // plaintext size
-        secret_payload.len()
+        secret_payload.estimate_size()
         // authenticated encryption tag length
         + AeadTag::<A>::size()
         // encapsulated key length
-        + Kem::EncappedKey::size()
-        // cesr overhead
-        + 6,
+        + Kem::EncappedKey::size(),
     );
-    tsp_cesr::encode_payload(
-        tsp_cesr::Payload::GenericMessage(secret_payload),
-        &mut cesr_message,
-    )?;
+    tsp_cesr::encode_payload(secret_payload, &mut cesr_message)?;
 
     // HPKE sender mode: "Auth"
     let sender_decryption_key = Kem::PrivateKey::from_bytes(sender.decryption_key())?;
@@ -132,9 +132,10 @@ where
         &tag,
     )?;
 
-    let tsp_cesr::Payload::GenericMessage(secret_payload) = tsp_cesr::decode_payload(ciphertext)?
-    else {
-        todo!("control messages cannot be opened yet")
+    let secret_payload = match tsp_cesr::decode_payload(ciphertext)? {
+        tsp_cesr::Payload::GenericMessage(data) => Payload::Content(data),
+        tsp_cesr::Payload::RelationshipCancel => Payload::Reject,
+        _ => todo!(),
     };
 
     Ok((envelope.nonconfidential_data, secret_payload))

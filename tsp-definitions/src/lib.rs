@@ -7,14 +7,19 @@ pub type PrivateKeyData<'a> = &'a KeyData;
 pub type PublicKeyData<'a> = &'a KeyData;
 pub type VidData<'a> = &'a [u8];
 pub type NonConfidentialData<'a> = &'a [u8];
-pub type Payload<'a> = &'a [u8];
 pub type TSPMessage = Vec<u8>;
 
 #[derive(Debug)]
 pub struct ReceivedTspMessage<V: VerifiedVid> {
     pub sender: V,
     pub nonconfidential_data: Option<Vec<u8>>,
-    pub payload: Vec<u8>,
+    pub message: Vec<u8>,
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum Payload<'a> {
+    Content(&'a [u8]),
+    Reject,
 }
 
 pub trait VerifiedVid {
