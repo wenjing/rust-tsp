@@ -19,3 +19,5 @@ crypto_box = { workspace = true }
 
 [dev-dependencies]
 url = { workspace = true }
+tsp-crypto = { path = ".", features = ["dummy"] }
+base64ct = { workspace = true }

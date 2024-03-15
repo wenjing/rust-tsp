@@ -216,6 +216,29 @@ pub fn encode_envelope<'a, Vid: AsRef<[u8]>>(
         checked_encode_variable_data(TSP_PLAINTEXT, data, output)?;
     }
 
+    #[cfg(test)]
+    {
+	use base64ct::Encoding;
+	let mut output = Vec::new();
+	encode_count(TSP_WRAPPER, 1, &mut output);
+	eprintln!("CESR-ENV: {}", base64ct::Base64Url::encode_string(&output));
+	output.clear();
+	encode_fixed_data(TSP_VERSION, &[0, 0], &mut output);
+	eprintln!("CESR-ENV: {}", base64ct::Base64Url::encode_string(&output));
+	output.clear();
+	checked_encode_variable_data(TSP_DEVELOPMENT_VID, envelope.sender.as_ref(), &mut output)?;
+	eprintln!("CESR-ENV: {}", base64ct::Base64Url::encode_string(&output));
+	output.clear();
+	checked_encode_variable_data(TSP_DEVELOPMENT_VID, envelope.receiver.as_ref(), &mut output)?;
+	eprintln!("CESR-ENV: {}", base64ct::Base64Url::encode_string(&output));
+	output.clear();
+	if let Some(data) = envelope.nonconfidential_data {
+	    checked_encode_variable_data(TSP_PLAINTEXT, data, &mut output)?;
+	}
+	eprintln!("CESR-ENV: {}", base64ct::Base64Url::encode_string(&output));
+	output.clear();
+    }
+
     Ok(())
 }
 

@@ -6,6 +6,15 @@ use tsp_definitions::{
     Error, NonConfidentialData, Payload, Receiver, Sender, TSPMessage, VerifiedVid,
 };
 
+#[cfg(test)]
+fn prepad(data: &[u8]) -> Vec<u8> {
+    let pad = data.len().next_multiple_of(3) - data.len();
+    let mut vec = vec![0; pad];
+    vec.extend_from_slice(data);
+
+    vec
+}
+
 pub(crate) fn seal<A, Kdf, Kem>(
     sender: &dyn Sender,
     receiver: &dyn VerifiedVid,
@@ -17,6 +26,8 @@ where
     Kdf: hpke::kdf::Kdf,
     Kem: hpke::kem::Kem,
 {
+    #[cfg(test)]
+    use base64ct::Encoding;
     let mut csprng = StdRng::from_entropy();
 
     let mut data = Vec::with_capacity(64);
@@ -43,7 +54,12 @@ where
         // encapsulated key length
         + Kem::EncappedKey::size(),
     );
+    #[cfg(test)]
+    eprintln!("Message (with prepadding): {}", base64ct::Base64Url::encode_string(&prepad(&secret_payload)));
     tsp_cesr::encode_payload(secret_payload, &mut cesr_message)?;
+
+    #[cfg(test)]
+    eprintln!("CESR payload: {}", base64ct::Base64Url::encode_string(&cesr_message));
 
     // HPKE sender mode: "Auth"
     let sender_decryption_key = Kem::PrivateKey::from_bytes(sender.decryption_key())?;
@@ -67,6 +83,11 @@ where
     cesr_message.extend(tag.to_bytes());
     cesr_message.extend(encapped_key.to_bytes());
 
+    #[cfg(test)]
+    eprintln!("CESR envelope: {}", base64ct::Base64Url::encode_string(&data));
+    #[cfg(test)]
+    eprintln!("Encrypted payload: {}", base64ct::Base64Url::encode_string(&cesr_message));
+
     // encode and append the ciphertext to the envelope data
     tsp_cesr::encode_ciphertext(&cesr_message, &mut data).expect("encoding error");
 
@@ -74,6 +95,9 @@ where
     let sign_key = ed25519_dalek::SigningKey::from_bytes(sender.signing_key());
     let signature = sign_key.sign(&data).to_bytes();
     tsp_cesr::encode_signature(&signature, &mut data);
+
+    #[cfg(test)]
+    eprintln!("CESR message: {}", base64ct::Base64Url::encode_string(&data));
 
     Ok(data)
 }
