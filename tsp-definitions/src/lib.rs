@@ -19,7 +19,7 @@ pub struct ReceivedTspMessage<V: VerifiedVid> {
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum Payload<'a> {
     Content(&'a [u8]),
-    Reject,
+    CancelRelationship,
 }
 
 pub trait VerifiedVid {
