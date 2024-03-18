@@ -2,7 +2,11 @@ use futures_util::StreamExt;
 use rand::Rng;
 use std::time::Duration;
 use tokio::time::sleep;
-use tsp_definitions::{Error, ReceivedTspMessage::GenericMessage, VerifiedVid};
+use tsp_definitions::{
+    Error,
+    ReceivedTspMessage::{CancelRelationship, GenericMessage},
+    VerifiedVid,
+};
 use tsp_transport::tcp::start_broadcast_server;
 use tsp_vid::PrivateVid;
 
@@ -44,18 +48,19 @@ async fn main() {
                     }
                 };
 
-                match received {
+                let (sender, message) = match &received {
                     GenericMessage {
                         sender, message, ..
-                    } => {
-                        tracing::info!(
-                            "{} decrypted {} from {}",
-                            String::from_utf8_lossy(me.identifier()),
-                            String::from_utf8_lossy(&message),
-                            String::from_utf8_lossy(sender.identifier())
-                        );
-                    }
-                }
+                    } => (sender, message.as_slice()),
+                    CancelRelationship { sender } => (sender, &b"<TSP_CANCEL>"[..]),
+                };
+
+                tracing::info!(
+                    "{} decrypted {} from {}",
+                    String::from_utf8_lossy(me.identifier()),
+                    String::from_utf8_lossy(message),
+                    String::from_utf8_lossy(sender.identifier())
+                );
             }
         });
 

@@ -16,6 +16,9 @@ pub enum ReceivedTspMessage<V: VerifiedVid> {
         nonconfidential_data: Option<Vec<u8>>,
         message: Vec<u8>,
     },
+    CancelRelationship {
+        sender: V,
+    },
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
