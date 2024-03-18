@@ -1,4 +1,5 @@
 mod error;
+use core::fmt;
 
 pub use crate::error::Error;
 
@@ -26,6 +27,15 @@ impl<B: AsRef<[u8]>, T: VerifiedVid> ReceivedTspMessage<B, T> {
 pub enum Payload<Bytes: AsRef<[u8]>> {
     Content(Bytes),
     CancelRelationship,
+}
+
+impl<Bytes: AsRef<[u8]>> fmt::Display for Payload<Bytes> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Payload::Content(bytes) => write!(f, "{}", String::from_utf8_lossy(bytes.as_ref())),
+            Payload::Reject => write!(f, "Reject"),
+        }
+    }
 }
 
 pub trait VerifiedVid {

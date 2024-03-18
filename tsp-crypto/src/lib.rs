@@ -14,7 +14,7 @@ pub fn seal(
     sender: &dyn Sender,
     receiver: &dyn VerifiedVid,
     nonconfidential_data: Option<NonConfidentialData>,
-    payload: Payload,
+    payload: Payload<&[u8]>,
 ) -> Result<TSPMessage, Error> {
     tsp_hpke::seal::<Aead, Kdf, Kem>(sender, receiver, nonconfidential_data, payload)
 }
@@ -24,7 +24,7 @@ pub fn open<'a>(
     receiver: &dyn Receiver,
     sender: &dyn VerifiedVid,
     tsp_message: &'a mut [u8],
-) -> Result<(Option<NonConfidentialData<'a>>, Payload<'a>), Error> {
+) -> Result<(Option<NonConfidentialData<'a>>, Payload<&'a [u8]>), Error> {
     tsp_hpke::open::<Aead, Kdf, Kem>(receiver, sender, tsp_message)
 }
 
@@ -60,7 +60,7 @@ mod tests {
             Url::parse("tcp:://127.0.0.1:1337").unwrap(),
         );
 
-        let secret_message = b"hello world";
+        let secret_message: &[u8] = b"hello world";
         let nonconfidential_data = b"extra header data";
 
         let mut message = seal(
