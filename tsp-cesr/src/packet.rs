@@ -19,6 +19,7 @@ const TSP_PAYLOAD: u16 = (b'Z' - b'A') as u16;
 /// Constants to encode message types
 mod msgtype {
     pub(super) const GEN_MSG: [u8; 2] = [0, 0];
+    pub(super) const NEST_MSG: [u8; 2] = [0, 1];
     pub(super) const NEW_REL: [u8; 2] = [1, 0];
     pub(super) const NEW_REL_REPLY: [u8; 2] = [1, 1];
     pub(super) const NEW_NEST_REL: [u8; 2] = [1, 2];
@@ -58,6 +59,8 @@ pub struct PairedKeys<'a> {
 pub enum Payload<'a, Bytes: AsRef<[u8]>> {
     /// A TSP message which consists only of a message which will be protected using HPKE
     GenericMessage(Bytes),
+    /// A payload that conists of a TSP Envelope+Message (TODO: maybe add some extra decoding)
+    NestedMessage(Bytes),
     /// A TSP message requesting a relationship
     DirectRelationProposal { nonce: &'a Nonce },
     /// A TSP message confiming a relationship
@@ -125,6 +128,10 @@ pub fn encode_payload(
             encode_fixed_data(TSP_TYPECODE, &msgtype::GEN_MSG, output);
             checked_encode_variable_data(TSP_PLAINTEXT, data.as_ref(), output)?;
         }
+        Payload::NestedMessage(data) => {
+            encode_fixed_data(TSP_TYPECODE, &msgtype::NEST_MSG, output);
+            checked_encode_variable_data(TSP_PLAINTEXT, data.as_ref(), output)?;
+        }
         Payload::DirectRelationProposal { nonce } => {
             encode_fixed_data(TSP_TYPECODE, &msgtype::NEW_REL, output);
             encode_fixed_data(TSP_NONCE, nonce, output);
@@ -162,6 +169,9 @@ pub fn decode_payload(mut stream: &[u8]) -> Result<Payload<&[u8]>, DecodeError> 
         match *decode_fixed_data(TSP_TYPECODE, &mut stream).ok_or(DecodeError::UnexpectedData)? {
             msgtype::GEN_MSG => {
                 decode_variable_data(TSP_PLAINTEXT, &mut stream).map(Payload::GenericMessage)
+            }
+            msgtype::NEST_MSG => {
+                decode_variable_data(TSP_PLAINTEXT, &mut stream).map(Payload::NestedMessage)
             }
             msgtype::NEW_REL => decode_fixed_data(TSP_NONCE, &mut stream)
                 .map(|nonce| Payload::DirectRelationProposal { nonce }),
@@ -683,6 +693,11 @@ mod test {
     #[test]
     fn mut_envelope_with_nonconfidential_data() {
         test_turn_around(Payload::GenericMessage(&b"Hello TSP!"[..]));
+    }
+
+    #[test]
+    fn test_nested_msg() {
+        test_turn_around(Payload::NestedMessage(&b"Hello TSP!"[..]));
     }
 
     fn test_turn_around(payload: Payload<&[u8]>) {
