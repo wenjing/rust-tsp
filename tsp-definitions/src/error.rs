@@ -19,6 +19,8 @@ pub enum Error {
     #[error("{0}")]
     Base64(#[from] base64ct::Error),
     #[error("{0}")]
+    Base58(#[from] bs58::decode::Error),
+    #[error("{0}")]
     Io(#[from] std::io::Error),
     #[error("{0}")]
     Utf8(#[from] std::str::Utf8Error),
@@ -36,8 +38,8 @@ pub enum Error {
     UnexpectedControlMessage,
     #[error("unknown VID type")]
     UnknownVIDType,
-    #[error("invalid VID")]
-    InvalidVID,
+    #[error("invalid VID: {0}")]
+    InvalidVID(&'static str),
     #[error("invalid address")]
     InvalidAddress,
     #[error("invalid transport scheme")]
