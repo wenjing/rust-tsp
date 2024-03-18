@@ -96,7 +96,7 @@ pub async fn send(
 pub fn receive(
     receiver: &impl Receiver,
     listening: Option<tokio::sync::oneshot::Sender<()>>,
-) -> Result<impl Stream<Item = Result<ReceivedTspMessage<Vid>, Error>> + '_, Error> {
+) -> Result<impl Stream<Item = Result<ReceivedTspMessage<Vec<u8>, Vid>, Error>> + '_, Error> {
     let messages = tsp_transport::receive_messages(receiver.endpoint())?;
 
     listening.map(|s| s.send(()));
@@ -114,10 +114,10 @@ pub fn receive(
         let (nonconfidential_data, payload) = tsp_crypto::open(receiver, &sender, &mut message)?;
 
         match payload {
-            Payload::Content(message) => Ok(ReceivedTspMessage::<Vid> {
+            Payload::Content(message) => Ok(ReceivedTspMessage::<Vec<u8>, Vid> {
                 sender,
                 nonconfidential_data: nonconfidential_data.map(|v| v.to_vec()),
-                message: message.to_owned(),
+                message: Payload::Content(message.to_owned()),
             }),
             _ => unimplemented!("receiving control messages not supported yet"),
         }
@@ -129,6 +129,7 @@ mod test {
     use crate::{receive, resolve_vid, send};
     use futures::StreamExt;
     use tokio::sync::oneshot;
+    use tsp_definitions::Payload;
     use tsp_transport::tcp::start_broadcast_server;
 
     #[tokio::test]
@@ -142,7 +143,7 @@ mod test {
             .await
             .unwrap();
 
-        let payload = b"hello world";
+        let payload: &[u8] = b"hello world";
 
         start_broadcast_server("127.0.0.1:1337").await.unwrap();
 
@@ -157,7 +158,7 @@ mod test {
 
             let message = stream.next().await.unwrap().unwrap();
 
-            assert_eq!(message.message, b"hello world");
+            assert_eq!(message.message, Payload::Content(payload.to_vec()));
         });
 
         receiver_rx.await.unwrap();

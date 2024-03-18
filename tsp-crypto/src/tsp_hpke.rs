@@ -10,7 +10,7 @@ pub(crate) fn seal<A, Kdf, Kem>(
     sender: &dyn Sender,
     receiver: &dyn VerifiedVid,
     nonconfidential_data: Option<NonConfidentialData>,
-    secret_payload: Payload,
+    secret_payload: Payload<&[u8]>,
 ) -> Result<TSPMessage, Error>
 where
     A: hpke::aead::Aead,
@@ -82,7 +82,7 @@ pub(crate) fn open<'a, A, Kdf, Kem>(
     receiver: &dyn Receiver,
     sender: &dyn VerifiedVid,
     tsp_message: &'a mut [u8],
-) -> Result<(Option<NonConfidentialData<'a>>, Payload<'a>), Error>
+) -> Result<(Option<NonConfidentialData<'a>>, Payload<&'a [u8]>), Error>
 where
     A: hpke::aead::Aead,
     Kdf: hpke::kdf::Kdf,
