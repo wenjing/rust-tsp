@@ -23,7 +23,7 @@ where
     tsp_cesr::encode_envelope(
         tsp_cesr::Envelope {
             sender: sender.identifier(),
-            receiver: receiver.identifier(),
+            receiver: Some(receiver.identifier()),
             nonconfidential_data,
         },
         &mut data,
@@ -32,6 +32,7 @@ where
     let secret_payload = match secret_payload {
         Payload::Content(data) => tsp_cesr::Payload::GenericMessage(data),
         Payload::CancelRelationship => tsp_cesr::Payload::RelationshipCancel,
+        Payload::NestedMessage(_) => todo!(),
     };
 
     // prepare CESR encoded ciphertext
@@ -68,7 +69,7 @@ where
     cesr_message.extend(encapped_key.to_bytes());
 
     // encode and append the ciphertext to the envelope data
-    tsp_cesr::encode_ciphertext(&cesr_message, &mut data).expect("encoding error");
+    tsp_cesr::encode_ciphertext(&cesr_message, &mut data)?;
 
     // create and append outer signature
     let sign_key = ed25519_dalek::SigningKey::from_bytes(sender.signing_key());
@@ -106,7 +107,7 @@ where
         .map_err(|_| tsp_cesr::error::DecodeError::VidError)?;
 
     // verify the message was intended for the specified receiver
-    if envelope.receiver != receiver.identifier().as_bytes() {
+    if envelope.receiver != Some(receiver.identifier().as_bytes()) {
         return Err(Error::UnexpectedRecipient);
     }
 

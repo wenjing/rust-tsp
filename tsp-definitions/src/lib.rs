@@ -26,14 +26,22 @@ impl<B: AsRef<[u8]>, T: VerifiedVid> ReceivedTspMessage<B, T> {
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum Payload<Bytes: AsRef<[u8]>> {
     Content(Bytes),
+    NestedMessage(Bytes),
     CancelRelationship,
 }
 
 impl<Bytes: AsRef<[u8]>> fmt::Display for Payload<Bytes> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Payload::Content(bytes) => write!(f, "{}", String::from_utf8_lossy(bytes.as_ref())),
-            Payload::Reject => write!(f, "Reject"),
+            Payload::Content(bytes) => {
+                write!(f, "Content: {}", String::from_utf8_lossy(bytes.as_ref()))
+            }
+            Payload::NestedMessage(bytes) => write!(
+                f,
+                "Nested Message: {}",
+                String::from_utf8_lossy(bytes.as_ref())
+            ),
+            Payload::CancelRelationship => write!(f, "Cancel"),
         }
     }
 }
