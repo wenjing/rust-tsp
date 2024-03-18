@@ -170,7 +170,10 @@ mod test {
 
         // receive a message
         let tsp_definitions::ReceivedTspMessage::GenericMessage { message, .. } =
-            bobs_messages.recv().await.unwrap()?;
+            bobs_messages.recv().await.unwrap()?
+        else {
+            panic!()
+        };
         assert_eq!(message, b"hello world");
 
         Ok(())

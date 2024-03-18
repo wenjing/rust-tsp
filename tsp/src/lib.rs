@@ -156,7 +156,10 @@ mod test {
             tokio::pin!(stream);
 
             let tsp_definitions::ReceivedTspMessage::GenericMessage { message, .. } =
-                stream.next().await.unwrap().unwrap();
+                stream.next().await.unwrap().unwrap()
+            else {
+                panic!()
+            };
 
             assert_eq!(message, b"hello world");
         });
