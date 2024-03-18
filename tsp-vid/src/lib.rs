@@ -126,6 +126,28 @@ impl PrivateVid {
         }
     }
 
+    pub fn add_nested_did_peer(&mut self, transport: url::Url) -> PrivateVid {
+        let sigkey = Ed::SigningKey::generate(&mut OsRng);
+        let (enckey, public_enckey) = KemType::gen_keypair(&mut OsRng);
+
+        let mut vid = Vid {
+            id: Default::default(),
+            transport,
+            public_sigkey: sigkey.verifying_key(),
+            public_enckey: public_enckey.to_bytes().into(),
+            sender_vid: None,
+            parent_vid: None,
+        };
+
+        vid.id = crate::resolve::did::peer::encode_did_peer(&vid);
+
+        Self {
+            vid,
+            sigkey,
+            enckey: enckey.to_bytes().into(),
+        }
+    }
+
     pub fn vid(&self) -> &Vid {
         &self.vid
     }
