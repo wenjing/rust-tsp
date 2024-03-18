@@ -5,7 +5,7 @@ use tokio::sync::{
     mpsc::{self, Receiver},
     RwLock,
 };
-use tsp_cesr::SniffedMessage;
+use tsp_cesr::EnvelopeType;
 use tsp_definitions::{Error, MessageType, Payload, ReceivedTspMessage, VerifiedVid};
 use tsp_vid::{PrivateVid, Vid};
 
@@ -135,10 +135,10 @@ impl VidDatabase {
         verified_vids: Arc<RwLock<HashMap<String, Vid>>>,
         message: &mut [u8],
     ) -> Result<ReceivedTspMessage<Vec<u8>, Vid>, Error> {
-        let sniffed_message = tsp_cesr::sniff(message)?;
+        let sniffed_message = tsp_cesr::probe(message)?;
 
         match sniffed_message {
-            SniffedMessage::EncryptedMessage {
+            EnvelopeType::EncryptedMessage {
                 sender,
                 receiver: intended_receiver,
             } => {
@@ -170,7 +170,7 @@ impl VidDatabase {
                     _ => Err(Error::UnexpectedControlMessage),
                 }
             }
-            SniffedMessage::SignedMessage {
+            EnvelopeType::SignedMessage {
                 sender,
                 receiver: intended_receiver,
             } => {
@@ -324,7 +324,6 @@ mod test {
         Ok(())
     }
 
-    #[ignore]
     #[tokio::test]
     #[serial_test::serial(tcp)]
     async fn vid_database() {
