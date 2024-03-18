@@ -11,10 +11,17 @@ pub type NonConfidentialData<'a> = &'a [u8];
 pub type TSPMessage = Vec<u8>;
 
 #[derive(Debug)]
+pub enum MessageType {
+    Signed,
+    SignedAndEncrypted,
+}
+
+#[derive(Debug)]
 pub struct ReceivedTspMessage<Bytes: AsRef<[u8]>, V: VerifiedVid> {
     pub sender: V,
     pub nonconfidential_data: Option<Vec<u8>>,
     pub message: Payload<Bytes>,
+    pub message_type: MessageType,
 }
 
 impl<B: AsRef<[u8]>, T: VerifiedVid> ReceivedTspMessage<B, T> {

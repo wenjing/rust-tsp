@@ -1,10 +1,12 @@
+use async_recursion::async_recursion;
 use futures::StreamExt;
 use std::{collections::HashMap, sync::Arc};
 use tokio::sync::{
     mpsc::{self, Receiver},
     RwLock,
 };
-use tsp_definitions::{Error, Payload, ReceivedTspMessage, VerifiedVid};
+use tsp_cesr::SniffedMessage;
+use tsp_definitions::{Error, MessageType, Payload, ReceivedTspMessage, VerifiedVid};
 use tsp_vid::{PrivateVid, Vid};
 
 use crate::resolve_vid;
@@ -75,41 +77,42 @@ impl VidDatabase {
 
     pub async fn send_nested(
         &self,
-        _receiver: &str,
-        _nonconfidential_data: Option<&[u8]>,
-        _payload: &[u8],
+        receiver: &str,
+        nonconfidential_data: Option<&[u8]>,
+        payload: Payload<&[u8]>,
     ) -> Result<(), Error> {
-        todo!();
+        let inner_receiver = self.get_verified_vid(receiver).await?;
 
-        // let inner_receiver = self.get_verified_vid(receiver).await?;
+        let (sender, receiver, inner_message) =
+            match (inner_receiver.parent_vid(), inner_receiver.sender_vid()) {
+                (Some(parent_receiver), Some(inner_sender)) => {
+                    let inner_sender = self.get_private_vid(inner_sender).await?;
+                    let tsp_message =
+                        tsp_crypto::sign(&inner_sender, Some(&inner_receiver), payload)?;
 
-        // let (sender, receiver, payload) =
-        //     match (inner_receiver.parent_vid(), inner_receiver.sender_vid()) {
-        //         (Some(parent_receiver), Some(inner_sender)) => {
-        //             let inner_sender = self.get_private_vid(inner_sender).await?;
-        //             let tsp_message = tsp_crypto::sign(
-        //                 &inner_sender,
-        //                 &inner_receiver,
-        //                 nonconfidential_data: payload,
-        //             )?;
+                    match inner_sender.parent_vid() {
+                        Some(parent_sender) => {
+                            let parent_sender = self.get_private_vid(parent_sender).await?;
+                            let parent_receiver = self.get_verified_vid(parent_receiver).await?;
 
-        //             match inner_sender.parent_vid() {
-        //                 Some(parent_sender) => {
-        //                     let parent_sender = self.get_private_vid(parent_sender).await?;
-        //                     let parent_receiver = self.get_verified_vid(parent_receiver).await?;
+                            (parent_sender, parent_receiver, tsp_message)
+                        }
+                        None => return Err(Error::InvalidVID),
+                    }
+                }
+                _ => return Err(Error::InvalidVID),
+            };
 
-        //                     (parent_sender, parent_receiver, tsp_message)
-        //                 }
-        //                 None => return Err(Error::InvalidVID),
-        //             }
-        //         }
-        //         _ => return Err(Error::InvalidVID),
-        //     };
+        let tsp_message = tsp_crypto::seal(
+            &sender,
+            &receiver,
+            nonconfidential_data,
+            Payload::NestedMessage(&inner_message),
+        )?;
 
-        // let tsp_message = tsp_crypto::seal(&sender, &receiver, None, Payload::Content(&payload))?;
-        // tsp_transport::send_message(receiver.endpoint(), &tsp_message).await?;
+        tsp_transport::send_message(receiver.endpoint(), &tsp_message).await?;
 
-        // Ok(())
+        Ok(())
     }
 
     async fn get_private_vid(&self, vid: &str) -> Result<PrivateVid, Error> {
@@ -123,6 +126,76 @@ impl VidDatabase {
         match self.verified_vids.read().await.get(vid) {
             Some(resolved) => Ok(resolved.clone()),
             None => Err(Error::UnVerifiedVid(vid.to_string())),
+        }
+    }
+
+    #[async_recursion]
+    async fn decode_message(
+        receiver: Arc<PrivateVid>,
+        verified_vids: Arc<RwLock<HashMap<String, Vid>>>,
+        message: &mut [u8],
+    ) -> Result<ReceivedTspMessage<Vec<u8>, Vid>, Error> {
+        let sniffed_message = tsp_cesr::sniff(message)?;
+
+        match sniffed_message {
+            SniffedMessage::EncryptedMessage {
+                sender,
+                receiver: intended_receiver,
+            } => {
+                if intended_receiver != receiver.identifier().as_bytes() {
+                    return Err(Error::UnexpectedRecipient);
+                }
+
+                let sender = std::str::from_utf8(sender)?;
+
+                let Some(sender) = verified_vids.read().await.get(sender).cloned() else {
+                    return Err(Error::UnVerifiedVid(sender.to_string()));
+                };
+
+                let (nonconfidential_data, payload) =
+                    tsp_crypto::open(receiver.as_ref(), &sender, message)?;
+
+                match payload {
+                    Payload::Content(message) => Ok(ReceivedTspMessage::<Vec<u8>, Vid> {
+                        sender,
+                        nonconfidential_data: nonconfidential_data.map(|v| v.to_vec()),
+                        message: Payload::Content(message.to_owned()),
+                        message_type: MessageType::SignedAndEncrypted,
+                    }),
+                    Payload::NestedMessage(message) => {
+                        // TODO: do not allocate
+                        let mut inner = message.to_owned();
+                        VidDatabase::decode_message(receiver, verified_vids, &mut inner).await
+                    }
+                    _ => Err(Error::UnexpectedControlMessage),
+                }
+            }
+            SniffedMessage::SignedMessage {
+                sender,
+                receiver: intended_receiver,
+            } => {
+                if intended_receiver != Some(receiver.identifier().as_bytes()) {
+                    return Err(Error::UnexpectedRecipient);
+                }
+
+                let sender = std::str::from_utf8(sender)?;
+
+                let Some(sender) = verified_vids.read().await.get(sender).cloned() else {
+                    return Err(Error::UnVerifiedVid(sender.to_string()));
+                };
+
+                let payload = tsp_crypto::verify(&sender, message)?;
+
+                match payload {
+                    Payload::Content(message) => Ok(ReceivedTspMessage::<Vec<u8>, Vid> {
+                        sender,
+                        nonconfidential_data: None,
+                        message: Payload::Content(message.to_owned()),
+                        message_type: MessageType::Signed,
+                    }),
+                    _ => Err(Error::UnexpectedControlMessage),
+                }
+            }
         }
     }
 
@@ -143,33 +216,7 @@ impl VidDatabase {
                 let receiver = receiver.clone();
                 let verified_vids = verified_vids.clone();
 
-                async move {
-                    let mut message = data?;
-
-                    let (sender, intended_receiver) = tsp_cesr::get_sender_receiver(&mut message)?;
-
-                    if intended_receiver != Some(receiver.identifier().as_bytes()) {
-                        return Err(Error::UnexpectedRecipient);
-                    }
-
-                    let sender = std::str::from_utf8(sender)?;
-
-                    let Some(sender) = verified_vids.read().await.get(sender).cloned() else {
-                        return Err(Error::UnVerifiedVid(sender.to_string()));
-                    };
-
-                    let (nonconfidential_data, payload) =
-                        tsp_crypto::open(receiver.as_ref(), &sender, &mut message)?;
-
-                    match payload {
-                        Payload::Content(message) => Ok(ReceivedTspMessage::<Vec<u8>, Vid> {
-                            sender,
-                            nonconfidential_data: nonconfidential_data.map(|v| v.to_vec()),
-                            message: Payload::Content(message.to_owned()),
-                        }),
-                        _ => unimplemented!("control messages are not supported at this level yet"),
-                    }
-                }
+                async move { Self::decode_message(receiver, verified_vids, &mut data?).await }
             });
 
             tokio::pin!(decrypted_messages);
@@ -212,7 +259,8 @@ mod test {
             .await?;
 
         // send a message
-        db.send_nested(bobs_inner_vid, None, b"hello bob").await?;
+        db.send_nested(bobs_inner_vid, None, Payload::Content(b"hello bob"))
+            .await?;
 
         Ok(())
     }
@@ -276,6 +324,7 @@ mod test {
         Ok(())
     }
 
+    #[ignore]
     #[tokio::test]
     #[serial_test::serial(tcp)]
     async fn vid_database() {

@@ -32,6 +32,8 @@ pub enum Error {
     UnexpectedRecipient,
     #[error("no ciphertext")]
     MissingCiphertext,
+    #[error("unexpected control message")]
+    UnexpectedControlMessage,
     #[error("unknown VID type")]
     UnknownVIDType,
     #[error("invalid VID")]

@@ -31,17 +31,17 @@ pub fn open<'a>(
 /// Construct and sign a non-confidential TSP message
 pub fn sign(
     sender: &dyn Sender,
-    receiver: Option<&dyn Receiver>,
-    nonconfidential_data: NonConfidentialData,
+    receiver: Option<&dyn VerifiedVid>,
+    payload: Payload<&[u8]>,
 ) -> Result<TSPMessage, Error> {
-    nonconfidential::sign(sender, receiver, nonconfidential_data)
+    nonconfidential::sign(sender, receiver, payload)
 }
 
 /// Decode a CESR Authentic Non-Confidential Message, verify the signature and return its contents
 pub fn verify<'a>(
     sender: &dyn VerifiedVid,
     tsp_message: &'a mut [u8],
-) -> Result<NonConfidentialData<'a>, Error> {
+) -> Result<Payload<&'a [u8]>, Error> {
     nonconfidential::verify(sender, tsp_message)
 }
 
