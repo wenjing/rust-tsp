@@ -31,9 +31,9 @@ where
 
     let secret_payload = match &secret_payload {
         Payload::Content(data) => tsp_cesr::Payload::GenericMessage(data),
-        Payload::RequestRelationship => {
-            tsp_cesr::Payload::DirectRelationProposal { nonce: todo!() }
-        }
+        Payload::RequestRelationship => tsp_cesr::Payload::DirectRelationProposal {
+            nonce: fresh_nonce(&mut csprng),
+        },
         Payload::AcceptRelationship { thread_id } => {
             tsp_cesr::Payload::DirectRelationAffirm { reply: thread_id }
         }
@@ -145,4 +145,9 @@ where
     };
 
     Ok((envelope.nonconfidential_data, secret_payload))
+}
+
+/// Generate N random bytes using the provided RNG
+fn fresh_nonce(csprng: &mut (impl rand::RngCore + rand::CryptoRng)) -> tsp_cesr::Nonce {
+    tsp_cesr::Nonce::generate(|dst| csprng.fill_bytes(dst))
 }
