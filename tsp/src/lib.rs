@@ -1,5 +1,7 @@
 use futures::{Stream, StreamExt};
-use tsp_definitions::{Error, Payload, ReceivedTspMessage, Receiver, Sender, VerifiedVid};
+use tsp_definitions::{
+    Error, MessageType, Payload, ReceivedTspMessage, Receiver, Sender, VerifiedVid,
+};
 use tsp_vid::Vid;
 
 mod vid_database;
@@ -118,6 +120,7 @@ pub fn receive(
                 sender,
                 nonconfidential_data: nonconfidential_data.map(|v| v.to_vec()),
                 message: Payload::Content(message.to_owned()),
+                message_type: MessageType::SignedAndEncrypted,
             }),
             _ => unimplemented!("receiving control messages not supported yet"),
         }
