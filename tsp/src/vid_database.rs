@@ -118,11 +118,13 @@ impl VidDatabase {
                         tsp_crypto::open(receiver.as_ref(), &sender, &mut message)?;
 
                     match payload {
-                        Payload::Content(message) => Ok(ReceivedTspMessage::<Vid> {
-                            sender,
-                            nonconfidential_data: nonconfidential_data.map(|v| v.to_vec()),
-                            message: message.to_owned(),
-                        }),
+                        Payload::Content(message) => {
+                            Ok(ReceivedTspMessage::<Vid>::GenericMessage {
+                                sender,
+                                nonconfidential_data: nonconfidential_data.map(|v| v.to_vec()),
+                                message: message.to_owned(),
+                            })
+                        }
                         _ => unimplemented!("control messages are not supported at this level yet"),
                     }
                 }
@@ -167,8 +169,9 @@ mod test {
         .await?;
 
         // receive a message
-        let message = bobs_messages.recv().await.unwrap()?;
-        assert_eq!(message.message, b"hello world");
+        let tsp_definitions::ReceivedTspMessage::GenericMessage { message, .. } =
+            bobs_messages.recv().await.unwrap()?;
+        assert_eq!(message, b"hello world");
 
         Ok(())
     }

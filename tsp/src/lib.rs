@@ -89,7 +89,7 @@ pub async fn send(
 ///     tokio::pin!(messages);
 ///
 ///     while let Some(Ok(msg)) = messages.next().await {
-///         println!("Received {:?}", msg.message);
+///         println!("Received {:?}", msg);
 ///     }
 /// }
 /// ```
@@ -114,7 +114,7 @@ pub fn receive(
         let (nonconfidential_data, payload) = tsp_crypto::open(receiver, &sender, &mut message)?;
 
         match payload {
-            Payload::Content(message) => Ok(ReceivedTspMessage::<Vid> {
+            Payload::Content(message) => Ok(ReceivedTspMessage::<Vid>::GenericMessage {
                 sender,
                 nonconfidential_data: nonconfidential_data.map(|v| v.to_vec()),
                 message: message.to_owned(),
@@ -155,9 +155,10 @@ mod test {
             let stream = receive(&bob_receiver, Some(receiver_tx)).unwrap();
             tokio::pin!(stream);
 
-            let message = stream.next().await.unwrap().unwrap();
+            let tsp_definitions::ReceivedTspMessage::GenericMessage { message, .. } =
+                stream.next().await.unwrap().unwrap();
 
-            assert_eq!(message.message, b"hello world");
+            assert_eq!(message, b"hello world");
         });
 
         receiver_rx.await.unwrap();
