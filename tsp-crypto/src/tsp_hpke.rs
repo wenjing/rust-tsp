@@ -20,7 +20,7 @@ where
     let mut csprng = StdRng::from_entropy();
 
     let mut data = Vec::with_capacity(64);
-    tsp_cesr::encode_envelope(
+    tsp_cesr::encode_ets_envelope(
         tsp_cesr::Envelope {
             sender: sender.identifier(),
             receiver: Some(receiver.identifier()),
@@ -101,10 +101,13 @@ where
     let DecodedEnvelope {
         raw_header: info,
         envelope,
-        ciphertext,
+        ciphertext: Some(ciphertext),
     } = view
         .into_opened::<&[u8]>()
-        .map_err(|_| tsp_cesr::error::DecodeError::VidError)?;
+        .map_err(|_| tsp_cesr::error::DecodeError::VidError)?
+    else {
+        return Err(Error::MissingCiphertext);
+    };
 
     // verify the message was intended for the specified receiver
     if envelope.receiver != Some(receiver.identifier().as_bytes()) {

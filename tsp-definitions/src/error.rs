@@ -30,6 +30,8 @@ pub enum Error {
     ResolveVID(&'static str),
     #[error("unexpected recipient")]
     UnexpectedRecipient,
+    #[error("no ciphertext")]
+    MissingCiphertext,
     #[error("unknown VID type")]
     UnknownVIDType,
     #[error("invalid VID")]
