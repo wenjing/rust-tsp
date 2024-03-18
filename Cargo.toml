@@ -19,6 +19,7 @@ crypto_box = { version = "0.9", features = ["alloc", "seal", "chacha20"] }
 rand = "0.8"
 ed25519-dalek = { version = "2", features = [ "rand_core", "pkcs8" ] }
 base64ct = { version = "1.6", features = ["alloc", "std"] }
+bs58 = "0.5"
 thiserror = "1.0"
 async-recursion = "1.1"
 # transport
