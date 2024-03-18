@@ -8,7 +8,7 @@ pub fn sign(
     nonconfidential_data: NonConfidentialData,
 ) -> Result<TSPMessage, Error> {
     let mut data = Vec::with_capacity(64);
-    tsp_cesr::encode_envelope(
+    tsp_cesr::encode_s_envelope(
         tsp_cesr::Envelope {
             sender: sender.identifier(),
             receiver: receiver.map(|r| r.identifier()),
