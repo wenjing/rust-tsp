@@ -75,40 +75,41 @@ impl VidDatabase {
 
     pub async fn send_nested(
         &self,
-        receiver: &str,
-        nonconfidential_data: Option<&[u8]>,
-        payload: &[u8],
+        _receiver: &str,
+        _nonconfidential_data: Option<&[u8]>,
+        _payload: &[u8],
     ) -> Result<(), Error> {
-        let inner_receiver = self.get_verified_vid(receiver).await?;
+        todo!();
 
-        let (sender, receiver, payload) =
-            match (inner_receiver.parent_vid(), inner_receiver.sender_vid()) {
-                (Some(parent_receiver), Some(inner_sender)) => {
-                    let inner_sender = self.get_private_vid(inner_sender).await?;
-                    let tsp_message = tsp_crypto::seal(
-                        &inner_sender,
-                        &inner_receiver,
-                        nonconfidential_data,
-                        Payload::Content(payload),
-                    )?;
+        // let inner_receiver = self.get_verified_vid(receiver).await?;
 
-                    match inner_sender.parent_vid() {
-                        Some(parent_sender) => {
-                            let parent_sender = self.get_private_vid(parent_sender).await?;
-                            let parent_receiver = self.get_verified_vid(parent_receiver).await?;
+        // let (sender, receiver, payload) =
+        //     match (inner_receiver.parent_vid(), inner_receiver.sender_vid()) {
+        //         (Some(parent_receiver), Some(inner_sender)) => {
+        //             let inner_sender = self.get_private_vid(inner_sender).await?;
+        //             let tsp_message = tsp_crypto::sign(
+        //                 &inner_sender,
+        //                 &inner_receiver,
+        //                 nonconfidential_data: payload,
+        //             )?;
 
-                            (parent_sender, parent_receiver, tsp_message)
-                        }
-                        None => return Err(Error::InvalidVID),
-                    }
-                }
-                _ => return Err(Error::InvalidVID),
-            };
+        //             match inner_sender.parent_vid() {
+        //                 Some(parent_sender) => {
+        //                     let parent_sender = self.get_private_vid(parent_sender).await?;
+        //                     let parent_receiver = self.get_verified_vid(parent_receiver).await?;
 
-        let tsp_message = tsp_crypto::seal(&sender, &receiver, None, Payload::Content(&payload))?;
-        tsp_transport::send_message(receiver.endpoint(), &tsp_message).await?;
+        //                     (parent_sender, parent_receiver, tsp_message)
+        //                 }
+        //                 None => return Err(Error::InvalidVID),
+        //             }
+        //         }
+        //         _ => return Err(Error::InvalidVID),
+        //     };
 
-        Ok(())
+        // let tsp_message = tsp_crypto::seal(&sender, &receiver, None, Payload::Content(&payload))?;
+        // tsp_transport::send_message(receiver.endpoint(), &tsp_message).await?;
+
+        // Ok(())
     }
 
     async fn get_private_vid(&self, vid: &str) -> Result<PrivateVid, Error> {
@@ -147,7 +148,7 @@ impl VidDatabase {
 
                     let (sender, intended_receiver) = tsp_cesr::get_sender_receiver(&mut message)?;
 
-                    if intended_receiver != receiver.identifier().as_bytes() {
+                    if intended_receiver != Some(receiver.identifier().as_bytes()) {
                         return Err(Error::UnexpectedRecipient);
                     }
 
