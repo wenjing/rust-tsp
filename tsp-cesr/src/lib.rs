@@ -56,13 +56,30 @@ mod selector {
 }
 
 /// (Temporary) interface to get Sender/Receiver VID's information from a CESR-encoded message
-pub fn get_sender_receiver(stream: &mut [u8]) -> Result<(&[u8], &[u8]), error::DecodeError> {
+pub fn get_sender_receiver(
+    stream: &mut [u8],
+) -> Result<(&[u8], Option<&[u8]>), error::DecodeError> {
     let envelope = decode_envelope_mut(stream)?
         .into_opened()
         .expect("Infallible")
         .envelope;
 
     Ok((envelope.sender, envelope.receiver))
+}
+
+pub enum SniffedMessage<'a> {
+    EncryptedMessage {
+        sender: &'a [u8],
+        receiver: &'a [u8],
+    },
+    SignedMessage {
+        sender: &'a [u8],
+        receiver: Option<&'a [u8]>,
+    },
+}
+
+pub fn sniff(_stream: &mut [u8]) -> Result<SniffedMessage, error::DecodeError> {
+    unimplemented!()
 }
 
 #[cfg(test)]

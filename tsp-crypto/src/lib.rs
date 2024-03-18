@@ -31,9 +31,10 @@ pub fn open<'a>(
 /// Construct and sign a non-confidential TSP message
 pub fn sign(
     sender: &dyn Sender,
+    receiver: Option<&dyn Receiver>,
     nonconfidential_data: NonConfidentialData,
 ) -> Result<TSPMessage, Error> {
-    nonconfidential::sign(sender, nonconfidential_data)
+    nonconfidential::sign(sender, receiver, nonconfidential_data)
 }
 
 /// Decode a CESR Authentic Non-Confidential Message, verify the signature and return its contents
