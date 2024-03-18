@@ -10,10 +10,12 @@ pub type NonConfidentialData<'a> = &'a [u8];
 pub type TSPMessage = Vec<u8>;
 
 #[derive(Debug)]
-pub struct ReceivedTspMessage<V: VerifiedVid> {
-    pub sender: V,
-    pub nonconfidential_data: Option<Vec<u8>>,
-    pub message: Vec<u8>,
+pub enum ReceivedTspMessage<V: VerifiedVid> {
+    GenericMessage {
+        sender: V,
+        nonconfidential_data: Option<Vec<u8>>,
+        message: Vec<u8>,
+    },
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
