@@ -58,7 +58,7 @@ pub fn resolve_url(parts: &[&str]) -> Result<Url, Error> {
         ["did", "web", domain, "user", username] => {
             format!("{PROTOCOL}{domain}/user/{username}/{DOCUMENT}")
         }
-        _ => return Err(Error::InvalidVID),
+        _ => return Err(Error::InvalidVID("unknown VID type")),
     }
     .parse()?)
 }
