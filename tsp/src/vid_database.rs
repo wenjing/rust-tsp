@@ -97,10 +97,11 @@ impl VidDatabase {
 
                             (parent_sender, parent_receiver, tsp_message)
                         }
-                        None => return Err(Error::InvalidVID),
+                        None => return Err(Error::InvalidVID("missing parent for inner VID")),
                     }
                 }
-                _ => return Err(Error::InvalidVID),
+                (None, _) => return Err(Error::InvalidVID("missing parent VID for receiver")),
+                (_, None) => return Err(Error::InvalidVID("missing sender VID for receiver")),
             };
 
         let tsp_message = tsp_crypto::seal(
