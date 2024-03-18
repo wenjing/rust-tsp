@@ -67,7 +67,7 @@ pub fn get_sender_receiver(
     Ok((envelope.sender, envelope.receiver))
 }
 
-pub enum SniffedMessage<'a> {
+pub enum EnvelopeType<'a> {
     EncryptedMessage {
         sender: &'a [u8],
         receiver: &'a [u8],
@@ -78,8 +78,26 @@ pub enum SniffedMessage<'a> {
     },
 }
 
-pub fn sniff(_stream: &mut [u8]) -> Result<SniffedMessage, error::DecodeError> {
-    unimplemented!()
+pub fn probe(stream: &mut [u8]) -> Result<EnvelopeType, error::DecodeError> {
+    let (_, has_confidential_part) =
+        detected_tsp_header_size_and_confidentiality(&mut (stream as &[u8]))?;
+
+    let envelope = decode_envelope_mut(stream)?
+        .into_opened()
+        .expect("Infallible")
+        .envelope;
+
+    Ok(if has_confidential_part {
+        EnvelopeType::EncryptedMessage {
+            sender: envelope.sender,
+            receiver: envelope.receiver.expect("Infallible"),
+        }
+    } else {
+        EnvelopeType::SignedMessage {
+            sender: envelope.sender,
+            receiver: envelope.receiver,
+        }
+    })
 }
 
 #[cfg(test)]
