@@ -3,6 +3,7 @@ mod error;
 pub use crate::error::Error;
 
 pub type KeyData = [u8; 32];
+pub type Digest = [u8; 32];
 pub type PrivateKeyData<'a> = &'a KeyData;
 pub type PublicKeyData<'a> = &'a KeyData;
 pub type VidData<'a> = &'a [u8];
@@ -16,6 +17,13 @@ pub enum ReceivedTspMessage<V: VerifiedVid> {
         nonconfidential_data: Option<Vec<u8>>,
         message: Vec<u8>,
     },
+    RequestRelationship {
+        sender: V,
+        thread_id: Digest,
+    },
+    AcceptRelationship {
+        sender: V,
+    },
     CancelRelationship {
         sender: V,
     },
@@ -24,6 +32,8 @@ pub enum ReceivedTspMessage<V: VerifiedVid> {
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum Payload<'a> {
     Content(&'a [u8]),
+    RequestRelationship,
+    AcceptRelationship { thread_id: Digest },
     CancelRelationship,
 }
 

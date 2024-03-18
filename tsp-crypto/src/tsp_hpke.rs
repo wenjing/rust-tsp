@@ -29,8 +29,14 @@ where
         &mut data,
     )?;
 
-    let secret_payload = match secret_payload {
+    let secret_payload = match &secret_payload {
         Payload::Content(data) => tsp_cesr::Payload::GenericMessage(data),
+        Payload::RequestRelationship => {
+            tsp_cesr::Payload::DirectRelationProposal { nonce: todo!() }
+        }
+        Payload::AcceptRelationship { thread_id } => {
+            tsp_cesr::Payload::DirectRelationAffirm { reply: thread_id }
+        }
         Payload::CancelRelationship => tsp_cesr::Payload::RelationshipCancel,
     };
 

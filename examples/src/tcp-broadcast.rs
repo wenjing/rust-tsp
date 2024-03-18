@@ -2,11 +2,7 @@ use futures_util::StreamExt;
 use rand::Rng;
 use std::time::Duration;
 use tokio::time::sleep;
-use tsp_definitions::{
-    Error,
-    ReceivedTspMessage::{CancelRelationship, GenericMessage},
-    VerifiedVid,
-};
+use tsp_definitions::{Error, ReceivedTspMessage::*, VerifiedVid};
 use tsp_transport::tcp::start_broadcast_server;
 use tsp_vid::PrivateVid;
 
@@ -52,7 +48,9 @@ async fn main() {
                     GenericMessage {
                         sender, message, ..
                     } => (sender, message.as_slice()),
-                    CancelRelationship { sender } => (sender, &b"<TSP_CANCEL>"[..]),
+                    RequestRelationship { sender, .. } => (sender, &b"{NEW_REL}"[..]),
+                    AcceptRelationship { sender } => (sender, &b"{NEW_REL_REPLY}"[..]),
+                    CancelRelationship { sender } => (sender, &b"{REL_CANCEL}"[..]),
                 };
 
                 tracing::info!(
