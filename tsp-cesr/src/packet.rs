@@ -13,7 +13,8 @@ const ED25519_PUBLICKEY: u32 = (b'D' - b'A') as u32;
 const HPKE_PUBLICKEY: u32 = (b'Q' - b'A') as u32;
 
 /// Constants that determine the specific CESR types for the framing codes
-const TSP_WRAPPER: u16 = (b'E' - b'A') as u16;
+const TSP_ETS_WRAPPER: u16 = (b'E' - b'A') as u16;
+const TSP_S_WRAPPER: u16 = (b'S' - b'A') as u16;
 const TSP_PAYLOAD: u16 = (b'Z' - b'A') as u16;
 
 /// Constants to encode message types
@@ -93,7 +94,7 @@ pub struct Envelope<'a, Vid> {
 pub struct DecodedEnvelope<'a, Vid, Bytes> {
     pub envelope: Envelope<'a, Vid>,
     pub raw_header: &'a [u8], // for associated data purposes
-    pub ciphertext: Bytes,
+    pub ciphertext: Option<Bytes>,
 }
 
 /// TODO: something more type safe
@@ -218,9 +219,8 @@ pub fn encode_envelope<'a, Vid: AsRef<[u8]>>(
     envelope: Envelope<'a, Vid>,
     output: &mut impl for<'b> Extend<&'b u8>,
 ) -> Result<(), EncodeError> {
-    encode_count(TSP_WRAPPER, 1, output);
-    encode_fixed_data(TSP_TYPECODE, &[0, 0], output);
-    checked_encode_variable_data(TSP_DEVELOPMENT_VID, envelope.sender.as_ref(), output)?;
+    encode_count(TSP_ETS_WRAPPER, 1, output);
+    encode_fixed_data(TSP_TYPECODE, &[0, 0], output); checked_encode_variable_data(TSP_DEVELOPMENT_VID, envelope.sender.as_ref(), output)?;
 
     if let Some(rec) = envelope.receiver {
         checked_encode_variable_data(TSP_DEVELOPMENT_VID, rec.as_ref(), output)?;
@@ -247,20 +247,27 @@ pub fn encode_ciphertext(
     checked_encode_variable_data(TSP_CIPHERTEXT, ciphertext, output)
 }
 
-/// Checks whether the expected TSP header is present and returns its size
-fn detected_tsp_header_size(stream: &mut &[u8]) -> Result<usize, DecodeError> {
+/// Checks whether the expected TSP header is present and returns its size and whether it
+/// is a "ETS" or "S" envelope
+pub(super) fn detected_tsp_header_size_and_confidentiality(
+    stream: &mut &[u8],
+) -> Result<(usize, bool), DecodeError> {
     let origin = stream as &[u8];
-    match decode_count(TSP_WRAPPER, stream) {
-        Some(1) => {}
-        _ => return Err(DecodeError::VersionMismatch),
-    }
+    let encrypted = if let Some(1) = decode_count(TSP_ETS_WRAPPER, stream) {
+	true
+    } else if let Some(1) = decode_count(TSP_S_WRAPPER, stream) {
+	false
+    } else {
+        return Err(DecodeError::VersionMismatch);
+    };
+
     match decode_fixed_data(TSP_TYPECODE, stream) {
         Some([0, 0]) => {}
         _ => return Err(DecodeError::VersionMismatch),
     }
 
     debug_assert_eq!(origin.len() - stream.len(), 6);
-    Ok(6)
+    Ok((6, encrypted))
 }
 
 /// A structure representing a siganture + data that needs to be verified
@@ -282,7 +289,7 @@ pub fn decode_envelope<'a, Vid: TryFrom<&'a [u8]>>(
     DecodeError,
 > {
     let origin = stream;
-    detected_tsp_header_size(&mut stream)?;
+    let (_, has_confidential_part) = detected_tsp_header_size_and_confidentiality(&mut stream)?;
     let sender = decode_variable_data(TSP_DEVELOPMENT_VID, &mut stream)
         .ok_or(DecodeError::UnexpectedData)?
         .try_into()
@@ -313,7 +320,7 @@ pub fn decode_envelope<'a, Vid: TryFrom<&'a [u8]>>(
                 nonconfidential_data,
             },
             raw_header,
-            ciphertext,
+            ciphertext: Some(ciphertext),
         },
         VerificationChallenge {
             signed_data,
@@ -363,7 +370,7 @@ impl<'a> CipherView<'a> {
         Ok(DecodedEnvelope {
             envelope,
             raw_header,
-            ciphertext,
+            ciphertext: Some(ciphertext),
         })
     }
 
@@ -378,7 +385,7 @@ impl<'a> CipherView<'a> {
 /// Decode an encrypted TSP message plus Envelope & Signature
 /// Produces the ciphertext as a mutable stream.
 pub fn decode_envelope_mut<'a>(stream: &'a mut [u8]) -> Result<CipherView<'a>, DecodeError> {
-    let mut pos = detected_tsp_header_size(&mut (stream as &[u8]))?;
+    let (mut pos, has_confidential_part) = detected_tsp_header_size_and_confidentiality(&mut (stream as &[u8]))?;
     let mut sender = decode_variable_data_index(TSP_DEVELOPMENT_VID, &stream[pos..])
         .ok_or(DecodeError::UnexpectedData)?;
     sender.start += pos;
@@ -574,7 +581,7 @@ mod test {
         assert_eq!(env.receiver, Some(&b"Bobbi"[..]));
         assert_eq!(env.nonconfidential_data, None);
 
-        let Payload::GenericMessage(data) = decode_payload(dummy_crypt(ciphertext)).unwrap() else {
+        let Payload::GenericMessage(data) = decode_payload(dummy_crypt(ciphertext.unwrap())).unwrap() else {
             unreachable!();
         };
         assert_eq!(data, b"Hello TSP!");
@@ -615,7 +622,7 @@ mod test {
         assert_eq!(env.receiver, Some(&b"Bobbi"[..]));
         assert_eq!(env.nonconfidential_data, Some(&b"treasure"[..]));
 
-        let Payload::GenericMessage(data) = decode_payload(dummy_crypt(ciphertext)).unwrap() else {
+        let Payload::GenericMessage(data) = decode_payload(dummy_crypt(ciphertext.unwrap())).unwrap() else {
             unreachable!();
         };
         assert_eq!(data, b"Hello TSP!");
@@ -733,7 +740,7 @@ mod test {
         assert_eq!(env.receiver, Some(&b"Bobbi"[..]));
         assert_eq!(env.nonconfidential_data, Some(&b"treasure"[..]));
 
-        assert_eq!(decode_payload(dummy_crypt(ciphertext)).unwrap(), payload);
+        assert_eq!(decode_payload(dummy_crypt(ciphertext.unwrap())).unwrap(), payload);
     }
 
     #[test]
