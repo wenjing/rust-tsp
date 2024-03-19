@@ -68,7 +68,7 @@ pub async fn send(
     Ok(())
 }
 
-/// Listen for incopming TSP messages, given the transport provided by the receiver VID
+/// Listen for incoming TSP messages, given the transport provided by the receiver VID
 ///
 /// # Arguments
 ///
