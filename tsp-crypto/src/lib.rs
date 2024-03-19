@@ -2,6 +2,7 @@ use tsp_definitions::{
     Error, NonConfidentialData, Payload, Receiver, Sender, TSPMessage, VerifiedVid,
 };
 
+mod digest;
 mod nonconfidential;
 mod tsp_hpke;
 
@@ -24,7 +25,7 @@ pub fn open<'a>(
     receiver: &dyn Receiver,
     sender: &dyn VerifiedVid,
     tsp_message: &'a mut [u8],
-) -> Result<(Option<NonConfidentialData<'a>>, Payload<'a>), Error> {
+) -> Result<(Option<NonConfidentialData<'a>>, Payload<'a>, &'a [u8]), Error> {
     tsp_hpke::open::<Aead, Kdf, Kem>(receiver, sender, tsp_message)
 }
 
@@ -43,6 +44,8 @@ pub fn verify<'a>(
 ) -> Result<NonConfidentialData<'a>, Error> {
     nonconfidential::verify(sender, tsp_message)
 }
+
+pub use digest::sha256;
 
 #[cfg(test)]
 mod tests {
@@ -71,7 +74,7 @@ mod tests {
         )
         .unwrap();
 
-        let (received_nonconfidential_data, received_secret_message) =
+        let (received_nonconfidential_data, received_secret_message, _) =
             open(&alice, &bob, &mut message).unwrap();
 
         assert_eq!(received_nonconfidential_data.unwrap(), nonconfidential_data);

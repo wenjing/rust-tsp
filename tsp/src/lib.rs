@@ -111,7 +111,8 @@ pub fn receive(
         }
 
         let sender = resolve_vid(std::str::from_utf8(sender)?).await?;
-        let (nonconfidential_data, payload) = tsp_crypto::open(receiver, &sender, &mut message)?;
+        let (nonconfidential_data, payload, raw_bytes) =
+            tsp_crypto::open(receiver, &sender, &mut message)?;
 
         Ok(match payload {
             Payload::Content(message) => ReceivedTspMessage::GenericMessage {
@@ -121,7 +122,7 @@ pub fn receive(
             },
             Payload::RequestRelationship => ReceivedTspMessage::RequestRelationship {
                 sender,
-                thread_id: todo!(),
+                thread_id: tsp_crypto::sha256(raw_bytes),
             },
             // TODO: check the digest and record that we have this relationship
             Payload::AcceptRelationship { thread_id: digest } => {

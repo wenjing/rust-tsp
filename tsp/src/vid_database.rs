@@ -114,7 +114,7 @@ impl VidDatabase {
                         return Err(Error::UnVerifiedVid(sender.to_string()));
                     };
 
-                    let (nonconfidential_data, payload) =
+                    let (nonconfidential_data, payload, _) =
                         tsp_crypto::open(receiver.as_ref(), &sender, &mut message)?;
 
                     match payload {
