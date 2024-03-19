@@ -69,8 +69,8 @@ pub trait VerifiedVid {
     /// The parent VID of this inner VID
     fn parent_vid(&self) -> Option<&str>;
 
-    /// The related sender inner VID for this receiver VID
-    fn sender_vid(&self) -> Option<&str>;
+    /// The related relation inner VID for this VID
+    fn relation_vid(&self) -> Option<&str>;
 }
 
 pub trait Receiver: VerifiedVid {

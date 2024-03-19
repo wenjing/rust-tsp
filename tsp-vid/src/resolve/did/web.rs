@@ -127,7 +127,7 @@ pub fn resolve_document(did_document: DidDocument, target_id: &str) -> Result<Vi
         transport,
         public_sigkey,
         public_enckey,
-        sender_vid: None,
+        relation_vid: None,
         parent_vid: None,
     })
 }

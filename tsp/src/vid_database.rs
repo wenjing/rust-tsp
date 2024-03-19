@@ -29,6 +29,22 @@ impl VidDatabase {
         Ok(())
     }
 
+    pub async fn create_private_nested_vid(
+        &self,
+        vid: &str,
+        relation_vid: Option<&str>,
+    ) -> Result<String, Error> {
+        let nested = match self.private_vids.read().await.get(vid) {
+            Some(resolved) => resolved.create_nested(relation_vid),
+            None => return Err(Error::UnVerifiedVid(vid.to_string())),
+        };
+
+        let id = nested.identifier().to_string();
+        self.add_private_vid(nested).await?;
+
+        Ok(id)
+    }
+
     pub async fn add_verified_vid(&self, verified_vid: Vid) -> Result<(), Error> {
         let mut verified_vids = self.verified_vids.write().await;
         verified_vids.insert(verified_vid.identifier().to_string(), verified_vid);
@@ -48,6 +64,25 @@ impl VidDatabase {
         let mut verified_vids = self.verified_vids.write().await;
 
         let resolved_vid = resolve_vid(vid).await?;
+        verified_vids.insert(vid.to_string(), resolved_vid);
+
+        Ok(())
+    }
+
+    /// Resolve public key material for a VID and add it to the detabase as a relation
+    /// In addition specify the parent VID for this VID
+    pub async fn resolve_vid_with_parent(
+        &mut self,
+        vid: &str,
+        parent_vid: &str,
+        relation_vid: Option<&str>,
+    ) -> Result<(), Error> {
+        let mut verified_vids = self.verified_vids.write().await;
+
+        let mut resolved_vid = resolve_vid(vid).await?;
+
+        resolved_vid.set_parent_vid(parent_vid.to_string());
+        resolved_vid.set_relation_vid(relation_vid);
         verified_vids.insert(vid.to_string(), resolved_vid);
 
         Ok(())
@@ -79,12 +114,12 @@ impl VidDatabase {
         &self,
         receiver: &str,
         nonconfidential_data: Option<&[u8]>,
-        payload: Payload<&[u8]>,
+        payload: &[u8],
     ) -> Result<(), Error> {
         let inner_receiver = self.get_verified_vid(receiver).await?;
 
         let (sender, receiver, inner_message) =
-            match (inner_receiver.parent_vid(), inner_receiver.sender_vid()) {
+            match (inner_receiver.parent_vid(), inner_receiver.relation_vid()) {
                 (Some(parent_receiver), Some(inner_sender)) => {
                     let inner_sender = self.get_private_vid(inner_sender).await?;
                     let tsp_message =
@@ -132,20 +167,22 @@ impl VidDatabase {
 
     #[async_recursion]
     async fn decode_message(
-        receiver: Arc<PrivateVid>,
+        receivers: Arc<HashMap<String, PrivateVid>>,
         verified_vids: Arc<RwLock<HashMap<String, Vid>>>,
         message: &mut [u8],
     ) -> Result<ReceivedTspMessage<Vec<u8>, Vid>, Error> {
-        let sniffed_message = tsp_cesr::probe(message)?;
+        let probed_message = tsp_cesr::probe(message)?;
 
-        match sniffed_message {
+        match probed_message {
             EnvelopeType::EncryptedMessage {
                 sender,
                 receiver: intended_receiver,
             } => {
-                if intended_receiver != receiver.identifier().as_bytes() {
+                let intended_receiver = std::str::from_utf8(intended_receiver)?;
+
+                let Some(intended_receiver) = receivers.get(intended_receiver) else {
                     return Err(Error::UnexpectedRecipient);
-                }
+                };
 
                 let sender = std::str::from_utf8(sender)?;
 
@@ -154,7 +191,7 @@ impl VidDatabase {
                 };
 
                 let (nonconfidential_data, payload) =
-                    tsp_crypto::open(receiver.as_ref(), &sender, message)?;
+                    tsp_crypto::open(intended_receiver, &sender, message)?;
 
                 match payload {
                     Payload::Content(message) => Ok(ReceivedTspMessage::<Vec<u8>, Vid> {
@@ -166,7 +203,7 @@ impl VidDatabase {
                     Payload::NestedMessage(message) => {
                         // TODO: do not allocate
                         let mut inner = message.to_owned();
-                        VidDatabase::decode_message(receiver, verified_vids, &mut inner).await
+                        VidDatabase::decode_message(receivers, verified_vids, &mut inner).await
                     }
                     _ => Err(Error::UnexpectedControlMessage),
                 }
@@ -175,9 +212,13 @@ impl VidDatabase {
                 sender,
                 receiver: intended_receiver,
             } => {
-                if intended_receiver != Some(receiver.identifier().as_bytes()) {
-                    return Err(Error::UnexpectedRecipient);
-                }
+                if let Some(intended_receiver) = intended_receiver {
+                    let intended_receiver = std::str::from_utf8(intended_receiver)?;
+
+                    if !receivers.contains_key(intended_receiver) {
+                        return Err(Error::UnexpectedRecipient);
+                    }
+                };
 
                 let sender = std::str::from_utf8(sender)?;
 
@@ -187,15 +228,12 @@ impl VidDatabase {
 
                 let payload = tsp_crypto::verify(&sender, message)?;
 
-                match payload {
-                    Payload::Content(message) => Ok(ReceivedTspMessage::<Vec<u8>, Vid> {
-                        sender,
-                        nonconfidential_data: None,
-                        message: Payload::Content(message.to_owned()),
-                        message_type: MessageType::Signed,
-                    }),
-                    _ => Err(Error::UnexpectedControlMessage),
-                }
+                Ok(ReceivedTspMessage::<Vec<u8>, Vid> {
+                    sender,
+                    nonconfidential_data: None,
+                    message: Payload::Content(payload.to_owned()),
+                    message_type: MessageType::Signed,
+                })
             }
         }
     }
@@ -207,17 +245,31 @@ impl VidDatabase {
         &self,
         vid: &str,
     ) -> Result<Receiver<Result<ReceivedTspMessage<Vec<u8>, Vid>, Error>>, Error> {
-        let receiver = Arc::new(self.get_private_vid(vid).await?);
+        let mut receiver = self.get_private_vid(vid).await?;
+        let mut receivers = HashMap::new();
+
+        loop {
+            receivers.insert(receiver.identifier().to_string(), receiver.clone());
+
+            match receiver.parent_vid() {
+                Some(parent_vid) => {
+                    receiver = self.get_private_vid(parent_vid).await?;
+                }
+                _ => break,
+            }
+        }
+
+        let receivers = Arc::new(receivers);
         let verified_vids = self.verified_vids.clone();
         let (tx, rx) = mpsc::channel(16);
         let messages = tsp_transport::receive_messages(receiver.endpoint())?;
 
         tokio::task::spawn(async move {
             let decrypted_messages = messages.then(move |data| {
-                let receiver = receiver.clone();
+                let receivers = receivers.clone();
                 let verified_vids = verified_vids.clone();
 
-                async move { Self::decode_message(receiver, verified_vids, &mut data?).await }
+                async move { Self::decode_message(receivers, verified_vids, &mut data?).await }
             });
 
             tokio::pin!(decrypted_messages);
@@ -242,85 +294,76 @@ impl VidDatabase {
 #[cfg(test)]
 mod test {
     use crate::VidDatabase;
-    use tsp_definitions::{Error, Payload};
-
-    async fn test_alice_nested() -> Result<(), Error> {
-        // alice database
-        let mut db = VidDatabase::new();
-        db.add_private_vid_from_file("test/alice.json").await?;
-        db.resolve_vid("did:web:did.tsp-test.org:user:bob").await?;
-
-        let _ = db.receive("did:web:did.tsp-test.org:user:alice").await?;
-
-        let (_my_inner_vid, bobs_inner_vid) = db
-            .propose_nested_relationship(
-                "did:web:did.tsp-test.org:user:alice",
-                "did:web:did.tsp-test.org:user:bob",
-            )
-            .await?;
-
-        // send a message
-        db.send_nested(bobs_inner_vid, None, Payload::Content(b"hello bob"))
-            .await?;
-
-        Ok(())
-    }
-
-    async fn test_bob_nested() -> Result<(), Error> {
-        // bob database
-        let mut db = VidDatabase::new();
-        db.add_private_vid_from_file("test/bob.json").await?;
-        db.resolve_vid("did:web:did.tsp-test.org:user:alice")
-            .await?;
-
-        let mut bobs_messages = db.receive("did:web:did.tsp-test.org:user:bob").await?;
-
-        let _message = bobs_messages.recv().await.unwrap()?;
-        // assert!(message.is_relationship_proposal());
-        // let (my_vid, sender_vid) = db.accept_relationship(&message).await?;
-
-        // let message = bobs_messages.recv().await.unwrap()?;
-        // assert_eq!(message.payload, b"hello bob");
-
-        Ok(())
-    }
-
-    async fn test_send_receive_nested() -> Result<(), tsp_definitions::Error> {
-        let _bob_handle = tokio::task::spawn(test_bob_nested());
-        let _alice_handle = tokio::task::spawn(test_alice_nested());
-
-        // bob_handle.await.unwrap().unwrap();
-        // alice_handle.await.unwrap().unwrap();
-
-        Ok(())
-    }
+    use tsp_definitions::Payload;
 
     async fn test_send_receive() -> Result<(), tsp_definitions::Error> {
         // bob database
-        let mut db1 = VidDatabase::new();
-        db1.add_private_vid_from_file("test/bob.json").await?;
-        db1.resolve_vid("did:web:did.tsp-test.org:user:alice")
+        let mut bob_db = VidDatabase::new();
+        bob_db.add_private_vid_from_file("test/bob.json").await?;
+        bob_db
+            .resolve_vid("did:web:did.tsp-test.org:user:alice")
             .await?;
 
-        let mut bobs_messages = db1.receive("did:web:did.tsp-test.org:user:bob").await?;
+        let mut bobs_messages = bob_db.receive("did:web:did.tsp-test.org:user:bob").await?;
 
         // alice database
-        let mut db2 = VidDatabase::new();
-        db2.add_private_vid_from_file("test/alice.json").await?;
-        db2.resolve_vid("did:web:did.tsp-test.org:user:bob").await?;
+        let mut alice_db = VidDatabase::new();
+        alice_db
+            .add_private_vid_from_file("test/alice.json")
+            .await?;
+        alice_db
+            .resolve_vid("did:web:did.tsp-test.org:user:bob")
+            .await?;
 
         // send a message
-        db2.send(
-            "did:web:did.tsp-test.org:user:alice",
-            "did:web:did.tsp-test.org:user:bob",
-            Some(b"extra non-confidential data"),
-            b"hello world",
-        )
-        .await?;
+        alice_db
+            .send(
+                "did:web:did.tsp-test.org:user:alice",
+                "did:web:did.tsp-test.org:user:bob",
+                Some(b"extra non-confidential data"),
+                b"hello world",
+            )
+            .await?;
 
         // receive a message
-        let message = bobs_messages.recv().await.unwrap()?;
+        let message = bobs_messages.recv().await.unwrap().unwrap();
         assert_eq!(message.message, Payload::Content(b"hello world".to_vec()));
+
+        // create nested id's
+        let nested_bob_vid = bob_db
+            .create_private_nested_vid("did:web:did.tsp-test.org:user:bob", None)
+            .await?;
+
+        // receive a messages on inner vid
+        let mut bobs_inner_messages = bob_db.receive(&nested_bob_vid).await?;
+
+        let nested_alice_vid = alice_db
+            .create_private_nested_vid("did:web:did.tsp-test.org:user:alice", Some(&nested_bob_vid))
+            .await?;
+        alice_db
+            .resolve_vid_with_parent(
+                &nested_bob_vid,
+                "did:web:did.tsp-test.org:user:bob",
+                Some(&nested_alice_vid),
+            )
+            .await?;
+        bob_db.resolve_vid(&nested_alice_vid).await?;
+
+        // send a message using inner vid
+        alice_db
+            .send_nested(
+                &nested_bob_vid,
+                Some(b"extra non-confidential data"),
+                b"hello nested world",
+            )
+            .await?;
+
+        // receive message using inner vid
+        let message = bobs_inner_messages.recv().await.unwrap().unwrap();
+        assert_eq!(
+            message.message,
+            Payload::Content(b"hello nested world".to_vec())
+        );
 
         Ok(())
     }
@@ -333,6 +376,5 @@ mod test {
             .unwrap();
 
         test_send_receive().await.unwrap();
-        test_send_receive_nested().await.unwrap();
     }
 }

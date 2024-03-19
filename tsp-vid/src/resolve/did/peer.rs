@@ -114,11 +114,11 @@ pub(crate) fn resolve_did_peer(parts: &[&str]) -> Result<Vid, Error> {
 
     match (public_sigkey, public_enckey, transport) {
         (Some(public_sigkey), Some(public_enckey), Some(transport)) => Ok(Vid {
-            id: Default::default(),
+            id: parts.join(":"),
             transport,
             public_sigkey,
             public_enckey,
-            sender_vid: None,
+            relation_vid: None,
             parent_vid: None,
         }),
         (None, _, _) => Err(Error::InvalidVID("missing verification key in did:peer")),
@@ -149,7 +149,7 @@ mod test {
             transport: Url::parse("tcp://127.0.0.1:1337").unwrap(),
             public_sigkey: sigkey.verifying_key(),
             public_enckey: public_enckey.to_bytes().into(),
-            sender_vid: None,
+            relation_vid: None,
             parent_vid: None,
         };
 
