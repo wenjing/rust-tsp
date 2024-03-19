@@ -36,7 +36,19 @@ use crate::{
 
 /// A type to enforce that a random nonce contains enough bits of security
 /// (128bits via a birthday attack -> 256bits needed)
-pub type Nonce = [u8; 32];
+/// This explicitly does not implement Clone or Copy to make sure nonces are not reused
+#[derive(Debug)]
+#[cfg_attr(test, derive(PartialEq, Eq, Clone))]
+pub struct Nonce([u8; 32]);
+
+impl Nonce {
+    pub fn generate(gen: impl FnOnce(&mut [u8; 32])) -> Nonce {
+        let mut bytes = Default::default();
+        gen(&mut bytes);
+
+        Nonce(bytes)
+    }
+}
 
 /// A SHA256 Digest
 //TODO: this should probably be in tsp-definitions
@@ -55,15 +67,15 @@ pub struct PairedKeys<'a> {
 ///TODO: add control messages
 /// A type to distinguish "normal" TSP messages from "control" messages
 #[repr(u32)]
-#[derive(Debug, Clone)]
-#[cfg_attr(test, derive(PartialEq, Eq))]
+#[derive(Debug)]
+#[cfg_attr(test, derive(PartialEq, Eq, Clone))]
 pub enum Payload<'a, Bytes: AsRef<[u8]>> {
     /// A TSP message which consists only of a message which will be protected using HPKE
     GenericMessage(Bytes),
     /// A payload that conists of a TSP Envelope+Message (TODO: maybe add some extra decoding)
     NestedMessage(Bytes),
     /// A TSP message requesting a relationship
-    DirectRelationProposal { nonce: &'a Nonce },
+    DirectRelationProposal { nonce: Nonce },
     /// A TSP message confiming a relationship
     DirectRelationAffirm { reply: &'a Sha256Digest },
     /// A TSP message requesting a nested relationship
@@ -135,7 +147,7 @@ pub fn encode_payload(
         }
         Payload::DirectRelationProposal { nonce } => {
             encode_fixed_data(TSP_TYPECODE, &msgtype::NEW_REL, output);
-            encode_fixed_data(TSP_NONCE, nonce, output);
+            encode_fixed_data(TSP_NONCE, &nonce.0, output);
         }
         Payload::DirectRelationAffirm { reply } => {
             encode_fixed_data(TSP_TYPECODE, &msgtype::NEW_REL_REPLY, output);
@@ -171,11 +183,14 @@ pub fn decode_payload(mut stream: &[u8]) -> Result<Payload<&[u8]>, DecodeError> 
             msgtype::GEN_MSG => {
                 decode_variable_data(TSP_PLAINTEXT, &mut stream).map(Payload::GenericMessage)
             }
+            msgtype::NEW_REL => decode_fixed_data(TSP_NONCE, &mut stream).map(|nonce| {
+                Payload::DirectRelationProposal {
+                    nonce: Nonce(*nonce),
+                }
+            }),
             msgtype::NEST_MSG => {
                 decode_variable_data(TSP_PLAINTEXT, &mut stream).map(Payload::NestedMessage)
             }
-            msgtype::NEW_REL => decode_fixed_data(TSP_NONCE, &mut stream)
-                .map(|nonce| Payload::DirectRelationProposal { nonce }),
             msgtype::NEW_REL_REPLY => decode_fixed_data(TSP_SHA256, &mut stream)
                 .map(|reply| Payload::DirectRelationAffirm { reply }),
             msgtype::NEW_NEST_REL => {
@@ -858,7 +873,9 @@ mod test {
         let pk1 = (33u8..65).collect::<Vec<u8>>();
         let pk2 = (65u8..97).collect::<Vec<u8>>();
         let nonce: &[u8; 32] = temp.as_slice().try_into().unwrap();
-        test_turn_around(Payload::DirectRelationProposal { nonce });
+        test_turn_around(Payload::DirectRelationProposal {
+            nonce: Nonce(*nonce),
+        });
         test_turn_around(Payload::DirectRelationAffirm { reply: nonce });
         let public_keys = PairedKeys {
             signing: pk1.as_slice().try_into().unwrap(),

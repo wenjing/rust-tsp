@@ -1,6 +1,6 @@
 use futures::{Stream, StreamExt};
 use tsp_definitions::{
-    Error, MessageType, Payload, ReceivedTspMessage, Receiver, Sender, VerifiedVid,
+    Digest, Error, MessageType, Payload, ReceivedTspMessage, Receiver, Sender, VerifiedVid,
 };
 use tsp_vid::Vid;
 
@@ -91,14 +91,14 @@ pub async fn send(
 ///     tokio::pin!(messages);
 ///
 ///     while let Some(Ok(msg)) = messages.next().await {
-///         println!("Received {:?}", msg.message);
+///         println!("Received {:?}", msg);
 ///     }
 /// }
 /// ```
 pub fn receive(
     receiver: &impl Receiver,
     listening: Option<tokio::sync::oneshot::Sender<()>>,
-) -> Result<impl Stream<Item = Result<ReceivedTspMessage<Vec<u8>, Vid>, Error>> + '_, Error> {
+) -> Result<impl Stream<Item = Result<ReceivedTspMessage<Vid>, Error>> + '_, Error> {
     let messages = tsp_transport::receive_messages(receiver.endpoint())?;
 
     listening.map(|s| s.send(()));
@@ -113,18 +113,139 @@ pub fn receive(
         }
 
         let sender = resolve_vid(std::str::from_utf8(sender)?).await?;
-        let (nonconfidential_data, payload) = tsp_crypto::open(receiver, &sender, &mut message)?;
+        let (nonconfidential_data, payload, raw_bytes) =
+            tsp_crypto::open(receiver, &sender, &mut message)?;
 
-        match payload {
-            Payload::Content(message) => Ok(ReceivedTspMessage::<Vec<u8>, Vid> {
+        Ok(match payload {
+            Payload::Content(message) => ReceivedTspMessage::GenericMessage {
                 sender,
                 nonconfidential_data: nonconfidential_data.map(|v| v.to_vec()),
-                message: Payload::Content(message.to_owned()),
+                message: message.to_owned(),
                 message_type: MessageType::SignedAndEncrypted,
-            }),
-            _ => unimplemented!("receiving control messages not supported yet"),
-        }
+            },
+            Payload::RequestRelationship => ReceivedTspMessage::RequestRelationship {
+                sender,
+                thread_id: tsp_crypto::sha256(raw_bytes),
+            },
+            // TODO: check the digest and record that we have this relationship
+            Payload::AcceptRelationship { thread_id: _digest } => {
+                //TODO: if the thread_id is invalid, don't send this response
+                ReceivedTspMessage::AcceptRelationship { sender }
+            }
+            // TODO: record that we have to end this relationship
+            Payload::CancelRelationship => ReceivedTspMessage::CancelRelationship { sender },
+            Payload::NestedMessage(_) => unimplemented!(),
+        })
     }))
+}
+
+/// Request a direct relationship with a resolved VID using the TSP
+/// Encodes the control message, encrypts, signs and sends a TSP message
+///
+/// # Arguments
+///
+/// * `sender`               - A sender identity implementing the trait `Sender`
+/// * `receiver`             - A receiver identity implementing the trait `ResolvedVid`
+///
+/// # Example
+///
+/// ```
+/// #[tokio::main]
+/// async fn main() {
+///     use tsp_vid::PrivateVid;
+///
+///     let sender = PrivateVid::from_file("../examples/test/alice.json").await.unwrap();
+///     let receiver = tsp::resolve_vid("did:web:did.tsp-test.org:user:bob").await.unwrap();
+///
+///     let result = tsp::send_relationship_request(&sender, &receiver).await;
+/// }
+/// ```
+pub async fn send_relationship_request(
+    sender: &impl Sender,
+    receiver: &impl VerifiedVid,
+) -> Result<(), Error> {
+    let tsp_message = tsp_crypto::seal(sender, receiver, None, Payload::RequestRelationship)?;
+    tsp_transport::send_message(receiver.endpoint(), &tsp_message).await?;
+
+    //TODO: record the thread-id of the message we sent
+    Ok(())
+}
+
+/// Accept a direct relationship with a resolved VID using the TSP
+/// Encodes the control message, encrypts, signs and sends a TSP message
+///
+/// # Arguments
+///
+/// * `sender`               - A sender identity implementing the trait `Sender`
+/// * `receiver`             - A receiver identity implementing the trait `ResolvedVid`
+/// * `thread_id`            - The thread id that was contained in the relationship request
+///
+/// # Example
+///
+/// ```
+/// #[tokio::main]
+/// async fn main() {
+///     use futures::StreamExt;
+///     use tsp_vid::PrivateVid;
+///     use tsp_definitions::ReceivedTspMessage;
+///
+///     let owner = PrivateVid::from_file("../examples/test/alice.json").await.unwrap();
+///
+///     let messages = tsp::receive(&owner, None).unwrap();
+///     tokio::pin!(messages);
+///
+///     while let Some(Ok(msg)) = messages.next().await {
+///         if let ReceivedTspMessage::RequestRelationship { sender: other, thread_id } = msg {
+///             let result = tsp::send_relationship_accept(&owner, &other, thread_id).await;
+///         }
+///     }
+/// }
+/// ```
+pub async fn send_relationship_accept(
+    sender: &impl Sender,
+    receiver: &impl VerifiedVid,
+    thread_id: Digest,
+) -> Result<(), Error> {
+    let tsp_message = tsp_crypto::seal(
+        sender,
+        receiver,
+        None,
+        Payload::AcceptRelationship { thread_id },
+    )?;
+    tsp_transport::send_message(receiver.endpoint(), &tsp_message).await?;
+
+    Ok(())
+}
+
+/// Cancels a direct relationship with a resolved VID using the TSP
+/// Encodes the control message, encrypts, signs and sends a TSP message
+///
+/// # Arguments
+///
+/// * `sender`               - A sender identity implementing the trait `Sender`
+/// * `receiver`             - A receiver identity implementing the trait `ResolvedVid`
+///
+/// # Example
+///
+/// ```
+/// #[tokio::main]
+/// async fn main() {
+///     use tsp_vid::PrivateVid;
+///
+///     let sender = PrivateVid::from_file("../examples/test/alice.json").await.unwrap();
+///     let receiver = tsp::resolve_vid("did:web:did.tsp-test.org:user:bob").await.unwrap();
+///
+///     let result = tsp::send_relationship_cancel(&sender, &receiver).await;
+/// }
+/// ```
+pub async fn send_relationship_cancel(
+    sender: &impl Sender,
+    receiver: &impl VerifiedVid,
+) -> Result<(), Error> {
+    let tsp_message = tsp_crypto::seal(sender, receiver, None, Payload::CancelRelationship)?;
+    tsp_transport::send_message(receiver.endpoint(), &tsp_message).await?;
+
+    Ok(())
 }
 
 #[cfg(test)]
@@ -132,7 +253,6 @@ mod test {
     use crate::{receive, resolve_vid, send};
     use futures::StreamExt;
     use tokio::sync::oneshot;
-    use tsp_definitions::Payload;
     use tsp_transport::tcp::start_broadcast_server;
 
     #[tokio::test]
@@ -159,9 +279,13 @@ mod test {
             let stream = receive(&bob_receiver, Some(receiver_tx)).unwrap();
             tokio::pin!(stream);
 
-            let message = stream.next().await.unwrap().unwrap();
+            let tsp_definitions::ReceivedTspMessage::GenericMessage { message, .. } =
+                stream.next().await.unwrap().unwrap()
+            else {
+                panic!()
+            };
 
-            assert_eq!(message.message, Payload::Content(payload.to_vec()));
+            assert_eq!(message, b"hello world");
         });
 
         receiver_rx.await.unwrap();

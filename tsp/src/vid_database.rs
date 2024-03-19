@@ -170,7 +170,7 @@ impl VidDatabase {
         receivers: Arc<HashMap<String, PrivateVid>>,
         verified_vids: Arc<RwLock<HashMap<String, Vid>>>,
         message: &mut [u8],
-    ) -> Result<ReceivedTspMessage<Vec<u8>, Vid>, Error> {
+    ) -> Result<ReceivedTspMessage<Vid>, Error> {
         let probed_message = tsp_cesr::probe(message)?;
 
         match probed_message {
@@ -190,14 +190,14 @@ impl VidDatabase {
                     return Err(Error::UnVerifiedVid(sender.to_string()));
                 };
 
-                let (nonconfidential_data, payload) =
+                let (nonconfidential_data, payload, _) =
                     tsp_crypto::open(intended_receiver, &sender, message)?;
 
                 match payload {
-                    Payload::Content(message) => Ok(ReceivedTspMessage::<Vec<u8>, Vid> {
+                    Payload::Content(message) => Ok(ReceivedTspMessage::<Vid>::GenericMessage {
                         sender,
                         nonconfidential_data: nonconfidential_data.map(|v| v.to_vec()),
-                        message: Payload::Content(message.to_owned()),
+                        message: message.to_owned(),
                         message_type: MessageType::SignedAndEncrypted,
                     }),
                     Payload::NestedMessage(message) => {
@@ -228,10 +228,10 @@ impl VidDatabase {
 
                 let payload = tsp_crypto::verify(&sender, message)?;
 
-                Ok(ReceivedTspMessage::<Vec<u8>, Vid> {
+                Ok(ReceivedTspMessage::<Vid>::GenericMessage {
                     sender,
                     nonconfidential_data: None,
-                    message: Payload::Content(payload.to_owned()),
+                    message: payload.to_owned(),
                     message_type: MessageType::Signed,
                 })
             }
@@ -244,7 +244,7 @@ impl VidDatabase {
     pub async fn receive(
         &self,
         vid: &str,
-    ) -> Result<Receiver<Result<ReceivedTspMessage<Vec<u8>, Vid>, Error>>, Error> {
+    ) -> Result<Receiver<Result<ReceivedTspMessage<Vid>, Error>>, Error> {
         let mut receiver = self.get_private_vid(vid).await?;
         let mut receivers = HashMap::new();
 
@@ -294,7 +294,6 @@ impl VidDatabase {
 #[cfg(test)]
 mod test {
     use crate::VidDatabase;
-    use tsp_definitions::Payload;
 
     async fn test_send_receive() -> Result<(), tsp_definitions::Error> {
         // bob database
@@ -326,8 +325,13 @@ mod test {
             .await?;
 
         // receive a message
-        let message = bobs_messages.recv().await.unwrap().unwrap();
-        assert_eq!(message.message, Payload::Content(b"hello world".to_vec()));
+        let tsp_definitions::ReceivedTspMessage::GenericMessage { message, .. } =
+            bobs_messages.recv().await.unwrap()?
+        else {
+            panic!("bob did not receive a generic message")
+        };
+
+        assert_eq!(message, b"hello world");
 
         // create nested id's
         let nested_bob_vid = bob_db
@@ -359,11 +363,13 @@ mod test {
             .await?;
 
         // receive message using inner vid
-        let message = bobs_inner_messages.recv().await.unwrap().unwrap();
-        assert_eq!(
-            message.message,
-            Payload::Content(b"hello nested world".to_vec())
-        );
+        let tsp_definitions::ReceivedTspMessage::GenericMessage { message, .. } =
+            bobs_inner_messages.recv().await.unwrap()?
+        else {
+            panic!("bob did not receive a generic message inner")
+        };
+
+        assert_eq!(message, b"hello nested world".to_vec());
 
         Ok(())
     }
