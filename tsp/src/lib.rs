@@ -125,7 +125,8 @@ pub fn receive(
                 thread_id: tsp_crypto::sha256(raw_bytes),
             },
             // TODO: check the digest and record that we have this relationship
-            Payload::AcceptRelationship { thread_id: digest } => {
+            Payload::AcceptRelationship { thread_id: _digest } => {
+                //TODO: if the thread_id is invalid, don't send this response
                 ReceivedTspMessage::AcceptRelationship { sender }
             }
             // TODO: record that we have to end this relationship
@@ -162,7 +163,7 @@ pub async fn send_relationship_request(
     let tsp_message = tsp_crypto::seal(sender, receiver, None, Payload::RequestRelationship)?;
     tsp_transport::send_message(receiver.endpoint(), &tsp_message).await?;
 
-    //NOTE: we made the design decision here to not expose "thread-id" to the outer level
+    //TODO: record the thread-id of the message we sent
     Ok(())
 }
 
@@ -237,12 +238,7 @@ pub async fn send_relationship_cancel(
     sender: &impl Sender,
     receiver: &impl VerifiedVid,
 ) -> Result<(), Error> {
-    let tsp_message = tsp_crypto::seal(
-        sender,
-        receiver,
-        None,
-        Payload::CancelRelationship,
-    )?;
+    let tsp_message = tsp_crypto::seal(sender, receiver, None, Payload::CancelRelationship)?;
     tsp_transport::send_message(receiver.endpoint(), &tsp_message).await?;
 
     Ok(())
