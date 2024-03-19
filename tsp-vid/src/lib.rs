@@ -14,6 +14,18 @@ pub struct Vid {
     transport: url::Url,
     public_sigkey: Ed::VerifyingKey,
     public_enckey: KeyData,
+    relation_vid: Option<String>,
+    parent_vid: Option<String>,
+}
+
+impl Vid {
+    pub fn set_parent_vid(&mut self, parent_vid: String) {
+        self.parent_vid = Some(parent_vid);
+    }
+
+    pub fn set_relation_vid(&mut self, relation_vid: Option<&str>) {
+        self.relation_vid = relation_vid.map(|r| r.to_string());
+    }
 }
 
 /// A PrivateVid represents the 'owner' of a particular Vid
@@ -36,7 +48,7 @@ impl std::fmt::Debug for PrivateVid {
 }
 
 impl tsp_definitions::VerifiedVid for Vid {
-    fn identifier(&self) -> &[u8] {
+    fn identifier(&self) -> &str {
         self.id.as_ref()
     }
 
@@ -51,10 +63,18 @@ impl tsp_definitions::VerifiedVid for Vid {
     fn encryption_key(&self) -> &KeyData {
         &self.public_enckey
     }
+
+    fn parent_vid(&self) -> Option<&str> {
+        self.parent_vid.as_deref()
+    }
+
+    fn relation_vid(&self) -> Option<&str> {
+        self.relation_vid.as_deref()
+    }
 }
 
 impl tsp_definitions::VerifiedVid for PrivateVid {
-    fn identifier(&self) -> &[u8] {
+    fn identifier(&self) -> &str {
         self.vid.identifier()
     }
 
@@ -68,6 +88,14 @@ impl tsp_definitions::VerifiedVid for PrivateVid {
 
     fn encryption_key(&self) -> &KeyData {
         self.vid.encryption_key()
+    }
+
+    fn parent_vid(&self) -> Option<&str> {
+        self.vid.parent_vid()
+    }
+
+    fn relation_vid(&self) -> Option<&str> {
+        self.vid.relation_vid()
     }
 }
 
@@ -85,7 +113,7 @@ impl tsp_definitions::Receiver for PrivateVid {
 
 impl AsRef<[u8]> for Vid {
     fn as_ref(&self) -> &[u8] {
-        self.identifier()
+        self.identifier().as_bytes()
     }
 }
 
@@ -100,7 +128,31 @@ impl PrivateVid {
                 transport,
                 public_sigkey: sigkey.verifying_key(),
                 public_enckey: public_enckey.to_bytes().into(),
+                relation_vid: None,
+                parent_vid: None,
             },
+            sigkey,
+            enckey: enckey.to_bytes().into(),
+        }
+    }
+
+    pub fn create_nested(&self, relation_vid: Option<&str>) -> PrivateVid {
+        let sigkey = Ed::SigningKey::generate(&mut OsRng);
+        let (enckey, public_enckey) = KemType::gen_keypair(&mut OsRng);
+
+        let mut vid = Vid {
+            id: Default::default(),
+            transport: self.endpoint().clone(),
+            public_sigkey: sigkey.verifying_key(),
+            public_enckey: public_enckey.to_bytes().into(),
+            relation_vid: relation_vid.map(|s| s.to_string()),
+            parent_vid: Some(self.identifier().to_string()),
+        };
+
+        vid.id = crate::resolve::did::peer::encode_did_peer(&vid);
+
+        Self {
+            vid,
             sigkey,
             enckey: enckey.to_bytes().into(),
         }

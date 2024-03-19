@@ -1,4 +1,5 @@
 mod error;
+use core::fmt;
 
 pub use crate::error::Error;
 
@@ -11,11 +12,18 @@ pub type NonConfidentialData<'a> = &'a [u8];
 pub type TSPMessage = Vec<u8>;
 
 #[derive(Debug)]
+pub enum MessageType {
+    Signed,
+    SignedAndEncrypted,
+}
+
+#[derive(Debug)]
 pub enum ReceivedTspMessage<V: VerifiedVid> {
     GenericMessage {
         sender: V,
         nonconfidential_data: Option<Vec<u8>>,
         message: Vec<u8>,
+        message_type: MessageType,
     },
     RequestRelationship {
         sender: V,
@@ -30,16 +38,35 @@ pub enum ReceivedTspMessage<V: VerifiedVid> {
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub enum Payload<'a> {
-    Content(&'a [u8]),
+pub enum Payload<Bytes: AsRef<[u8]>> {
+    Content(Bytes),
+    NestedMessage(Bytes),
+    CancelRelationship,
     RequestRelationship,
     AcceptRelationship { thread_id: Digest },
-    CancelRelationship,
+}
+
+impl<Bytes: AsRef<[u8]>> fmt::Display for Payload<Bytes> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Payload::Content(bytes) => {
+                write!(f, "Content: {}", String::from_utf8_lossy(bytes.as_ref()))
+            }
+            Payload::NestedMessage(bytes) => write!(
+                f,
+                "Nested Message: {}",
+                String::from_utf8_lossy(bytes.as_ref())
+            ),
+            Payload::CancelRelationship => write!(f, "Cancel Relationship"),
+            Payload::RequestRelationship => write!(f, "Request Relationship"),
+            Payload::AcceptRelationship { thread_id: _ } => write!(f, "Accept Relationship"),
+        }
+    }
 }
 
 pub trait VerifiedVid {
     /// A identifier of the Vid as bytes (for inclusion in TSP packets)
-    fn identifier(&self) -> &[u8];
+    fn identifier(&self) -> &str;
 
     /// The transport layer endpoint in the transport layer associated with this Vid
     fn endpoint(&self) -> &url::Url;
@@ -49,6 +76,12 @@ pub trait VerifiedVid {
 
     /// The encryption key associated with this Vid
     fn encryption_key(&self) -> PublicKeyData;
+
+    /// The parent VID of this inner VID
+    fn parent_vid(&self) -> Option<&str>;
+
+    /// The related relation inner VID for this VID
+    fn relation_vid(&self) -> Option<&str>;
 }
 
 pub trait Receiver: VerifiedVid {
