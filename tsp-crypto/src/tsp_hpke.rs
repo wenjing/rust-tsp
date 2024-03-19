@@ -32,7 +32,7 @@ where
     let secret_payload = match secret_payload {
         Payload::Content(data) => tsp_cesr::Payload::GenericMessage(data),
         Payload::CancelRelationship => tsp_cesr::Payload::RelationshipCancel,
-        Payload::NestedMessage(_) => todo!(),
+        Payload::NestedMessage(data) => tsp_cesr::Payload::NestedMessage(data),
     };
 
     // prepare CESR encoded ciphertext
@@ -139,7 +139,8 @@ where
     let secret_payload = match tsp_cesr::decode_payload(ciphertext)? {
         tsp_cesr::Payload::GenericMessage(data) => Payload::Content(data),
         tsp_cesr::Payload::RelationshipCancel => Payload::CancelRelationship,
-        _ => todo!(),
+        tsp_cesr::Payload::NestedMessage(data) => Payload::NestedMessage(data),
+        _ => unimplemented!(),
     };
 
     Ok((envelope.nonconfidential_data, secret_payload))

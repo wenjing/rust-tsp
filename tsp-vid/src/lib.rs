@@ -14,8 +14,18 @@ pub struct Vid {
     transport: url::Url,
     public_sigkey: Ed::VerifyingKey,
     public_enckey: KeyData,
-    sender_vid: Option<String>,
+    relation_vid: Option<String>,
     parent_vid: Option<String>,
+}
+
+impl Vid {
+    pub fn set_parent_vid(&mut self, parent_vid: String) {
+        self.parent_vid = Some(parent_vid);
+    }
+
+    pub fn set_relation_vid(&mut self, relation_vid: Option<&str>) {
+        self.relation_vid = relation_vid.map(|r| r.to_string());
+    }
 }
 
 /// A PrivateVid represents the 'owner' of a particular Vid
@@ -58,8 +68,8 @@ impl tsp_definitions::VerifiedVid for Vid {
         self.parent_vid.as_deref()
     }
 
-    fn sender_vid(&self) -> Option<&str> {
-        self.sender_vid.as_deref()
+    fn relation_vid(&self) -> Option<&str> {
+        self.relation_vid.as_deref()
     }
 }
 
@@ -84,8 +94,8 @@ impl tsp_definitions::VerifiedVid for PrivateVid {
         self.vid.parent_vid()
     }
 
-    fn sender_vid(&self) -> Option<&str> {
-        self.vid.sender_vid()
+    fn relation_vid(&self) -> Option<&str> {
+        self.vid.relation_vid()
     }
 }
 
@@ -118,7 +128,7 @@ impl PrivateVid {
                 transport,
                 public_sigkey: sigkey.verifying_key(),
                 public_enckey: public_enckey.to_bytes().into(),
-                sender_vid: None,
+                relation_vid: None,
                 parent_vid: None,
             },
             sigkey,
@@ -126,17 +136,17 @@ impl PrivateVid {
         }
     }
 
-    pub fn add_nested_did_peer(&mut self, transport: url::Url) -> PrivateVid {
+    pub fn create_nested(&self, relation_vid: Option<&str>) -> PrivateVid {
         let sigkey = Ed::SigningKey::generate(&mut OsRng);
         let (enckey, public_enckey) = KemType::gen_keypair(&mut OsRng);
 
         let mut vid = Vid {
             id: Default::default(),
-            transport,
+            transport: self.endpoint().clone(),
             public_sigkey: sigkey.verifying_key(),
             public_enckey: public_enckey.to_bytes().into(),
-            sender_vid: None,
-            parent_vid: None,
+            relation_vid: relation_vid.map(|s| s.to_string()),
+            parent_vid: Some(self.identifier().to_string()),
         };
 
         vid.id = crate::resolve::did::peer::encode_did_peer(&vid);

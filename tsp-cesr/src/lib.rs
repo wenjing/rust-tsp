@@ -67,6 +67,7 @@ pub fn get_sender_receiver(
     Ok((envelope.sender, envelope.receiver))
 }
 
+#[derive(Debug)]
 pub enum EnvelopeType<'a> {
     EncryptedMessage {
         sender: &'a [u8],
