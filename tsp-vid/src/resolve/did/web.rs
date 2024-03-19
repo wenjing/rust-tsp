@@ -1,9 +1,10 @@
 use base64ct::{Base64Url, Encoding};
 use serde::Deserialize;
-use tsp_definitions::Error;
+use serde_json::json;
+use tsp_definitions::{Error, Receiver, Sender, VerifiedVid};
 use url::Url;
 
-use crate::Vid;
+use crate::{PrivateVid, Vid};
 
 pub(crate) const SCHEME: &str = "web";
 
@@ -130,6 +131,66 @@ pub fn resolve_document(did_document: DidDocument, target_id: &str) -> Result<Vi
         relation_vid: None,
         parent_vid: None,
     })
+}
+
+pub fn create_did_web(
+    name: &str,
+    domain: &str,
+    transport: &str,
+) -> (serde_json::Value, serde_json::Value) {
+    let did = format!("did:web:{domain}:user:{name}");
+    let private_vid = PrivateVid::bind(&did, Url::parse(transport).unwrap());
+
+    let private_doc = json!({
+        "vid": did,
+        "decryption-key": Base64Url::encode_string(private_vid.decryption_key()),
+        "signing-key": Base64Url::encode_string(private_vid.signing_key()),
+    });
+
+    let did_doc = json!({
+        "@context": [
+            "https://www.w3.org/ns/did/v1",
+            "https://w3id.org/security/suites/jws-2020/v1"
+        ],
+        "id": did,
+        "verificationMethod": [
+            {
+                "id": format!("{did}#verification-key"),
+                "type": "JsonWebKey2020",
+                "controller":  format!("{did}"),
+                "publicKeyJwk": {
+                    "kty": "OKP",
+                    "crv": "Ed25519",
+                    "use": "sig",
+                    "x": Base64Url::encode_string(private_vid.verifying_key()),
+                }
+            },
+            {
+                "id": format!("{did}#encryption-key"),
+                "type": "JsonWebKey2020",
+                "controller": format!("{did}"),
+                "publicKeyJwk": {
+                    "kty": "OKP",
+                    "crv": "X25519",
+                    "use": "enc",
+                    "x": Base64Url::encode_string(private_vid.encryption_key()),
+                }
+            },
+        ],
+        "authentication": [
+            format!("{did}#verification-key"),
+        ],
+        "keyAgreement": [
+            format!("{did}#encryption-key"),
+        ],
+        "service": [{
+            "id": "#tsp-transport",
+            "type": "TSPTransport",
+            "serviceEndpoint": transport
+        }]
+    });
+
+    (did_doc, private_doc)
 }
 
 #[cfg(test)]
