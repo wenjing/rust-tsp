@@ -1,5 +1,5 @@
 use futures::{Stream, StreamExt};
-use tsp_definitions::{Error, Payload, ReceivedTspMessage, Receiver, Sender, VerifiedVid};
+use tsp_definitions::{Digest, Error, Payload, ReceivedTspMessage, Receiver, Sender, VerifiedVid};
 use tsp_vid::Vid;
 
 mod vid_database;
@@ -132,6 +132,120 @@ pub fn receive(
             Payload::CancelRelationship => ReceivedTspMessage::CancelRelationship { sender },
         })
     }))
+}
+
+/// Request a direct relationship with a resolved VID using the TSP
+/// Encodes the control message, encrypts, signs and sends a TSP message
+///
+/// # Arguments
+///
+/// * `sender`               - A sender identity implementing the trait `Sender`
+/// * `receiver`             - A receiver identity implementing the trait `ResolvedVid`
+///
+/// # Example
+///
+/// ```
+/// #[tokio::main]
+/// async fn main() {
+///     use tsp_vid::PrivateVid;
+///
+///     let sender = PrivateVid::from_file("../examples/test/alice.json").await.unwrap();
+///     let receiver = tsp::resolve_vid("did:web:did.tsp-test.org:user:bob").await.unwrap();
+///
+///     let result = tsp::send_relationship_request(&sender, &receiver).await;
+/// }
+/// ```
+pub async fn send_relationship_request(
+    sender: &impl Sender,
+    receiver: &impl VerifiedVid,
+) -> Result<(), Error> {
+    let tsp_message = tsp_crypto::seal(sender, receiver, None, Payload::RequestRelationship)?;
+    tsp_transport::send_message(receiver.endpoint(), &tsp_message).await?;
+
+    //NOTE: we made the design decision here to not expose "thread-id" to the outer level
+    Ok(())
+}
+
+/// Accept a direct relationship with a resolved VID using the TSP
+/// Encodes the control message, encrypts, signs and sends a TSP message
+///
+/// # Arguments
+///
+/// * `sender`               - A sender identity implementing the trait `Sender`
+/// * `receiver`             - A receiver identity implementing the trait `ResolvedVid`
+/// * `thread_id`            - The thread id that was contained in the relationship request
+///
+/// # Example
+///
+/// ```
+/// #[tokio::main]
+/// async fn main() {
+///     use futures::StreamExt;
+///     use tsp_vid::PrivateVid;
+///     use tsp_definitions::ReceivedTspMessage;
+///
+///     let owner = PrivateVid::from_file("../examples/test/alice.json").await.unwrap();
+///
+///     let messages = tsp::receive(&owner, None).unwrap();
+///     tokio::pin!(messages);
+///
+///     while let Some(Ok(msg)) = messages.next().await {
+///         if let ReceivedTspMessage::RequestRelationship { sender: other, thread_id } = msg {
+///             let result = tsp::send_relationship_accept(&owner, &other, thread_id).await;
+///         }
+///     }
+/// }
+/// ```
+pub async fn send_relationship_accept(
+    sender: &impl Sender,
+    receiver: &impl VerifiedVid,
+    thread_id: Digest,
+) -> Result<(), Error> {
+    let tsp_message = tsp_crypto::seal(
+        sender,
+        receiver,
+        None,
+        Payload::AcceptRelationship { thread_id },
+    )?;
+    tsp_transport::send_message(receiver.endpoint(), &tsp_message).await?;
+
+    Ok(())
+}
+
+/// Cancels a direct relationship with a resolved VID using the TSP
+/// Encodes the control message, encrypts, signs and sends a TSP message
+///
+/// # Arguments
+///
+/// * `sender`               - A sender identity implementing the trait `Sender`
+/// * `receiver`             - A receiver identity implementing the trait `ResolvedVid`
+///
+/// # Example
+///
+/// ```
+/// #[tokio::main]
+/// async fn main() {
+///     use tsp_vid::PrivateVid;
+///
+///     let sender = PrivateVid::from_file("../examples/test/alice.json").await.unwrap();
+///     let receiver = tsp::resolve_vid("did:web:did.tsp-test.org:user:bob").await.unwrap();
+///
+///     let result = tsp::send_relationship_cancel(&sender, &receiver).await;
+/// }
+/// ```
+pub async fn send_relationship_cancel(
+    sender: &impl Sender,
+    receiver: &impl VerifiedVid,
+) -> Result<(), Error> {
+    let tsp_message = tsp_crypto::seal(
+        sender,
+        receiver,
+        None,
+        Payload::CancelRelationship,
+    )?;
+    tsp_transport::send_message(receiver.endpoint(), &tsp_message).await?;
+
+    Ok(())
 }
 
 #[cfg(test)]
