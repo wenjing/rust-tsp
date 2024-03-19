@@ -113,14 +113,23 @@ pub fn receive(
         let sender = resolve_vid(std::str::from_utf8(sender)?).await?;
         let (nonconfidential_data, payload) = tsp_crypto::open(receiver, &sender, &mut message)?;
 
-        match payload {
-            Payload::Content(message) => Ok(ReceivedTspMessage::<Vid>::GenericMessage {
+        Ok(match payload {
+            Payload::Content(message) => ReceivedTspMessage::GenericMessage {
                 sender,
                 nonconfidential_data: nonconfidential_data.map(|v| v.to_vec()),
                 message: message.to_owned(),
-            }),
-            _ => unimplemented!("receiving control messages not supported yet"),
-        }
+            },
+            Payload::RequestRelationship => ReceivedTspMessage::RequestRelationship {
+                sender,
+                thread_id: todo!(),
+            },
+            // TODO: check the digest and record that we have this relationship
+            Payload::AcceptRelationship { thread_id: digest } => {
+                ReceivedTspMessage::AcceptRelationship { sender }
+            }
+            // TODO: record that we have to end this relationship
+            Payload::CancelRelationship => ReceivedTspMessage::CancelRelationship { sender },
+        })
     }))
 }
 
