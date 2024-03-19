@@ -6,6 +6,8 @@ use tsp_definitions::{KeyData, VerifiedVid};
 pub mod deserialize;
 pub mod resolve;
 
+pub use resolve::did::web::create_did_web;
+
 /// A Vid represents a *verified* Identifier
 /// (so it doesn't carry any information that allows to verify it)
 #[derive(Clone, Debug)]
