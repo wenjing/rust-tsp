@@ -56,13 +56,49 @@ mod selector {
 }
 
 /// (Temporary) interface to get Sender/Receiver VID's information from a CESR-encoded message
-pub fn get_sender_receiver(stream: &mut [u8]) -> Result<(&[u8], &[u8]), error::DecodeError> {
+pub fn get_sender_receiver(
+    stream: &mut [u8],
+) -> Result<(&[u8], Option<&[u8]>), error::DecodeError> {
     let envelope = decode_envelope_mut(stream)?
         .into_opened()
         .expect("Infallible")
         .envelope;
 
     Ok((envelope.sender, envelope.receiver))
+}
+
+#[derive(Debug)]
+pub enum EnvelopeType<'a> {
+    EncryptedMessage {
+        sender: &'a [u8],
+        receiver: &'a [u8],
+    },
+    SignedMessage {
+        sender: &'a [u8],
+        receiver: Option<&'a [u8]>,
+    },
+}
+
+pub fn probe(stream: &mut [u8]) -> Result<EnvelopeType, error::DecodeError> {
+    let (_, has_confidential_part) =
+        detected_tsp_header_size_and_confidentiality(&mut (stream as &[u8]))?;
+
+    let envelope = decode_envelope_mut(stream)?
+        .into_opened()
+        .expect("Infallible")
+        .envelope;
+
+    Ok(if has_confidential_part {
+        EnvelopeType::EncryptedMessage {
+            sender: envelope.sender,
+            receiver: envelope.receiver.expect("Infallible"),
+        }
+    } else {
+        EnvelopeType::SignedMessage {
+            sender: envelope.sender,
+            receiver: envelope.receiver,
+        }
+    })
 }
 
 #[cfg(test)]

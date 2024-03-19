@@ -15,33 +15,33 @@ pub fn seal(
     sender: &dyn Sender,
     receiver: &dyn VerifiedVid,
     nonconfidential_data: Option<NonConfidentialData>,
-    payload: Payload,
+    payload: Payload<&[u8]>,
 ) -> Result<TSPMessage, Error> {
     tsp_hpke::seal::<Aead, Kdf, Kem>(sender, receiver, nonconfidential_data, payload)
 }
+
+pub type MessageContents<'a> = (Option<NonConfidentialData<'a>>, Payload<&'a [u8]>, &'a [u8]);
 
 /// Decode a CESR Authentic Confidential Message, verify the signature and decrypt its contents
 pub fn open<'a>(
     receiver: &dyn Receiver,
     sender: &dyn VerifiedVid,
     tsp_message: &'a mut [u8],
-) -> Result<(Option<NonConfidentialData<'a>>, Payload<'a>, &'a [u8]), Error> {
+) -> Result<MessageContents<'a>, Error> {
     tsp_hpke::open::<Aead, Kdf, Kem>(receiver, sender, tsp_message)
 }
 
 /// Construct and sign a non-confidential TSP message
 pub fn sign(
     sender: &dyn Sender,
-    nonconfidential_data: NonConfidentialData,
+    receiver: Option<&dyn VerifiedVid>,
+    payload: &[u8],
 ) -> Result<TSPMessage, Error> {
-    nonconfidential::sign(sender, nonconfidential_data)
+    nonconfidential::sign(sender, receiver, payload)
 }
 
 /// Decode a CESR Authentic Non-Confidential Message, verify the signature and return its contents
-pub fn verify<'a>(
-    sender: &dyn VerifiedVid,
-    tsp_message: &'a mut [u8],
-) -> Result<NonConfidentialData<'a>, Error> {
+pub fn verify<'a>(sender: &dyn VerifiedVid, tsp_message: &'a mut [u8]) -> Result<&'a [u8], Error> {
     nonconfidential::verify(sender, tsp_message)
 }
 
@@ -63,7 +63,7 @@ mod tests {
             Url::parse("tcp:://127.0.0.1:1337").unwrap(),
         );
 
-        let secret_message = b"hello world";
+        let secret_message: &[u8] = b"hello world";
         let nonconfidential_data = b"extra header data";
 
         let mut message = seal(

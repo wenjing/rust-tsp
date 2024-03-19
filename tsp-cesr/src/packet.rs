@@ -13,12 +13,14 @@ const ED25519_PUBLICKEY: u32 = (b'D' - b'A') as u32;
 const HPKE_PUBLICKEY: u32 = (b'Q' - b'A') as u32;
 
 /// Constants that determine the specific CESR types for the framing codes
-const TSP_WRAPPER: u16 = (b'E' - b'A') as u16;
+const TSP_ETS_WRAPPER: u16 = (b'E' - b'A') as u16;
+const TSP_S_WRAPPER: u16 = (b'S' - b'A') as u16;
 const TSP_PAYLOAD: u16 = (b'Z' - b'A') as u16;
 
 /// Constants to encode message types
 mod msgtype {
     pub(super) const GEN_MSG: [u8; 2] = [0, 0];
+    pub(super) const NEST_MSG: [u8; 2] = [0, 1];
     pub(super) const NEW_REL: [u8; 2] = [1, 0];
     pub(super) const NEW_REL_REPLY: [u8; 2] = [1, 1];
     pub(super) const NEW_NEST_REL: [u8; 2] = [1, 2];
@@ -70,6 +72,8 @@ pub struct PairedKeys<'a> {
 pub enum Payload<'a, Bytes: AsRef<[u8]>> {
     /// A TSP message which consists only of a message which will be protected using HPKE
     GenericMessage(Bytes),
+    /// A payload that conists of a TSP Envelope+Message (TODO: maybe add some extra decoding)
+    NestedMessage(Bytes),
     /// A TSP message requesting a relationship
     DirectRelationProposal { nonce: Nonce },
     /// A TSP message confiming a relationship
@@ -95,14 +99,14 @@ impl<'a, Bytes: AsRef<[u8]>> Payload<'a, Bytes> {
 #[derive(Debug, Clone)]
 pub struct Envelope<'a, Vid> {
     pub sender: Vid,
-    pub receiver: Vid,
+    pub receiver: Option<Vid>,
     pub nonconfidential_data: Option<&'a [u8]>,
 }
 
 pub struct DecodedEnvelope<'a, Vid, Bytes> {
     pub envelope: Envelope<'a, Vid>,
     pub raw_header: &'a [u8], // for associated data purposes
-    pub ciphertext: Bytes,
+    pub ciphertext: Option<Bytes>,
 }
 
 /// TODO: something more type safe
@@ -135,6 +139,10 @@ pub fn encode_payload(
     match payload {
         Payload::GenericMessage(data) => {
             encode_fixed_data(TSP_TYPECODE, &msgtype::GEN_MSG, output);
+            checked_encode_variable_data(TSP_PLAINTEXT, data.as_ref(), output)?;
+        }
+        Payload::NestedMessage(data) => {
+            encode_fixed_data(TSP_TYPECODE, &msgtype::NEST_MSG, output);
             checked_encode_variable_data(TSP_PLAINTEXT, data.as_ref(), output)?;
         }
         Payload::DirectRelationProposal { nonce } => {
@@ -180,6 +188,9 @@ pub fn decode_payload(mut stream: &[u8]) -> Result<Payload<&[u8]>, DecodeError> 
                     nonce: Nonce(*nonce),
                 }
             }),
+            msgtype::NEST_MSG => {
+                decode_variable_data(TSP_PLAINTEXT, &mut stream).map(Payload::NestedMessage)
+            }
             msgtype::NEW_REL_REPLY => decode_fixed_data(TSP_SHA256, &mut stream)
                 .map(|reply| Payload::DirectRelationAffirm { reply }),
             msgtype::NEW_NEST_REL => {
@@ -219,14 +230,40 @@ pub fn decode_payload(mut stream: &[u8]) -> Result<Payload<&[u8]>, DecodeError> 
 
 /// Encode a encrypted TSP message plus Envelope into CESR
 /// TODO: replace types of sender/receiver with VID's (once we have that type)
-pub fn encode_envelope<'a, Vid: AsRef<[u8]>>(
+pub fn encode_ets_envelope<'a, Vid: AsRef<[u8]>>(
     envelope: Envelope<'a, Vid>,
     output: &mut impl for<'b> Extend<&'b u8>,
 ) -> Result<(), EncodeError> {
-    encode_count(TSP_WRAPPER, 1, output);
+    encode_count(TSP_ETS_WRAPPER, 1, output);
+
+    encode_envelope_fields(envelope, output)
+}
+
+/// Encode a encrypted TSP message plus Envelope into CESR
+/// TODO: replace types of sender/receiver with VID's (once we have that type)
+pub fn encode_s_envelope<'a, Vid: AsRef<[u8]>>(
+    envelope: Envelope<'a, Vid>,
+    output: &mut impl for<'b> Extend<&'b u8>,
+) -> Result<(), EncodeError> {
+    encode_count(TSP_S_WRAPPER, 1, output);
+
+    encode_envelope_fields(envelope, output)
+}
+
+/// Encode the envelope fields; the only difference between ETS and S envelopes
+/// is whether there is ciphertext between the header and signature, and this function
+/// doesn't need to know that.
+fn encode_envelope_fields<'a, Vid: AsRef<[u8]>>(
+    envelope: Envelope<'a, Vid>,
+    output: &mut impl for<'b> Extend<&'b u8>,
+) -> Result<(), EncodeError> {
     encode_fixed_data(TSP_TYPECODE, &[0, 0], output);
     checked_encode_variable_data(TSP_DEVELOPMENT_VID, envelope.sender.as_ref(), output)?;
-    checked_encode_variable_data(TSP_DEVELOPMENT_VID, envelope.receiver.as_ref(), output)?;
+
+    if let Some(rec) = envelope.receiver {
+        checked_encode_variable_data(TSP_DEVELOPMENT_VID, rec.as_ref(), output)?;
+    }
+
     if let Some(data) = envelope.nonconfidential_data {
         checked_encode_variable_data(TSP_PLAINTEXT, data, output)?;
     }
@@ -248,20 +285,27 @@ pub fn encode_ciphertext(
     checked_encode_variable_data(TSP_CIPHERTEXT, ciphertext, output)
 }
 
-/// Checks whether the expected TSP header is present and returns its size
-fn detected_tsp_header_size(stream: &mut &[u8]) -> Result<usize, DecodeError> {
+/// Checks whether the expected TSP header is present and returns its size and whether it
+/// is a "ETS" or "S" envelope
+pub(super) fn detected_tsp_header_size_and_confidentiality(
+    stream: &mut &[u8],
+) -> Result<(usize, bool), DecodeError> {
     let origin = stream as &[u8];
-    match decode_count(TSP_WRAPPER, stream) {
-        Some(1) => {}
-        _ => return Err(DecodeError::VersionMismatch),
-    }
+    let encrypted = if let Some(1) = decode_count(TSP_ETS_WRAPPER, stream) {
+        true
+    } else if let Some(1) = decode_count(TSP_S_WRAPPER, stream) {
+        false
+    } else {
+        return Err(DecodeError::VersionMismatch);
+    };
+
     match decode_fixed_data(TSP_TYPECODE, stream) {
         Some([0, 0]) => {}
         _ => return Err(DecodeError::VersionMismatch),
     }
 
     debug_assert_eq!(origin.len() - stream.len(), 6);
-    Ok(6)
+    Ok((6, encrypted))
 }
 
 /// A structure representing a siganture + data that needs to be verified
@@ -283,20 +327,24 @@ pub fn decode_envelope<'a, Vid: TryFrom<&'a [u8]>>(
     DecodeError,
 > {
     let origin = stream;
-    detected_tsp_header_size(&mut stream)?;
+    let (_, has_confidential_part) = detected_tsp_header_size_and_confidentiality(&mut stream)?;
     let sender = decode_variable_data(TSP_DEVELOPMENT_VID, &mut stream)
         .ok_or(DecodeError::UnexpectedData)?
         .try_into()
         .map_err(|_| DecodeError::VidError)?;
+
     let receiver = decode_variable_data(TSP_DEVELOPMENT_VID, &mut stream)
-        .ok_or(DecodeError::UnexpectedData)?
-        .try_into()
-        .map_err(|_| DecodeError::VidError)?;
+        .map(|r| r.try_into().map_err(|_| DecodeError::VidError))
+        .transpose()?;
+
     let nonconfidential_data = decode_variable_data(TSP_PLAINTEXT, &mut stream);
     let raw_header = &origin[..origin.len() - stream.len()];
 
-    let ciphertext =
-        decode_variable_data(TSP_CIPHERTEXT, &mut stream).ok_or(DecodeError::UnexpectedData)?;
+    let ciphertext = has_confidential_part
+        .then(|| {
+            decode_variable_data(TSP_CIPHERTEXT, &mut stream).ok_or(DecodeError::UnexpectedData)
+        })
+        .transpose()?;
     let signed_data = &origin[..origin.len() - stream.len()];
     let signature =
         decode_fixed_data(ED25519_SIGNATURE, &mut stream).ok_or(DecodeError::UnexpectedData)?;
@@ -328,29 +376,37 @@ pub struct CipherView<'a> {
     data: &'a mut [u8],
 
     sender: Range<usize>,
-    receiver: Range<usize>,
+    receiver: Option<Range<usize>>,
     nonconfidential_data: Option<Range<usize>>,
 
     associated_data: Range<usize>,
     signature: &'a Signature,
 
     signed_data: Range<usize>,
-    ciphertext: Range<usize>,
+    ciphertext: Option<Range<usize>>,
 }
 
 impl<'a> CipherView<'a> {
     pub fn into_opened<Vid: TryFrom<&'a [u8]>>(
         self,
     ) -> Result<DecodedEnvelope<'a, Vid, &'a mut [u8]>, Vid::Error> {
-        let (header, cipherdata) = self.data.split_at_mut(self.ciphertext.start);
+        let plaintext_end = self
+            .ciphertext
+            .as_ref()
+            .map(|r| r.start)
+            .unwrap_or(self.data.len());
+        let (header, cipherdata) = self.data.split_at_mut(plaintext_end);
 
-        let ciphertext = &mut cipherdata[..self.ciphertext.len()];
+        let ciphertext = self.ciphertext.map(|r| &mut cipherdata[..r.len()]);
 
         let raw_header = &header[self.associated_data.clone()];
 
         let envelope = Envelope {
             sender: header[self.sender.clone()].try_into()?,
-            receiver: header[self.receiver.clone()].try_into()?,
+            receiver: self
+                .receiver
+                .map(|r| header[r.clone()].try_into())
+                .transpose()?,
             nonconfidential_data: self
                 .nonconfidential_data
                 .as_ref()
@@ -375,18 +431,20 @@ impl<'a> CipherView<'a> {
 /// Decode an encrypted TSP message plus Envelope & Signature
 /// Produces the ciphertext as a mutable stream.
 pub fn decode_envelope_mut<'a>(stream: &'a mut [u8]) -> Result<CipherView<'a>, DecodeError> {
-    let mut pos = detected_tsp_header_size(&mut (stream as &[u8]))?;
+    let (mut pos, has_confidential_part) =
+        detected_tsp_header_size_and_confidentiality(&mut (stream as &[u8]))?;
     let mut sender = decode_variable_data_index(TSP_DEVELOPMENT_VID, &stream[pos..])
         .ok_or(DecodeError::UnexpectedData)?;
     sender.start += pos;
     sender.end += pos;
     pos = sender.end;
 
-    let mut receiver = decode_variable_data_index(TSP_DEVELOPMENT_VID, &stream[pos..])
-        .ok_or(DecodeError::UnexpectedData)?;
-    receiver.start += pos;
-    receiver.end += pos;
-    pos = receiver.end;
+    let mut receiver = decode_variable_data_index(TSP_DEVELOPMENT_VID, &stream[pos..]);
+    if let Some(range) = &mut receiver {
+        range.start += pos;
+        range.end += pos;
+        pos = range.end;
+    }
 
     let mut nonconfidential_data = decode_variable_data_index(TSP_PLAINTEXT, &stream[pos..]);
     if let Some(range) = &mut nonconfidential_data {
@@ -397,11 +455,17 @@ pub fn decode_envelope_mut<'a>(stream: &'a mut [u8]) -> Result<CipherView<'a>, D
 
     let associated_data = 0..pos;
 
-    let mut ciphertext = decode_variable_data_index(TSP_CIPHERTEXT, &stream[pos..])
-        .ok_or(DecodeError::UnexpectedData)?;
-    ciphertext.start += pos;
-    ciphertext.end += pos;
-    pos = ciphertext.end;
+    let ciphertext = if has_confidential_part {
+        let mut ciphertext = decode_variable_data_index(TSP_CIPHERTEXT, &stream[pos..])
+            .ok_or(DecodeError::UnexpectedData)?;
+        ciphertext.start += pos;
+        ciphertext.end += pos;
+        pos = ciphertext.end;
+
+        Some(ciphertext)
+    } else {
+        None
+    };
 
     let signed_data = 0..pos;
 
@@ -440,13 +504,24 @@ pub fn encode_payload_vec(payload: Payload<impl AsRef<[u8]>>) -> Result<Vec<u8>,
     Ok(data)
 }
 
-/// Allocating variant of [encode_payload]
+/// Allocating variant of [encode_ets_envelope]
 #[cfg(any(feature = "alloc", test))]
-pub fn encode_envelope_vec<Vid: AsRef<[u8]>>(
+pub fn encode_ets_envelope_vec<Vid: AsRef<[u8]>>(
     envelope: Envelope<Vid>,
 ) -> Result<Vec<u8>, EncodeError> {
     let mut data = vec![];
-    encode_envelope(envelope, &mut data)?;
+    encode_ets_envelope(envelope, &mut data)?;
+
+    Ok(data)
+}
+
+/// Allocating variant of [encode_ets_envelope]
+#[cfg(any(feature = "alloc", test))]
+pub fn encode_s_envelope_vec<Vid: AsRef<[u8]>>(
+    envelope: Envelope<Vid>,
+) -> Result<Vec<u8>, EncodeError> {
+    let mut data = vec![];
+    encode_s_envelope(envelope, &mut data)?;
 
     Ok(data)
 }
@@ -544,9 +619,9 @@ mod test {
 
         let cesr_payload = { encode_payload_vec(Payload::GenericMessage(b"Hello TSP!")).unwrap() };
 
-        let mut outer = encode_envelope_vec(Envelope {
+        let mut outer = encode_ets_envelope_vec(Envelope {
             sender: &b"Alister"[..],
-            receiver: &b"Bobbi"[..],
+            receiver: Some(&b"Bobbi"[..]),
             nonconfidential_data: None,
         })
         .unwrap();
@@ -567,10 +642,12 @@ mod test {
         assert_eq!(ver.signed_data, signed_data);
         assert_eq!(ver.signature, &fixed_sig);
         assert_eq!(env.sender, &b"Alister"[..]);
-        assert_eq!(env.receiver, &b"Bobbi"[..]);
+        assert_eq!(env.receiver, Some(&b"Bobbi"[..]));
         assert_eq!(env.nonconfidential_data, None);
 
-        let Payload::GenericMessage(data) = decode_payload(dummy_crypt(ciphertext)).unwrap() else {
+        let Payload::GenericMessage(data) =
+            decode_payload(dummy_crypt(ciphertext.unwrap())).unwrap()
+        else {
             unreachable!();
         };
         assert_eq!(data, b"Hello TSP!");
@@ -585,9 +662,9 @@ mod test {
 
         let cesr_payload = { encode_payload_vec(Payload::GenericMessage(b"Hello TSP!")).unwrap() };
 
-        let mut outer = encode_envelope_vec(Envelope {
+        let mut outer = encode_ets_envelope_vec(Envelope {
             sender: &b"Alister"[..],
-            receiver: &b"Bobbi"[..],
+            receiver: Some(&b"Bobbi"[..]),
             nonconfidential_data: Some(b"treasure"),
         })
         .unwrap();
@@ -608,13 +685,68 @@ mod test {
         assert_eq!(ver.signed_data, signed_data);
         assert_eq!(ver.signature, &fixed_sig);
         assert_eq!(env.sender, &b"Alister"[..]);
-        assert_eq!(env.receiver, &b"Bobbi"[..]);
+        assert_eq!(env.receiver, Some(&b"Bobbi"[..]));
         assert_eq!(env.nonconfidential_data, Some(&b"treasure"[..]));
 
-        let Payload::GenericMessage(data) = decode_payload(dummy_crypt(ciphertext)).unwrap() else {
+        let Payload::GenericMessage(data) =
+            decode_payload(dummy_crypt(ciphertext.unwrap())).unwrap()
+        else {
             unreachable!();
         };
         assert_eq!(data, b"Hello TSP!");
+    }
+
+    #[test]
+    fn envelope_without_confidential_data() {
+        let fixed_sig = [1; 64];
+
+        let mut outer = encode_s_envelope_vec(Envelope {
+            sender: &b"Alister"[..],
+            receiver: Some(&b"Bobbi"[..]),
+            nonconfidential_data: Some(b"treasure"),
+        })
+        .unwrap();
+
+        let signed_data = outer.clone();
+        encode_signature(&fixed_sig, &mut outer);
+
+        let (
+            DecodedEnvelope {
+                envelope: env,
+                ciphertext,
+                ..
+            },
+            ver,
+        ) = decode_envelope::<&[u8]>(&outer).unwrap();
+        assert_eq!(ver.signed_data, signed_data);
+        assert_eq!(ver.signature, &fixed_sig);
+        assert_eq!(env.sender, &b"Alister"[..]);
+        assert_eq!(env.receiver, Some(&b"Bobbi"[..]));
+        assert_eq!(env.nonconfidential_data, Some(&b"treasure"[..]));
+
+        assert!(ciphertext.is_none());
+    }
+
+    #[test]
+    fn s_envelope_with_confidential_data_failure() {
+        fn dummy_crypt(data: &[u8]) -> &[u8] {
+            data
+        }
+        let fixed_sig = [1; 64];
+
+        let cesr_payload = { encode_payload_vec(Payload::GenericMessage(b"Hello TSP!")).unwrap() };
+
+        let mut outer = encode_s_envelope_vec(Envelope {
+            sender: &b"Alister"[..],
+            receiver: Some(&b"Bobbi"[..]),
+            nonconfidential_data: Some(b"treasure"),
+        })
+        .unwrap();
+        let ciphertext = dummy_crypt(&cesr_payload); // this is wrong
+        encode_ciphertext(ciphertext, &mut outer).unwrap();
+        encode_signature(&fixed_sig, &mut outer);
+
+        assert!(decode_envelope::<&[u8]>(&outer).is_err());
     }
 
     #[test]
@@ -622,10 +754,10 @@ mod test {
         let fixed_sig = [1; 64];
 
         let mut outer = vec![];
-        encode_envelope(
+        encode_ets_envelope(
             Envelope {
                 sender: &b"Alister"[..],
-                receiver: &b"Bobbi"[..],
+                receiver: Some(&b"Bobbi"[..]),
                 nonconfidential_data: Some(b"treasure"),
             },
             &mut outer,
@@ -641,9 +773,9 @@ mod test {
     fn trailing_data() {
         let fixed_sig = [1; 64];
 
-        let mut outer = encode_envelope_vec(Envelope {
+        let mut outer = encode_ets_envelope_vec(Envelope {
             sender: &b"Alister"[..],
-            receiver: &b"Bobbi"[..],
+            receiver: Some(&b"Bobbi"[..]),
             nonconfidential_data: Some(b"treasure"),
         })
         .unwrap();
@@ -691,6 +823,11 @@ mod test {
         test_turn_around(Payload::GenericMessage(&b"Hello TSP!"[..]));
     }
 
+    #[test]
+    fn test_nested_msg() {
+        test_turn_around(Payload::NestedMessage(&b"Hello TSP!"[..]));
+    }
+
     fn test_turn_around(payload: Payload<&[u8]>) {
         fn dummy_crypt(data: &[u8]) -> &[u8] {
             data
@@ -699,9 +836,9 @@ mod test {
 
         let cesr_payload = encode_payload_vec(payload.clone()).unwrap();
 
-        let mut outer = encode_envelope_vec(Envelope {
+        let mut outer = encode_ets_envelope_vec(Envelope {
             sender: &b"Alister"[..],
-            receiver: &b"Bobbi"[..],
+            receiver: Some(&b"Bobbi"[..]),
             nonconfidential_data: Some(b"treasure"),
         })
         .unwrap();
@@ -721,10 +858,13 @@ mod test {
         } = view.into_opened::<&[u8]>().unwrap();
 
         assert_eq!(env.sender, &b"Alister"[..]);
-        assert_eq!(env.receiver, &b"Bobbi"[..]);
+        assert_eq!(env.receiver, Some(&b"Bobbi"[..]));
         assert_eq!(env.nonconfidential_data, Some(&b"treasure"[..]));
 
-        assert_eq!(decode_payload(dummy_crypt(ciphertext)).unwrap(), payload);
+        assert_eq!(
+            decode_payload(dummy_crypt(ciphertext.unwrap())).unwrap(),
+            payload
+        );
     }
 
     #[test]

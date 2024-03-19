@@ -1,5 +1,7 @@
 use futures::{Stream, StreamExt};
-use tsp_definitions::{Digest, Error, Payload, ReceivedTspMessage, Receiver, Sender, VerifiedVid};
+use tsp_definitions::{
+    Digest, Error, MessageType, Payload, ReceivedTspMessage, Receiver, Sender, VerifiedVid,
+};
 use tsp_vid::Vid;
 
 mod vid_database;
@@ -68,7 +70,7 @@ pub async fn send(
     Ok(())
 }
 
-/// Listen for incopming TSP messages, given the transport provided by the receiver VID
+/// Listen for incoming TSP messages, given the transport provided by the receiver VID
 ///
 /// # Arguments
 ///
@@ -106,7 +108,7 @@ pub fn receive(
 
         let (sender, intended_receiver) = tsp_cesr::get_sender_receiver(&mut message)?;
 
-        if intended_receiver != receiver.identifier() {
+        if intended_receiver != Some(receiver.identifier().as_bytes()) {
             return Err(Error::UnexpectedRecipient);
         }
 
@@ -119,6 +121,7 @@ pub fn receive(
                 sender,
                 nonconfidential_data: nonconfidential_data.map(|v| v.to_vec()),
                 message: message.to_owned(),
+                message_type: MessageType::SignedAndEncrypted,
             },
             Payload::RequestRelationship => ReceivedTspMessage::RequestRelationship {
                 sender,
@@ -131,6 +134,7 @@ pub fn receive(
             }
             // TODO: record that we have to end this relationship
             Payload::CancelRelationship => ReceivedTspMessage::CancelRelationship { sender },
+            Payload::NestedMessage(_) => unimplemented!(),
         })
     }))
 }
@@ -262,7 +266,7 @@ mod test {
             .await
             .unwrap();
 
-        let payload = b"hello world";
+        let payload: &[u8] = b"hello world";
 
         start_broadcast_server("127.0.0.1:1337").await.unwrap();
 

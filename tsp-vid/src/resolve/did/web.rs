@@ -58,7 +58,7 @@ pub fn resolve_url(parts: &[&str]) -> Result<Url, Error> {
         ["did", "web", domain, "user", username] => {
             format!("{PROTOCOL}{domain}/user/{username}/{DOCUMENT}")
         }
-        _ => return Err(Error::InvalidVID),
+        _ => return Err(Error::InvalidVID("unknown VID type")),
     }
     .parse()?)
 }
@@ -127,6 +127,8 @@ pub fn resolve_document(did_document: DidDocument, target_id: &str) -> Result<Vi
         transport,
         public_sigkey,
         public_enckey,
+        relation_vid: None,
+        parent_vid: None,
     })
 }
 
@@ -175,7 +177,7 @@ mod tests {
 
         assert_eq!(
             alice.unwrap().identifier(),
-            "did:web:did.tsp-test.org:user:alice".as_bytes()
+            "did:web:did.tsp-test.org:user:alice"
         );
 
         let bob_did_doc = fs::read_to_string("../examples/test/bob-did.json").unwrap();
@@ -185,7 +187,7 @@ mod tests {
 
         assert_eq!(
             bob.unwrap().identifier(),
-            "did:web:did.tsp-test.org:user:bob".as_bytes()
+            "did:web:did.tsp-test.org:user:bob"
         );
     }
 }

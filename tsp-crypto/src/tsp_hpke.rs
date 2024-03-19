@@ -6,11 +6,13 @@ use tsp_definitions::{
     Error, NonConfidentialData, Payload, Receiver, Sender, TSPMessage, VerifiedVid,
 };
 
+use crate::MessageContents;
+
 pub(crate) fn seal<A, Kdf, Kem>(
     sender: &dyn Sender,
     receiver: &dyn VerifiedVid,
     nonconfidential_data: Option<NonConfidentialData>,
-    secret_payload: Payload,
+    secret_payload: Payload<&[u8]>,
 ) -> Result<TSPMessage, Error>
 where
     A: hpke::aead::Aead,
@@ -20,10 +22,10 @@ where
     let mut csprng = StdRng::from_entropy();
 
     let mut data = Vec::with_capacity(64);
-    tsp_cesr::encode_envelope(
+    tsp_cesr::encode_ets_envelope(
         tsp_cesr::Envelope {
             sender: sender.identifier(),
-            receiver: receiver.identifier(),
+            receiver: Some(receiver.identifier()),
             nonconfidential_data,
         },
         &mut data,
@@ -38,6 +40,7 @@ where
             tsp_cesr::Payload::DirectRelationAffirm { reply: thread_id }
         }
         Payload::CancelRelationship => tsp_cesr::Payload::RelationshipCancel,
+        Payload::NestedMessage(data) => tsp_cesr::Payload::NestedMessage(data),
     };
 
     // prepare CESR encoded ciphertext
@@ -74,7 +77,7 @@ where
     cesr_message.extend(encapped_key.to_bytes());
 
     // encode and append the ciphertext to the envelope data
-    tsp_cesr::encode_ciphertext(&cesr_message, &mut data).expect("encoding error");
+    tsp_cesr::encode_ciphertext(&cesr_message, &mut data)?;
 
     // create and append outer signature
     let sign_key = ed25519_dalek::SigningKey::from_bytes(sender.signing_key());
@@ -88,7 +91,7 @@ pub(crate) fn open<'a, A, Kdf, Kem>(
     receiver: &dyn Receiver,
     sender: &dyn VerifiedVid,
     tsp_message: &'a mut [u8],
-) -> Result<(Option<NonConfidentialData<'a>>, Payload<'a>, &'a [u8]), Error>
+) -> Result<MessageContents<'a>, Error>
 where
     A: hpke::aead::Aead,
     Kdf: hpke::kdf::Kdf,
@@ -106,13 +109,16 @@ where
     let DecodedEnvelope {
         raw_header: info,
         envelope,
-        ciphertext,
+        ciphertext: Some(ciphertext),
     } = view
         .into_opened::<&[u8]>()
-        .map_err(|_| tsp_cesr::error::DecodeError::VidError)?;
+        .map_err(|_| tsp_cesr::error::DecodeError::VidError)?
+    else {
+        return Err(Error::MissingCiphertext);
+    };
 
     // verify the message was intended for the specified receiver
-    if envelope.receiver != receiver.identifier() {
+    if envelope.receiver != Some(receiver.identifier().as_bytes()) {
         return Err(Error::UnexpectedRecipient);
     }
 
@@ -147,6 +153,7 @@ where
         tsp_cesr::Payload::NestedRelationProposal { .. } => todo!(),
         tsp_cesr::Payload::NestedRelationAffirm { .. } => todo!(),
         tsp_cesr::Payload::RelationshipCancel => Payload::CancelRelationship,
+        tsp_cesr::Payload::NestedMessage(data) => Payload::NestedMessage(data),
     };
 
     Ok((envelope.nonconfidential_data, secret_payload, ciphertext))
