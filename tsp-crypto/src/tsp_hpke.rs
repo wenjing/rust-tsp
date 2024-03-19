@@ -88,7 +88,7 @@ pub(crate) fn open<'a, A, Kdf, Kem>(
     receiver: &dyn Receiver,
     sender: &dyn VerifiedVid,
     tsp_message: &'a mut [u8],
-) -> Result<(Option<NonConfidentialData<'a>>, Payload<'a>), Error>
+) -> Result<(Option<NonConfidentialData<'a>>, Payload<'a>, &'a [u8]), Error>
 where
     A: hpke::aead::Aead,
     Kdf: hpke::kdf::Kdf,
@@ -149,7 +149,7 @@ where
         tsp_cesr::Payload::RelationshipCancel => Payload::CancelRelationship,
     };
 
-    Ok((envelope.nonconfidential_data, secret_payload))
+    Ok((envelope.nonconfidential_data, secret_payload, ciphertext))
 }
 
 /// Generate N random bytes using the provided RNG
