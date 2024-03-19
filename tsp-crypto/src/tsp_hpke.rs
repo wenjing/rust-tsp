@@ -140,8 +140,13 @@ where
 
     let secret_payload = match tsp_cesr::decode_payload(ciphertext)? {
         tsp_cesr::Payload::GenericMessage(data) => Payload::Content(data),
+        tsp_cesr::Payload::DirectRelationProposal { .. } => Payload::RequestRelationship,
+        tsp_cesr::Payload::DirectRelationAffirm { reply: &thread_id } => {
+            Payload::AcceptRelationship { thread_id }
+        }
+        tsp_cesr::Payload::NestedRelationProposal { .. } => todo!(),
+        tsp_cesr::Payload::NestedRelationAffirm { .. } => todo!(),
         tsp_cesr::Payload::RelationshipCancel => Payload::CancelRelationship,
-        _ => todo!(),
     };
 
     Ok((envelope.nonconfidential_data, secret_payload))
