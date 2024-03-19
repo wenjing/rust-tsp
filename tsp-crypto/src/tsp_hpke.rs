@@ -6,6 +6,8 @@ use tsp_definitions::{
     Error, NonConfidentialData, Payload, Receiver, Sender, TSPMessage, VerifiedVid,
 };
 
+use crate::MessageContents;
+
 pub(crate) fn seal<A, Kdf, Kem>(
     sender: &dyn Sender,
     receiver: &dyn VerifiedVid,
@@ -29,8 +31,14 @@ where
         &mut data,
     )?;
 
-    let secret_payload = match secret_payload {
+    let secret_payload = match &secret_payload {
         Payload::Content(data) => tsp_cesr::Payload::GenericMessage(data),
+        Payload::RequestRelationship => tsp_cesr::Payload::DirectRelationProposal {
+            nonce: fresh_nonce(&mut csprng),
+        },
+        Payload::AcceptRelationship { thread_id } => {
+            tsp_cesr::Payload::DirectRelationAffirm { reply: thread_id }
+        }
         Payload::CancelRelationship => tsp_cesr::Payload::RelationshipCancel,
         Payload::NestedMessage(data) => tsp_cesr::Payload::NestedMessage(data),
     };
@@ -83,7 +91,7 @@ pub(crate) fn open<'a, A, Kdf, Kem>(
     receiver: &dyn Receiver,
     sender: &dyn VerifiedVid,
     tsp_message: &'a mut [u8],
-) -> Result<(Option<NonConfidentialData<'a>>, Payload<&'a [u8]>), Error>
+) -> Result<MessageContents<'a>, Error>
 where
     A: hpke::aead::Aead,
     Kdf: hpke::kdf::Kdf,
@@ -138,10 +146,20 @@ where
 
     let secret_payload = match tsp_cesr::decode_payload(ciphertext)? {
         tsp_cesr::Payload::GenericMessage(data) => Payload::Content(data),
+        tsp_cesr::Payload::DirectRelationProposal { .. } => Payload::RequestRelationship,
+        tsp_cesr::Payload::DirectRelationAffirm { reply: &thread_id } => {
+            Payload::AcceptRelationship { thread_id }
+        }
+        tsp_cesr::Payload::NestedRelationProposal { .. } => todo!(),
+        tsp_cesr::Payload::NestedRelationAffirm { .. } => todo!(),
         tsp_cesr::Payload::RelationshipCancel => Payload::CancelRelationship,
         tsp_cesr::Payload::NestedMessage(data) => Payload::NestedMessage(data),
-        _ => unimplemented!(),
     };
 
-    Ok((envelope.nonconfidential_data, secret_payload))
+    Ok((envelope.nonconfidential_data, secret_payload, ciphertext))
+}
+
+/// Generate N random bytes using the provided RNG
+fn fresh_nonce(csprng: &mut (impl rand::RngCore + rand::CryptoRng)) -> tsp_cesr::Nonce {
+    tsp_cesr::Nonce::generate(|dst| csprng.fill_bytes(dst))
 }

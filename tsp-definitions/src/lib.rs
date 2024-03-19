@@ -4,6 +4,7 @@ use core::fmt;
 pub use crate::error::Error;
 
 pub type KeyData = [u8; 32];
+pub type Digest = [u8; 32];
 pub type PrivateKeyData<'a> = &'a KeyData;
 pub type PublicKeyData<'a> = &'a KeyData;
 pub type VidData<'a> = &'a [u8];
@@ -17,17 +18,23 @@ pub enum MessageType {
 }
 
 #[derive(Debug)]
-pub struct ReceivedTspMessage<Bytes: AsRef<[u8]>, V: VerifiedVid> {
-    pub sender: V,
-    pub nonconfidential_data: Option<Vec<u8>>,
-    pub message: Payload<Bytes>,
-    pub message_type: MessageType,
-}
-
-impl<B: AsRef<[u8]>, T: VerifiedVid> ReceivedTspMessage<B, T> {
-    pub fn is_relationship_proposal() {
-        todo!();
-    }
+pub enum ReceivedTspMessage<V: VerifiedVid> {
+    GenericMessage {
+        sender: V,
+        nonconfidential_data: Option<Vec<u8>>,
+        message: Vec<u8>,
+        message_type: MessageType,
+    },
+    RequestRelationship {
+        sender: V,
+        thread_id: Digest,
+    },
+    AcceptRelationship {
+        sender: V,
+    },
+    CancelRelationship {
+        sender: V,
+    },
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -35,6 +42,8 @@ pub enum Payload<Bytes: AsRef<[u8]>> {
     Content(Bytes),
     NestedMessage(Bytes),
     CancelRelationship,
+    RequestRelationship,
+    AcceptRelationship { thread_id: Digest },
 }
 
 impl<Bytes: AsRef<[u8]>> fmt::Display for Payload<Bytes> {
@@ -48,7 +57,9 @@ impl<Bytes: AsRef<[u8]>> fmt::Display for Payload<Bytes> {
                 "Nested Message: {}",
                 String::from_utf8_lossy(bytes.as_ref())
             ),
-            Payload::CancelRelationship => write!(f, "Cancel"),
+            Payload::CancelRelationship => write!(f, "Cancel Relationship"),
+            Payload::RequestRelationship => write!(f, "Request Relationship"),
+            Payload::AcceptRelationship { thread_id: _ } => write!(f, "Accept Relationship"),
         }
     }
 }

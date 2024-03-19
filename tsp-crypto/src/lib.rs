@@ -2,6 +2,7 @@ use tsp_definitions::{
     Error, NonConfidentialData, Payload, Receiver, Sender, TSPMessage, VerifiedVid,
 };
 
+mod digest;
 mod nonconfidential;
 mod tsp_hpke;
 
@@ -19,12 +20,14 @@ pub fn seal(
     tsp_hpke::seal::<Aead, Kdf, Kem>(sender, receiver, nonconfidential_data, payload)
 }
 
+pub type MessageContents<'a> = (Option<NonConfidentialData<'a>>, Payload<&'a [u8]>, &'a [u8]);
+
 /// Decode a CESR Authentic Confidential Message, verify the signature and decrypt its contents
 pub fn open<'a>(
     receiver: &dyn Receiver,
     sender: &dyn VerifiedVid,
     tsp_message: &'a mut [u8],
-) -> Result<(Option<NonConfidentialData<'a>>, Payload<&'a [u8]>), Error> {
+) -> Result<MessageContents<'a>, Error> {
     tsp_hpke::open::<Aead, Kdf, Kem>(receiver, sender, tsp_message)
 }
 
@@ -41,6 +44,8 @@ pub fn sign(
 pub fn verify<'a>(sender: &dyn VerifiedVid, tsp_message: &'a mut [u8]) -> Result<&'a [u8], Error> {
     nonconfidential::verify(sender, tsp_message)
 }
+
+pub use digest::sha256;
 
 #[cfg(test)]
 mod tests {
@@ -69,7 +74,7 @@ mod tests {
         )
         .unwrap();
 
-        let (received_nonconfidential_data, received_secret_message) =
+        let (received_nonconfidential_data, received_secret_message, _) =
             open(&alice, &bob, &mut message).unwrap();
 
         assert_eq!(received_nonconfidential_data.unwrap(), nonconfidential_data);

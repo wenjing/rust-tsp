@@ -2,7 +2,7 @@ use futures_util::StreamExt;
 use rand::Rng;
 use std::time::Duration;
 use tokio::time::sleep;
-use tsp_definitions::{Error, VerifiedVid};
+use tsp_definitions::{Error, ReceivedTspMessage::*, VerifiedVid};
 use tsp_transport::tcp::start_broadcast_server;
 use tsp_vid::PrivateVid;
 
@@ -29,7 +29,7 @@ async fn main() {
             tokio::pin!(stream);
 
             loop {
-                let message = match stream.next().await {
+                let received = match stream.next().await {
                     Some(Ok(m)) => m,
                     Some(Err(Error::UnexpectedRecipient)) => {
                         continue;
@@ -44,11 +44,20 @@ async fn main() {
                     }
                 };
 
+                let (sender, message) = match &received {
+                    GenericMessage {
+                        sender, message, ..
+                    } => (sender, message.as_slice()),
+                    RequestRelationship { sender, .. } => (sender, &b"{NEW_REL}"[..]),
+                    AcceptRelationship { sender } => (sender, &b"{NEW_REL_REPLY}"[..]),
+                    CancelRelationship { sender } => (sender, &b"{REL_CANCEL}"[..]),
+                };
+
                 tracing::info!(
                     "{} decrypted {} from {}",
                     me.identifier(),
-                    message.message.to_string(),
-                    message.sender.identifier()
+                    String::from_utf8_lossy(message),
+                    sender.identifier()
                 );
             }
         });
