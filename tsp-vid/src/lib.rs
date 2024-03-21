@@ -1,20 +1,25 @@
+use deserialize::{serde_key_data, serde_public_sigkey, serde_sigkey};
 use ed25519_dalek::{self as Ed};
 use hpke::{kem::X25519HkdfSha256 as KemType, Kem, Serializable};
 use rand::rngs::OsRng;
+use serde::{Deserialize, Serialize};
 use tsp_definitions::{KeyData, VerifiedVid};
 
 pub mod deserialize;
 pub mod resolve;
 
-pub use resolve::did::web::create_did_web;
+pub use resolve::{did::web::create_did_web, resolve_vid};
 
 /// A Vid represents a *verified* Identifier
 /// (so it doesn't carry any information that allows to verify it)
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Vid {
     id: String,
     transport: url::Url,
+    #[serde(with = "serde_public_sigkey")]
     public_sigkey: Ed::VerifyingKey,
+    #[serde(with = "serde_key_data")]
     public_enckey: KeyData,
     relation_vid: Option<String>,
     parent_vid: Option<String>,
@@ -31,10 +36,14 @@ impl Vid {
 }
 
 /// A PrivateVid represents the 'owner' of a particular Vid
-#[derive(Clone)]
+#[derive(Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct PrivateVid {
+    #[serde(flatten)]
     vid: Vid,
+    #[serde(with = "serde_sigkey")]
     sigkey: Ed::SigningKey,
+    #[serde(with = "serde_key_data")]
     enckey: KeyData,
 }
 

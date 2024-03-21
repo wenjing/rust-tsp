@@ -34,6 +34,89 @@ impl PrivateVid {
     }
 }
 
+pub(crate) mod serde_key_data {
+    use base64ct::{Base64Url, Encoding};
+    use serde::{Deserialize, Deserializer, Serializer};
+    use tsp_definitions::KeyData;
+
+    pub fn serialize<S>(key: &KeyData, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let key = Base64Url::encode_string(key);
+        serializer.serialize_str(&key)
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<KeyData, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let encoded: &str = Deserialize::deserialize(deserializer)?;
+        let key = Base64Url::decode_vec(encoded).map_err(serde::de::Error::custom)?;
+        let key: [u8; 32] = key
+            .try_into()
+            .map_err(|_| serde::de::Error::custom("key data is not exactly 32 bytes"))?;
+
+        Ok(key)
+    }
+}
+
+pub(crate) mod serde_sigkey {
+    use super::Ed;
+    use base64ct::{Base64Url, Encoding};
+    use serde::{Deserialize, Deserializer, Serializer};
+
+    pub fn serialize<S>(key: &Ed::SigningKey, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let key = Base64Url::encode_string(key.as_bytes());
+        serializer.serialize_str(&key)
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<Ed::SigningKey, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let encoded: &str = Deserialize::deserialize(deserializer)?;
+        let key = Base64Url::decode_vec(encoded).map_err(serde::de::Error::custom)?;
+        let key: &[u8; 32] = key
+            .as_slice()
+            .try_into()
+            .map_err(serde::de::Error::custom)?;
+
+        Ok(Ed::SigningKey::from_bytes(key))
+    }
+}
+
+pub(crate) mod serde_public_sigkey {
+    use super::Ed;
+    use base64ct::{Base64Url, Encoding};
+    use serde::{Deserialize, Deserializer, Serializer};
+
+    pub fn serialize<S>(key: &Ed::VerifyingKey, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let key = Base64Url::encode_string(key.as_bytes());
+        serializer.serialize_str(&key)
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<Ed::VerifyingKey, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let encoded: &str = Deserialize::deserialize(deserializer)?;
+        let key = Base64Url::decode_vec(encoded).map_err(serde::de::Error::custom)?;
+        let key: &[u8; 32] = key
+            .as_slice()
+            .try_into()
+            .map_err(serde::de::Error::custom)?;
+
+        Ed::VerifyingKey::from_bytes(key).map_err(serde::de::Error::custom)
+    }
+}
+
 #[cfg(test)]
 mod test {
     use crate::PrivateVid;
