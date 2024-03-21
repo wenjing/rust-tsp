@@ -256,6 +256,7 @@
 
       // initial load
       updateIdentities();
+      updateMessages();
     });
   </script>
 </head>
@@ -263,7 +264,7 @@
 <body>
   <div class="container-fluid">
     <div class="row">
-      <div class="col p-3 overflow-auto border-start">
+      <div class="col p-3 overflow-auto">
         <h2>Test identities</h2>
         <form class="mb-4 card p-3 text-bg-light" id="create-identity">
           <div class="form-group">
@@ -294,7 +295,7 @@
           </div>
         </div>
       </div>
-      <div class="col overflow-auto p-3">
+      <div class="col overflow-auto border-start p-3">
         <h2>Send message</h2>
         <form class="mb-4 card p-3 text-bg-light" id="send-message">
           <div class="form-group">
@@ -320,7 +321,7 @@
           </div>
         </div>
       </div>
-      <div class="col overflow-auto p-3 border-start">
+      <div class="col overflow-auto border-start p-3">
         <h2>Receive messages</h2>
         <button role="button" class="btn btn-outline-primary">Reload</button>
       </div>
