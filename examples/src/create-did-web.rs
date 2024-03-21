@@ -8,7 +8,7 @@ fn main() {
     }
 
     let name: &str = &args[1];
-    let (did_doc, private_doc) =
+    let (did_doc, private_doc, _) =
         tsp_vid::create_did_web(name, "did.tsp-test.org", "tcp://127.0.0.1:1337");
 
     fs::write(

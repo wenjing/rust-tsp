@@ -1,57 +1,330 @@
 <!DOCTYPE html>
 <html>
-  <head>
-    <title>TSP Demo Server</title>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" integrity="sha384-T3c6CoIi6uLrA9TneNEoa7RxnatzjcDSCmG1MXxSR1GAsXEV/Dwwykc2MPK8M2HN" crossorigin="anonymous">
-    <script>
-        document.addEventListener('DOMContentLoaded', () => {
-            const createForm = document.getElementById('create-identity');
+<head>
+  <title>TSP Demo Server</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css"
+    integrity="sha384-T3c6CoIi6uLrA9TneNEoa7RxnatzjcDSCmG1MXxSR1GAsXEV/Dwwykc2MPK8M2HN" crossorigin="anonymous">
+  <style>
+    html,
+    body,
+    body > .container-fluid,
+    body > .container-fluid > .row,
+    body > .container-fluid > .row > div {
+      height: 100%;
+    }
+  </style>
+  <script>
+    async function sha256(source) {
+      const sourceBytes = new TextEncoder().encode(source);
+      const digest = await crypto.subtle.digest('SHA-256', sourceBytes);
+      const resultBytes = [...new Uint8Array(digest)];
 
-            createForm.addEventListener('submit', async (event) => {
-                event.preventDefault();
-                const formData = new URLSearchParams(new FormData(createForm));
-                const response = await fetch('/create-identity', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8'
-                    },
-                    body: formData
-                });
+      return resultBytes.map((x) => x.toString(16).padStart(2, '0')).join("");
+  }
 
-                if (response.ok) {
-                    const identity = await response.json();
-                    const cards = document.querySelector('.cards');
-                    cards.innerHTML = '';
-         
-                    const card = document.createElement('div');
-                    card.classList.add('card', 'p-3', 'm-3');
-                    card.innerHTML = `<h3>${identity.id}</h3>`;
-                    cards.appendChild(card);
-                }
-            });
+    document.addEventListener('DOMContentLoaded', () => {
+      let identities = {};
+
+      // update identities + rendering
+      const updateIdentities = async () => {
+        const selectedSender = window.localStorage.getItem('selected-sender');
+        const selectedReceiver = window.localStorage.getItem('selected-receiver');
+
+        document.getElementById('sender').value = selectedSender || '';
+        document.getElementById('receiver').value = selectedReceiver || '';
+
+        identities = Object.keys(window.localStorage).reduce((acc, item) => {
+          if (item.startsWith('did:')) {
+            let identity = JSON.parse(window.localStorage.getItem(item));
+            const key = identity.id;
+
+            return {
+              [key]: identity,
+              ...acc
+            };
+          }
+
+          return acc;
+        }, {});
+
+        const cards = document.querySelector('.cards');
+        cards.innerHTML = '';
+
+        Object.values(identities).forEach((identity) => {
+          const card = document.createElement('div');
+          card.classList.add('col');
+          let isSelectedSender = selectedSender === identity.id;
+          let isSelectedReceiver = selectedReceiver === identity.id;
+          card.innerHTML = `
+            <div class="card mb-4 text-bg-light" style="max-width:40rem">
+              <div class="card-body">
+                <h5 class="card-title">
+                  ${identity.sigkey ? 'Private' : 'Public'} VID
+                  <span class="float-end">
+                    ${isSelectedSender ? '<span class="badge text-bg-warning">sender</span>' : ''}
+                    ${isSelectedReceiver ? '<span class="badge text-bg-info ml-2">receiver</span>' : ''}
+                  </span>
+                </h5>
+                <p class="card-text">
+                    ${identity.id}
+                </p>
+              </div>
+              <ul class="list-group list-group-flush">
+                ${identity.sigkey ? `
+                <li class="list-group-item">
+                    <span class="badge text-bg-warning float-end">private</span>
+                    <span class="text-muted d-block mb-2">Decryption key:</span>
+                    <pre class="text-warning-emphasis mb-0">${identity.enckey}</pre>
+                </li>
+                <li class="list-group-item">
+                    <span class="badge text-bg-warning float-end">private</span>
+                    <span class="text-muted d-block mb-2">Signing key:</span>
+                    <pre class="text-warning-emphasis mb-0">${identity.sigkey}</pre>
+                </li>
+                ` : ''}
+                <li class="list-group-item">
+                    <span class="badge text-bg-info float-end">public</span>
+                    <span class="text-muted d-block mb-2">Verification key:</span>
+                    <pre class="text-primary-emphasis mb-0">${identity.publicSigkey}</pre>
+                </li>
+                <li class="list-group-item">
+                    <span class="badge text-bg-info float-end">public</span>
+                    <span class="text-muted d-block mb-2">Encryption key:</span>
+                    <pre class="text-primary-emphasis mb-0">${identity.publicEnckey}</pre>
+                </li>
+                <li class="list-group-item">
+                  <span class="text-muted d-block mb-2">Transport:</span>
+                  <pre class="text-primary-emphasis mb-0">${identity.transport}</pre>
+                </li>
+              </ul>
+              <div class="card-body">
+                <button role="button" class="btn btn-danger delete float-end">Delete</button>
+                <button role="button" class="btn btn-${isSelectedSender ? 'secondary' : 'warning'} select-sender">Select sender</button>
+                <button role="button" class="btn btn-${isSelectedReceiver ? 'secondary' : 'info'} select-receiver">Select receiver</button>
+              </div>
+            </div>`;
+
+          card.querySelector('.delete').addEventListener('click', (event) => {
+            event.preventDefault();
+            window.localStorage.removeItem(identity.id);
+            updateIdentities();
+          });
+
+          card.querySelector('.select-sender').addEventListener('click', (event) => {
+            event.preventDefault();
+            if (selectedSender === identity.id) {
+              window.localStorage.removeItem('selected-sender');
+            } else {
+              window.localStorage.setItem('selected-sender', identity.id);
+            }
+            updateIdentities();
+          });
+
+          card.querySelector('.select-receiver').addEventListener('click', (event) => {
+            event.preventDefault();
+            if (selectedReceiver === identity.id) {
+              window.localStorage.removeItem('selected-receiver');
+            } else {
+              window.localStorage.setItem('selected-receiver', identity.id);
+            }
+            updateIdentities();
+          });
+
+          cards.appendChild(card);
         });
-    </script>
-  </head>
-  <body class="container">
-    <h1 class="text-center my-4">TSP Demo Server</h1>
-    <form action="/create-identity" method="post" class="mb-4" id="create-identity">
-        <fieldset class="card p-4">
-            <legend>Create Identity</legend>
-            <div class="form-group">
-                <label for="name">Username:</label>
-                <input type="text" id="name" name="name" pattern="[a-z]{3,100}" title="use only lowercase characters, at least 3" class="form-control" required>
-                <div class="invalid-feedback">
-                  Please provide a valid username.
-                </div>
-            </div>
-            <div class="form-group mt-3">
-                <input type="submit" value="Create Identity" class="btn btn-primary">
-            </div>
-        </fieldset>
-    </form>
-    <h2>Identities</h2>
-    <div class="cards">
-        None
+      };
+
+      // update messages
+      const updateMessages = async () => {
+        const messages = Object.keys(window.localStorage).reduce((acc, id) => {
+          if (id.startsWith('message:')) {
+            return [...acc, {
+              id,
+              message: window.localStorage.getItem(id),
+            }];
+          }
+
+          return acc;
+        }, []);
+
+        const messagesContainer = document.querySelector('.messages');
+        messagesContainer.innerHTML = '';
+
+        messages.forEach(({ message, id }) => {
+          const card = document.createElement('div');
+          card.classList.add('col');
+          card.innerHTML = `
+            <div class="card mb-4 text-bg-light" style="max-width:40rem">
+              <div class="card-body">
+                <h5 class="card-title">Message</h5>
+                <p class="card-text">
+                    ${message}
+                </p>
+              </div>
+              <div class="card-body">
+                <button role="button" class="btn btn-danger delete float-end">Delete</button>
+              </div>
+            </div>`;
+
+          card.querySelector('.delete').addEventListener('click', (event) => {
+            event.preventDefault();
+            window.localStorage.removeItem(id);
+            updateIdentities();
+          });
+
+          messagesContainer.appendChild(card);
+        });
+      };
+
+      // create form
+      const createForm = document.getElementById('create-identity');
+
+      createForm.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const formData = new URLSearchParams(new FormData(createForm));
+        const response = await fetch('/create-identity', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8'
+          },
+          body: formData
+        });
+
+        if (response.ok) {
+          createForm.reset();
+          const identity = await response.json();
+          const key = identity.id;
+          window.localStorage.setItem(key, JSON.stringify(identity));
+          updateIdentities();
+        }
+      });
+
+      // resolce form
+      const resolveForm = document.getElementById('resolve-vid');
+
+      resolveForm.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const formData = new URLSearchParams(new FormData(resolveForm));
+        const response = await fetch('/resolve-vid', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8'
+          },
+          body: formData
+        });
+
+        if (response.ok) {
+          resolveForm.reset();
+          const identity = await response.json();
+          const key = identity.id;
+          window.localStorage.setItem(key, JSON.stringify(identity));
+          updateIdentities();
+        }
+      });
+
+      // send message form
+      const sendMessageForm = document.getElementById('send-message');
+
+      sendMessageForm.addEventListener('submit', async (event) => {
+        event.preventDefault();
+
+        if (!sendMessageForm.sender.value || !sendMessageForm.receiver.value) {
+          return alert('Please select sender and receiver');
+        }
+
+        const formData = {
+          sender: identities[sendMessageForm.sender.value],
+          receiver: identities[sendMessageForm.receiver.value],
+          message: sendMessageForm.message.value,
+        };
+        const response = await fetch('/send-message', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json;charset=UTF-8'
+          },
+          body: JSON.stringify(formData),
+        });
+
+        if (response.ok) {
+          sendMessageForm.message.value = '';
+          const message = await response.json();
+          const key = `message:${await sha256(message)}`;
+          window.localStorage.setItem(key, message);
+          updateMessages();
+        }
+      });
+
+      // initial load
+      updateIdentities();
+    });
+  </script>
+</head>
+
+<body>
+  <div class="container-fluid">
+    <div class="row">
+      <div class="col p-3 overflow-auto border-start">
+        <h2>Test identities</h2>
+        <form class="mb-4 card p-3 text-bg-light" id="create-identity">
+          <div class="form-group">
+            <label for="name">Create VID:</label>
+            <input type="text" id="name" name="name" pattern="[a-z]{3,100}"
+              placeholder="username e.g. alice"
+              title="use only lowercase characters, at least 3" class="form-control" required>
+          </div>
+          <div class="form-group mt-2">
+            <input type="submit" value="Create VID" class="btn btn-primary">
+          </div>
+        </form>
+        <form class="mb-4 card p-3 text-bg-light" id="resolve-vid">
+          <div class="form-group">
+            <label for="vid">Resolve and verify VID:</label>
+            <input type="text" id="vid" name="vid"
+              placeholder="VID e.g. did:web:tsp-test.org:alice" class="form-control" required>
+          </div>
+          <div class="form-group mt-2">
+            <input type="submit" value="Resolve and verify VID" class="btn btn-primary">
+          </div>
+        </form>
+        <h3>Identities</h3>
+        <hr>
+        <div class="cards row">
+          <div class="text-muted p-3">
+            <em>None</em>
+          </div>
+        </div>
+      </div>
+      <div class="col overflow-auto p-3">
+        <h2>Send message</h2>
+        <form class="mb-4 card p-3 text-bg-light" id="send-message">
+          <div class="form-group">
+            <label for="sender">Sender:</label>
+            <input type="text" id="sender" sender="sender" readonly class="form-control-plaintext" placeholder="select" />
+          </div>
+          <div class="form-group mt-2">
+            <label for="receiver">Receiver:</label>
+            <input type="text" id="receiver" name="receiver" readonly class="form-control-plaintext" placeholder="select" />
+          </div>
+          <div class="form-group mt-2">
+            <label for="message">Message:</label>
+            <textarea id="message" name="message" class="form-control" rows="8" required></textarea>
+          </div>
+          <div class="form-group mt-2">
+            <input type="submit" value="Send message" class="btn btn-primary" />
+          </div>
+        </form>
+        <h2>Sent messages</h2>
+        <div class="messages row">
+          <div class="text-muted p-3">
+            <em>None</em>
+          </div>
+        </div>
+      </div>
+      <div class="col overflow-auto p-3 border-start">
+        <h2>Receive messages</h2>
+        <button role="button" class="btn btn-outline-primary">Reload</button>
+      </div>
     </div>
-  </body>
+  </div>
+</body>
 </html>
