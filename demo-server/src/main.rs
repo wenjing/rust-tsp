@@ -5,7 +5,7 @@ use axum::{
     routing::{get, post},
     Form, Json, Router,
 };
-use base64ct::{Base64, Encoding};
+use base64ct::{Base64Url, Encoding};
 use serde::Deserialize;
 use std::{
     collections::HashMap,
@@ -125,7 +125,7 @@ async fn send_message(Json(form): Json<SendMessageForm>) -> Response {
     );
 
     match result {
-        Ok(message) => Json(Base64::encode_string(&message)).into_response(),
+        Ok(message) => Json(Base64Url::encode_string(&message)).into_response(),
         Err(_) => (StatusCode::INTERNAL_SERVER_ERROR, "error creating message").into_response(),
     }
 }

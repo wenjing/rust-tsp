@@ -99,7 +99,9 @@
               </ul>
               <div class="card-body">
                 <button role="button" class="btn btn-danger delete float-end">Delete</button>
-                <button role="button" class="btn btn-${isSelectedSender ? 'secondary' : 'warning'} select-sender">Select sender</button>
+                ${identity.sigkey ? `
+                  <button role="button" class="btn btn-${isSelectedSender ? 'secondary' : 'warning'} select-sender">Select sender</button>
+                ` : ''}
                 <button role="button" class="btn btn-${isSelectedReceiver ? 'secondary' : 'info'} select-receiver">Select receiver</button>
               </div>
             </div>`;
@@ -110,15 +112,18 @@
             updateIdentities();
           });
 
-          card.querySelector('.select-sender').addEventListener('click', (event) => {
-            event.preventDefault();
-            if (selectedSender === identity.id) {
-              window.localStorage.removeItem('selected-sender');
-            } else {
-              window.localStorage.setItem('selected-sender', identity.id);
-            }
-            updateIdentities();
-          });
+          const selectSender = card.querySelector('.select-sender');
+          if (selectSender) {
+            selectSender.addEventListener('click', (event) => {
+              event.preventDefault();
+              if (selectedSender === identity.id) {
+                window.localStorage.removeItem('selected-sender');
+              } else {
+                window.localStorage.setItem('selected-sender', identity.id);
+              }
+              updateIdentities();
+            });
+          }
 
           card.querySelector('.select-receiver').addEventListener('click', (event) => {
             event.preventDefault();
@@ -158,10 +163,8 @@
               <div class="card-body">
                 <h5 class="card-title">Message</h5>
                 <p class="card-text">
-                    ${message}
+                    <pre style="white-space:pre-wrap">${message}</pre>
                 </p>
-              </div>
-              <div class="card-body">
                 <button role="button" class="btn btn-danger delete float-end">Delete</button>
               </div>
             </div>`;
@@ -169,7 +172,7 @@
           card.querySelector('.delete').addEventListener('click', (event) => {
             event.preventDefault();
             window.localStorage.removeItem(id);
-            updateIdentities();
+            updateMessages();
           });
 
           messagesContainer.appendChild(card);
@@ -196,10 +199,12 @@
           const key = identity.id;
           window.localStorage.setItem(key, JSON.stringify(identity));
           updateIdentities();
+        } else {
+          window.alert('Failed to create identity');
         }
       });
 
-      // resolce form
+      // resolve form
       const resolveForm = document.getElementById('resolve-vid');
 
       resolveForm.addEventListener('submit', async (event) => {
@@ -219,6 +224,8 @@
           const key = identity.id;
           window.localStorage.setItem(key, JSON.stringify(identity));
           updateIdentities();
+        } else {
+          window.alert('Failed to resolve VID');
         }
       });
 
@@ -230,6 +237,14 @@
 
         if (!sendMessageForm.sender.value || !sendMessageForm.receiver.value) {
           return alert('Please select sender and receiver');
+        }
+
+        if (!identities[sendMessageForm.sender.value]) {
+          return alert('Sender identity not found');
+        }
+
+        if (!identities[sendMessageForm.receiver.value]) {
+          return alert('Receiver identity not found');
         }
 
         const formData = {
@@ -251,6 +266,8 @@
           const key = `message:${await sha256(message)}`;
           window.localStorage.setItem(key, message);
           updateMessages();
+        } else {
+          window.alert('Failed to create the TSP message');
         }
       });
 
@@ -300,11 +317,11 @@
         <form class="mb-4 card p-3 text-bg-light" id="send-message">
           <div class="form-group">
             <label for="sender">Sender:</label>
-            <input type="text" id="sender" sender="sender" readonly class="form-control-plaintext" placeholder="select" />
+            <input type="text" id="sender" sender="sender" class="form-control" />
           </div>
           <div class="form-group mt-2">
             <label for="receiver">Receiver:</label>
-            <input type="text" id="receiver" name="receiver" readonly class="form-control-plaintext" placeholder="select" />
+            <input type="text" id="receiver" name="receiver" class="form-control" />
           </div>
           <div class="form-group mt-2">
             <label for="message">Message:</label>
