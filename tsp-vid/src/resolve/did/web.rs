@@ -137,7 +137,7 @@ pub fn create_did_web(
     name: &str,
     domain: &str,
     transport: &str,
-) -> (serde_json::Value, serde_json::Value) {
+) -> (serde_json::Value, serde_json::Value, PrivateVid) {
     let did = format!("did:web:{domain}:user:{name}");
     let private_vid = PrivateVid::bind(&did, Url::parse(transport).unwrap());
 
@@ -190,7 +190,7 @@ pub fn create_did_web(
         }]
     });
 
-    (did_doc, private_doc)
+    (did_doc, private_doc, private_vid)
 }
 
 #[cfg(test)]
