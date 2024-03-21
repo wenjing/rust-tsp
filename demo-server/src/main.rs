@@ -38,18 +38,21 @@ async fn main() {
         .route("/send-message", post(send_message))
         .with_state(db);
 
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:3000")
-        .await
-        .unwrap();
+    let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
     tracing::debug!("listening on {}", listener.local_addr().unwrap());
     axum::serve(listener, app).await.unwrap();
 }
 
+#[cfg(debug_assertions)]
 async fn index() -> Html<String> {
-    // Html(std::include_str!("../index.html"))
     let body = std::fs::read_to_string("demo-server/index.html").unwrap();
 
     Html(body)
+}
+
+#[cfg(not(debug_assertions))]
+async fn index() -> Html<String> {
+    Html(std::include_str!("../index.html").to_string())
 }
 
 #[derive(Deserialize, Debug)]
