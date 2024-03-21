@@ -48,7 +48,15 @@
         }, {});
 
         const cards = document.querySelector('.cards');
-        cards.innerHTML = '';
+
+        if (Object.values(identities).length === 0) {
+          cards.innerHTML = `
+            <div class="text-muted p-3">
+              <em>None</em>
+            </div>`;
+        } else {
+          cards.innerHTML = '';
+        }
 
         Object.values(identities).forEach((identity) => {
           const card = document.createElement('div');
@@ -153,7 +161,15 @@
         }, []);
 
         const messagesContainer = document.querySelector('.messages');
-        messagesContainer.innerHTML = '';
+
+        if (Object.values(messages).length === 0) {
+          messagesContainer.innerHTML = `
+            <div class="text-muted p-3">
+              <em>None</em>
+            </div>`;
+        } else {
+          messagesContainer.innerHTML = '';
+        }
 
         messages.forEach(({ message, id }) => {
           const card = document.createElement('div');
@@ -271,6 +287,10 @@
         }
       });
 
+      document.querySelector('.load').addEventListener('click', async () => {
+        window.alert('Not yet implemented');
+      });
+
       // initial load
       updateIdentities();
       updateMessages();
@@ -285,13 +305,13 @@
         <h2>Test identities</h2>
         <form class="mb-4 card p-3 text-bg-light" id="create-identity">
           <div class="form-group">
-            <label for="name">Create VID:</label>
+            <label for="name">Createtest VID:</label>
             <input type="text" id="name" name="name" pattern="[a-z]{3,100}"
               placeholder="username e.g. alice"
               title="use only lowercase characters, at least 3" class="form-control" required>
           </div>
           <div class="form-group mt-2">
-            <input type="submit" value="Create VID" class="btn btn-primary">
+            <input type="submit" value="Create test VID" class="btn btn-primary">
           </div>
         </form>
         <form class="mb-4 card p-3 text-bg-light" id="resolve-vid">
@@ -306,11 +326,7 @@
         </form>
         <h3>Identities</h3>
         <hr>
-        <div class="cards row">
-          <div class="text-muted p-3">
-            <em>None</em>
-          </div>
-        </div>
+        <div class="cards row"></div>
       </div>
       <div class="col overflow-auto border-start p-3">
         <h2>Send message</h2>
@@ -332,15 +348,12 @@
           </div>
         </form>
         <h2>Sent messages</h2>
-        <div class="messages row">
-          <div class="text-muted p-3">
-            <em>None</em>
-          </div>
-        </div>
+        <hr>
+        <div class="messages row"></div>
       </div>
       <div class="col overflow-auto border-start p-3">
         <h2>Receive messages</h2>
-        <button role="button" class="btn btn-outline-primary">Reload</button>
+        <button role="button" class="btn btn-outline-primary load">Load</button>
       </div>
     </div>
   </div>
