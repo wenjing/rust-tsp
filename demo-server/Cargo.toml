@@ -14,8 +14,9 @@ tsp-crypto = { path = "../tsp-crypto" }
 tsp-cesr = { path = "../tsp-cesr" }
 tsp-definitions = { path = "../tsp-definitions" }
 
-axum = "0.7"
+axum = { version = "0.7", features = ["ws"] }
 serde = { workspace = true }
+futures = { workspace = true }
 serde_json = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
