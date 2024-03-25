@@ -1,17 +1,19 @@
 use axum::{
-    extract::{Path, State},
+    extract::{
+        ws::{Message, WebSocket},
+        Path, State, WebSocketUpgrade,
+    },
     http::StatusCode,
     response::{Html, IntoResponse, Response},
     routing::{get, post},
     Form, Json, Router,
 };
 use base64ct::{Base64Url, Encoding};
+use futures::{sink::SinkExt, stream::StreamExt};
 use serde::Deserialize;
 use serde_json::json;
-use std::{
-    collections::HashMap,
-    sync::{Arc, RwLock},
-};
+use std::{collections::HashMap, sync::Arc};
+use tokio::sync::{broadcast, RwLock};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 use tsp_cesr::CipherView;
 use tsp_definitions::{Payload, VerifiedVid};
@@ -19,13 +21,30 @@ use tsp_vid::{PrivateVid, Vid};
 
 const DOMAIN: &str = "tsp-test.org";
 
+struct Identity {
+    did_doc: serde_json::Value,
+    vid: Vid,
+}
+
+struct AppState {
+    db: RwLock<HashMap<String, Identity>>,
+    tx: broadcast::Sender<(String, String, Vec<u8>)>,
+}
+
 #[tokio::main]
 async fn main() {
     tracing_subscriber::registry()
         .with(tracing_subscriber::fmt::layer())
+        .with(
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| "demo_server=trace".into()),
+        )
         .init();
 
-    let db = Db::default();
+    let state = Arc::new(AppState {
+        db: Default::default(),
+        tx: broadcast::channel(100).0,
+    });
 
     // Compose the routes
     let app = Router::new()
@@ -34,8 +53,8 @@ async fn main() {
         .route("/resolve-vid", post(resolve_vid))
         .route("/user/:name/did.json", get(get_did_doc))
         .route("/send-message", post(send_message))
-        .route("/receive-messages", post(recieve_messages))
-        .with_state(db);
+        .route("/receive-messages", get(websocket_handler))
+        .with_state(state);
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
     tracing::debug!("listening on {}", listener.local_addr().unwrap());
@@ -60,7 +79,7 @@ struct CreateIdentityInput {
 }
 
 async fn create_identity(
-    State(db): State<Db>,
+    State(state): State<Arc<AppState>>,
     Form(form): Form<CreateIdentityInput>,
 ) -> impl IntoResponse {
     let (did_doc, _, private_vid) =
@@ -68,12 +87,11 @@ async fn create_identity(
 
     let key = private_vid.identifier();
 
-    db.write().unwrap().insert(
+    state.db.write().await.insert(
         key.to_string(),
         Identity {
             did_doc: did_doc.clone(),
             vid: private_vid.vid().clone(),
-            messages: vec![],
         },
     );
 
@@ -85,9 +103,12 @@ struct ResolveVidInput {
     vid: String,
 }
 
-async fn resolve_vid(State(db): State<Db>, Form(form): Form<ResolveVidInput>) -> Response {
+async fn resolve_vid(
+    State(state): State<Arc<AppState>>,
+    Form(form): Form<ResolveVidInput>,
+) -> Response {
     // local state lookup
-    if let Some(identity) = db.read().unwrap().get(&form.vid) {
+    if let Some(identity) = state.db.read().await.get(&form.vid) {
         return Json(&identity.vid).into_response();
     }
 
@@ -100,10 +121,10 @@ async fn resolve_vid(State(db): State<Db>, Form(form): Form<ResolveVidInput>) ->
     }
 }
 
-async fn get_did_doc(Path(name): Path<String>, State(db): State<Db>) -> Response {
+async fn get_did_doc(State(state): State<Arc<AppState>>, Path(name): Path<String>) -> Response {
     let key = format!("did:web:{DOMAIN}:{name}");
 
-    match db.read().unwrap().get(&key) {
+    match state.db.read().await.get(&key) {
         Some(identity) => Json(identity.did_doc.clone()).into_response(),
         None => (StatusCode::NOT_FOUND, "no user found").into_response(),
     }
@@ -119,30 +140,20 @@ fn view_to_range_json(view: CipherView) -> serde_json::Value {
     })
 }
 
-async fn recieve_messages(State(db): State<Db>, Json(receiver): Json<PrivateVid>) -> Response {
-    // local state lookup
-    let read_db = db.read().unwrap();
-    let Some(identity) = read_db.get(receiver.vid().identifier()) else {
-        return Json::<&[u8]>(&[]).into_response();
-    };
+fn decode_message(
+    receiver: &PrivateVid,
+    sender: &Vid,
+    message: &[u8],
+) -> Option<serde_json::Value> {
+    let mut message = message.to_vec();
+    let view = tsp_cesr::decode_envelope_mut(&mut message).ok()?;
+    let mut json = view_to_range_json(view);
+    json["message"] = Base64Url::encode_string(&message).into();
 
-    let messages: Vec<serde_json::Value> = identity
-        .messages
-        .iter()
-        .filter_map(|(vid, message)| {
-            let mut message = message.to_vec();
-            let view = tsp_cesr::decode_envelope_mut(&mut message).ok()?;
-            let mut json = view_to_range_json(view);
-            json["message"] = Base64Url::encode_string(&message).into();
+    let payload = tsp_crypto::open(receiver, sender, &mut message).ok()?;
+    json["payload"] = String::from_utf8_lossy(payload.1.as_bytes()).into();
 
-            let payload = tsp_crypto::open(&receiver, vid, &mut message).ok()?;
-            json["payload"] = String::from_utf8_lossy(payload.1.as_bytes()).into();
-
-            Some(json)
-        })
-        .collect();
-
-    Json(messages).into_response()
+    Some(json)
 }
 
 #[derive(Deserialize, Debug)]
@@ -153,7 +164,10 @@ struct SendMessageForm {
     receiver: Vid,
 }
 
-async fn send_message(State(db): State<Db>, Json(form): Json<SendMessageForm>) -> Response {
+async fn send_message(
+    State(state): State<Arc<AppState>>,
+    Json(form): Json<SendMessageForm>,
+) -> Response {
     let result = tsp_crypto::seal(
         &form.sender,
         &form.receiver,
@@ -169,14 +183,15 @@ async fn send_message(State(db): State<Db>, Json(form): Json<SendMessageForm>) -
 
     match result {
         Ok(mut message) => {
-            let key = form.receiver.identifier();
-
-            // insert message in database
-            if let Some(entry) = db.write().unwrap().get_mut(key) {
-                entry
-                    .messages
-                    .push((form.sender.vid().clone(), message.clone()));
-            }
+            // insert message in queue
+            state
+                .tx
+                .send((
+                    form.sender.identifier().to_owned(),
+                    form.receiver.identifier().to_owned(),
+                    message.clone(),
+                ))
+                .unwrap();
 
             let message_encoded = Base64Url::encode_string(&message);
             let view = tsp_cesr::decode_envelope_mut(&mut message).unwrap();
@@ -190,10 +205,69 @@ async fn send_message(State(db): State<Db>, Json(form): Json<SendMessageForm>) -
     }
 }
 
-struct Identity {
-    did_doc: serde_json::Value,
-    vid: Vid,
-    messages: Vec<(Vid, Vec<u8>)>,
+async fn websocket_handler(
+    ws: WebSocketUpgrade,
+    State(state): State<Arc<AppState>>,
+) -> impl IntoResponse {
+    ws.on_upgrade(|socket| websocket(socket, state))
 }
 
-type Db = Arc<RwLock<HashMap<String, Identity>>>;
+async fn websocket(stream: WebSocket, state: Arc<AppState>) {
+    let (mut sender, mut receiver) = stream.split();
+    let mut rx = state.tx.subscribe();
+    let senders = Arc::new(RwLock::new(HashMap::<String, Vid>::new()));
+    let receivers = Arc::new(RwLock::new(HashMap::<String, PrivateVid>::new()));
+
+    let incoming_senders = senders.clone();
+    let incoming_receivers = receivers.clone();
+    let mut send_task = tokio::spawn(async move {
+        while let Ok((sender_id, receiver_id, message)) = rx.recv().await {
+            let incoming_senders_read = incoming_senders.read().await;
+            let Some(sender_vid) = incoming_senders_read.get(&sender_id) else {
+                continue;
+            };
+
+            let incoming_receivers_read = incoming_receivers.read().await;
+            let Some(receiver_vid) = incoming_receivers_read.get(&receiver_id) else {
+                continue;
+            };
+
+            tracing::debug!("forwarding message {sender_id} {receiver_id}");
+
+            let Some(decoded) = decode_message(receiver_vid, sender_vid, &message) else {
+                continue;
+            };
+
+            if sender
+                .send(Message::Text(decoded.to_string()))
+                .await
+                .is_err()
+            {
+                break;
+            }
+        }
+    });
+
+    let mut recv_task = tokio::spawn(async move {
+        while let Some(Ok(Message::Text(identity))) = receiver.next().await {
+            if let Ok(identity) = serde_json::from_str::<PrivateVid>(&identity) {
+                receivers
+                    .write()
+                    .await
+                    .insert(identity.identifier().to_string(), identity);
+            }
+
+            if let Ok(identity) = serde_json::from_str::<Vid>(&identity) {
+                senders
+                    .write()
+                    .await
+                    .insert(identity.identifier().to_string(), identity);
+            }
+        }
+    });
+
+    tokio::select! {
+        _ = (&mut send_task) => recv_task.abort(),
+        _ = (&mut recv_task) => send_task.abort(),
+    };
+}
