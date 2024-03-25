@@ -527,6 +527,70 @@ pub fn encode_s_envelope_vec<Vid: AsRef<[u8]>>(
     Ok(data)
 }
 
+#[derive(Default, Debug)]
+pub struct Part {
+    pub prefix: Vec<u8>,
+    pub data: Vec<u8>,
+}
+
+impl Part {
+    fn decode(identifier: u32, data: &[u8], pos: &mut usize) -> Option<Part> {
+        match decode_variable_data_index(identifier, &data[*pos..]) {
+            Some(range) => {
+                let part = Part {
+                    prefix: data[*pos..(*pos + range.start)].to_vec(),
+                    data: data[(*pos + range.start)..(*pos + range.end)].to_vec(),
+                };
+                *pos += range.end;
+
+                Some(part)
+            }
+            None => None,
+        }
+    }
+}
+
+#[derive(Default, Debug)]
+pub struct MessageParts {
+    pub prefix: Part,
+    pub sender: Part,
+    pub receiver: Option<Part>,
+    pub nonconfidential_data: Option<Part>,
+    pub ciphertext: Option<Part>,
+    pub signature: Part,
+}
+
+pub fn decode_message_into_parts(data: &[u8]) -> Result<MessageParts, DecodeError> {
+    let (mut pos, _) = detected_tsp_header_size_and_confidentiality(&mut (data as &[u8]))?;
+
+    let prefix = Part {
+        prefix: data[..pos].to_vec(),
+        data: vec![],
+    };
+
+    let sender = Part::decode(TSP_DEVELOPMENT_VID, data, &mut pos).ok_or(DecodeError::VidError)?;
+    let receiver = Part::decode(TSP_DEVELOPMENT_VID, data, &mut pos);
+    let nonconfidential_data = Part::decode(TSP_PLAINTEXT, data, &mut pos);
+    let ciphertext = Part::decode(TSP_CIPHERTEXT, data, &mut pos);
+
+    let signature: &[u8; 64] = decode_fixed_data(ED25519_SIGNATURE, &mut &data[pos..])
+        .ok_or(DecodeError::SignatureError)?;
+
+    let signature = Part {
+        prefix: data[pos..(data.len() - signature.len())].to_vec(),
+        data: signature.to_vec(),
+    };
+
+    Ok(MessageParts {
+        prefix,
+        sender,
+        receiver,
+        nonconfidential_data,
+        ciphertext,
+        signature,
+    })
+}
+
 /// Convenience interface: this struct is isomorphic to [Envelope] but represents
 /// a "opened" envelope, i.e. message.
 #[cfg(feature = "demo")]
@@ -889,5 +953,20 @@ mod test {
         });
 
         test_turn_around(Payload::RelationshipCancel);
+    }
+
+    #[test]
+    fn test_message_to_parts() {
+        use base64ct::{Base64UrlUnpadded, Encoding};
+
+        let message = Base64UrlUnpadded::decode_vec("-EABXAAA7VIDAAAEZGlkOnRlc3Q6Ym9i8VIDAAAFAGRpZDp0ZXN0OmFsaWNl6BAEAABleHRyYSBkYXRh4CAXScvzIiBCgfOu9jHtGwd1qN-KlMB7uhFbE9YOSyTmnp9yziA1LVPdQmST27yjuDRTlxeRo7H7gfuaGFY4iyf2EsfiqvEg0BBNDbKoW0DDczGxj7rNWKH_suyj18HCUxMZ6-mDymZdNhHZIS8zIstC9Kxv5Q-GxmI-1v4SNbeCemuCMBzMPogK").unwrap();
+        let parts = decode_message_into_parts(&mut message.as_ref()).unwrap();
+
+        dbg!(&parts);
+
+        assert_eq!(parts.prefix.prefix.len(), 6);
+        assert_eq!(parts.sender.data.len(), 12);
+        assert_eq!(parts.receiver.unwrap().data.len(), 14);
+        assert_eq!(parts.ciphertext.unwrap().data.len(), 69);
     }
 }
