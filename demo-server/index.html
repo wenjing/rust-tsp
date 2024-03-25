@@ -15,6 +15,10 @@
     .message-part {
       font-family: monospace;
     }
+    .received-messages {
+      display: flex;
+      flex-direction: column-reverse
+    }
   </style>
   <script>
     async function sha256(source) {
@@ -37,6 +41,7 @@
     }
 
     document.addEventListener('DOMContentLoaded', () => {
+      let ws = null;
 
       // update identities + rendering
       const updateIdentities = async () => {
@@ -130,11 +135,34 @@
           card.querySelector('.select-receiver').addEventListener('click', (event) => {
             event.preventDefault();
             document.getElementById('receiver').value = identity.id;
-            document.getElementById('message-receiver').value = identity.id;
           });
 
           cards.appendChild(card);
         });
+
+        // listen for messages on websocket
+        if (!ws) {
+          ws = new WebSocket(`${window.location.protocol === 'http:' ? 'ws' : 'wss'}://${window.location.host}/receive-messages`);
+          ws.addEventListener('message', (event) => {
+            const message = JSON.parse(event.data);
+            const messagesContainer = document.querySelector('.received-messages');
+            messagesContainer.appendChild(renderMessage(message));
+          });
+          ws.addEventListener('open', (event) => {
+            Object.values(identities).forEach((identity) => {
+              if (identity.sigkey) {
+                ws.send(JSON.stringify(identity));
+              }
+            });
+          });
+        } else {
+          Object.values(identities).forEach((identity) => {
+            if (identity.sigkey) {
+              console.log('send', identity);
+              ws.send(JSON.stringify(identity));
+            }
+          });
+        }
       };
 
       function renderMessage(message) {
@@ -326,48 +354,6 @@
         }
       });
 
-      // receive message form
-      const receiveMessageForm = document.getElementById('receive-messages');
-
-      receiveMessageForm.addEventListener('submit', async (e) => {
-        e.preventDefault();
-
-        const formData = window.localStorage.getItem(sendMessageForm.receiver.value);
-
-        if (!formData) {
-          return window.alert('Receiver identity not found');
-        }
-
-        const response = await fetch('/receive-messages', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json;charset=UTF-8'
-          },
-          body: formData,
-        });
-
-        if (!response.ok) {
-          return window.alert('Failed to create the TSP message');
-        }
-
-        const messages = await response.json();
-
-        const receivedMessagesContainer = document.querySelector('.received-messages');
-
-        if (Object.values(messages).length === 0) {
-          receivedMessagesContainer.innerHTML = `
-            <div class="text-muted p-3">
-              <em>None</em>
-            </div>`;
-        } else {
-          receivedMessagesContainer.innerHTML = '';
-        }
-
-        messages.forEach((message) => {
-          receivedMessagesContainer.appendChild(renderMessage(message));
-        });
-      });
-
       // initial load
       updateIdentities();
     });
@@ -430,16 +416,6 @@
         <div class="messages row"></div>
       </div>
       <div class="col overflow-auto border-start p-3">
-        <h2>Receive messages</h2>
-        <form class="mb-4 card p-3 text-bg-light" id="receive-messages">
-          <div class="form-group mt-2">
-            <label for="message-receiver">Receiver:</label>
-            <input type="text" id="message-receiver" name="message-receiver" class="form-control" />
-          </div>
-          <div class="form-group mt-2">
-            <input type="submit" value="Load messages" class="btn btn-primary" />
-          </div>
-        </form>
         <h3>Received messages</h3>
         <hr>
         <div class="received-messages row"></div>
