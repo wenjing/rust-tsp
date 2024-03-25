@@ -46,6 +46,18 @@ pub enum Payload<Bytes: AsRef<[u8]>> {
     AcceptRelationship { thread_id: Digest },
 }
 
+impl<Bytes: AsRef<[u8]>> Payload<Bytes> {
+    pub fn as_bytes(&self) -> &[u8] {
+        match self {
+            Payload::Content(bytes) => bytes.as_ref(),
+            Payload::NestedMessage(bytes) => bytes.as_ref(),
+            Payload::CancelRelationship => &[],
+            Payload::RequestRelationship => &[],
+            Payload::AcceptRelationship { thread_id } => thread_id,
+        }
+    }
+}
+
 impl<Bytes: AsRef<[u8]>> fmt::Display for Payload<Bytes> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {

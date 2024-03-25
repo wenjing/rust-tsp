@@ -372,18 +372,19 @@ pub fn decode_envelope<'a, Vid: TryFrom<&'a [u8]>>(
 
 use std::ops::Range;
 
+#[derive(Debug)]
 pub struct CipherView<'a> {
     data: &'a mut [u8],
 
-    sender: Range<usize>,
-    receiver: Option<Range<usize>>,
-    nonconfidential_data: Option<Range<usize>>,
+    pub sender: Range<usize>,
+    pub receiver: Option<Range<usize>>,
+    pub nonconfidential_data: Option<Range<usize>>,
 
-    associated_data: Range<usize>,
+    pub associated_data: Range<usize>,
     signature: &'a Signature,
 
-    signed_data: Range<usize>,
-    ciphertext: Option<Range<usize>>,
+    pub signed_data: Range<usize>,
+    pub ciphertext: Option<Range<usize>>,
 }
 
 impl<'a> CipherView<'a> {

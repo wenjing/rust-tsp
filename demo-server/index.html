@@ -12,6 +12,9 @@
     body > .container-fluid > .row > div {
       height: 100%;
     }
+    .message-part {
+      font-family: monospace;
+    }
   </style>
   <script>
     async function sha256(source) {
@@ -20,20 +23,24 @@
       const resultBytes = [...new Uint8Array(digest)];
 
       return resultBytes.map((x) => x.toString(16).padStart(2, '0')).join("");
-  }
+    }
+
+    function base64URLdecode(str) {
+      const base64Encoded = str.replace(/-/g, '+').replace(/_/g, '/');
+      const padding = str.length % 4 === 0 ? '' : '='.repeat(4 - (str.length % 4));
+      const base64WithPadding = base64Encoded + padding;
+
+      return atob(base64WithPadding)
+        .split('')
+        .map(char => String.fromCharCode(char.charCodeAt(0)))
+        .join('');
+    }
 
     document.addEventListener('DOMContentLoaded', () => {
-      let identities = {};
 
       // update identities + rendering
       const updateIdentities = async () => {
-        const selectedSender = window.localStorage.getItem('selected-sender');
-        const selectedReceiver = window.localStorage.getItem('selected-receiver');
-
-        document.getElementById('sender').value = selectedSender || '';
-        document.getElementById('receiver').value = selectedReceiver || '';
-
-        identities = Object.keys(window.localStorage).reduce((acc, item) => {
+        const identities = Object.keys(window.localStorage).reduce((acc, item) => {
           if (item.startsWith('did:')) {
             let identity = JSON.parse(window.localStorage.getItem(item));
             const key = identity.id;
@@ -61,21 +68,13 @@
         Object.values(identities).forEach((identity) => {
           const card = document.createElement('div');
           card.classList.add('col');
-          let isSelectedSender = selectedSender === identity.id;
-          let isSelectedReceiver = selectedReceiver === identity.id;
           card.innerHTML = `
             <div class="card mb-4 text-bg-light" style="max-width:40rem">
               <div class="card-body">
                 <h5 class="card-title">
                   ${identity.sigkey ? 'Private' : 'Public'} VID
-                  <span class="float-end">
-                    ${isSelectedSender ? '<span class="badge text-bg-warning">sender</span>' : ''}
-                    ${isSelectedReceiver ? '<span class="badge text-bg-info ml-2">receiver</span>' : ''}
-                  </span>
                 </h5>
-                <p class="card-text">
-                    ${identity.id}
-                </p>
+                <input type="text" value="${identity.id}" class="form-control-plaintext" readonly />
               </div>
               <ul class="list-group list-group-flush">
                 ${identity.sigkey ? `
@@ -108,9 +107,9 @@
               <div class="card-body">
                 <button role="button" class="btn btn-danger delete float-end">Delete</button>
                 ${identity.sigkey ? `
-                  <button role="button" class="btn btn-${isSelectedSender ? 'secondary' : 'warning'} select-sender">Select sender</button>
+                  <button role="button" class="btn btn-warning select-sender">Select sender</button>
                 ` : ''}
-                <button role="button" class="btn btn-${isSelectedReceiver ? 'secondary' : 'info'} select-receiver">Select receiver</button>
+                <button role="button" class="btn btn-info select-receiver">Select receiver</button>
               </div>
             </div>`;
 
@@ -124,76 +123,113 @@
           if (selectSender) {
             selectSender.addEventListener('click', (event) => {
               event.preventDefault();
-              if (selectedSender === identity.id) {
-                window.localStorage.removeItem('selected-sender');
-              } else {
-                window.localStorage.setItem('selected-sender', identity.id);
-              }
-              updateIdentities();
+              document.getElementById('sender').value = identity.id;
             });
           }
 
           card.querySelector('.select-receiver').addEventListener('click', (event) => {
             event.preventDefault();
-            if (selectedReceiver === identity.id) {
-              window.localStorage.removeItem('selected-receiver');
-            } else {
-              window.localStorage.setItem('selected-receiver', identity.id);
-            }
-            updateIdentities();
+            document.getElementById('receiver').value = identity.id;
+            document.getElementById('message-receiver').value = identity.id;
           });
 
           cards.appendChild(card);
         });
       };
 
-      // update messages
-      const updateMessages = async () => {
-        const messages = Object.keys(window.localStorage).reduce((acc, id) => {
-          if (id.startsWith('message:')) {
-            return [...acc, {
-              id,
-              message: window.localStorage.getItem(id),
-            }];
-          }
+      function renderMessage(message) {
+        const card = document.createElement('div');
+        card.classList.add('col');
 
-          return acc;
-        }, []);
+        const parts = [];
+        let position = 0;
+        let next_position = 8;
+        let data = '';
 
-        const messagesContainer = document.querySelector('.messages');
+        parts.push({
+          title: 'Prefix',
+          color: '#800000',
+          prefix: 8,
+          data: message.message.slice(position, next_position),
+        });
+        position = next_position;
 
-        if (Object.values(messages).length === 0) {
-          messagesContainer.innerHTML = `
-            <div class="text-muted p-3">
-              <em>None</em>
-            </div>`;
-        } else {
-          messagesContainer.innerHTML = '';
+        next_position = message.sender[1] * (4/3);
+        data = message.message.slice(position, next_position);
+        parts.push({
+          title: 'Sender',
+          color: '#911eb4',
+          plain: base64URLdecode(data).slice((message.sender[0] * (4/3) - position) * (3/4)),
+          data,
+        });
+        position = next_position;
+
+        if (message.receiver) {
+          next_position = message.receiver[1] * (4/3);
+          data = message.message.slice(position, next_position);
+          parts.push({
+            title: 'Receiver',
+            color: '#000075',
+            plain: base64URLdecode(data).slice((message.receiver[0] * (4/3) - position) * (3/4)),
+            data,
+          });
+          position = next_position;
         }
 
-        messages.forEach(({ message, id }) => {
-          const card = document.createElement('div');
-          card.classList.add('col');
-          card.innerHTML = `
-            <div class="card mb-4 text-bg-light" style="max-width:40rem">
-              <div class="card-body">
-                <h5 class="card-title">Message</h5>
-                <p class="card-text">
-                    <pre style="white-space:pre-wrap">${message}</pre>
-                </p>
-                <button role="button" class="btn btn-danger delete float-end">Delete</button>
-              </div>
-            </div>`;
-
-          card.querySelector('.delete').addEventListener('click', (event) => {
-            event.preventDefault();
-            window.localStorage.removeItem(id);
-            updateMessages();
+        if (message.nonconfidential_data) {
+          next_position = message.nonconfidential_data[1] * (4/3);
+          data = message.message.slice(position, next_position),
+          parts.push({
+            title: 'Nonconfidential data',
+            color: '#3cb44b',
+            plain: base64URLdecode(data).slice((message.nonconfidential_data[0] * (4/3) - position) * (3/4)),
+            data,
           });
+          position = next_position;
+        }
 
-          messagesContainer.appendChild(card);
+        if (message.ciphertext) {
+          next_position = message.ciphertext[1] * (4/3);
+          parts.push({
+            title: 'Ciphertext',
+            color: '#9A6324',
+            plain: message.payload,
+            data: message.message.slice(position, next_position),
+          });
+          position = next_position;
+        }
+
+        parts.push({
+          title: 'Signature',
+          color: '#469990',
+          prefix: 4,
+          data: message.message.slice(position),
         });
-      };
+
+        card.innerHTML = `
+          <div class="card mb-4 text-bg-light" style="max-width:40rem">
+            <div class="card-body">
+              <h5 class="card-title">Message</h5>
+              <p class="card-text">
+                ${parts.map(({ data, color, prefix }) => (
+                  `<span class="message-part" style="color:${color}"><strong>${data.slice(0, prefix)}</strong>${data.slice(prefix)}</span>`
+                )).join('')}
+              </p>
+              <ul class="list-group list-group-flush">
+                ${parts.map(({ data, color, title, prefix, plain }) => (`
+                <li class="list-group-item d-block mb-2">
+                    <span class="text-muted d-block">${title}:</span>
+                    ${plain ? ` <span class="text-emphasis d-block">${plain}</span>` : ''}
+                    <span class="message-part" style="color:${color}">
+                      <strong>${data.slice(0, prefix)}</strong>${data.slice(prefix)}
+                    </span>
+                </li>`)).join("\n")}
+              </ul>
+            </div>
+          </div>`;
+
+        return card;
+      }
 
       // create form
       const createForm = document.getElementById('create-identity');
@@ -255,17 +291,18 @@
           return alert('Please select sender and receiver');
         }
 
-        if (!identities[sendMessageForm.sender.value]) {
+        if (!window.localStorage.getItem(sendMessageForm.sender.value)) {
           return alert('Sender identity not found');
         }
 
-        if (!identities[sendMessageForm.receiver.value]) {
+        if (!window.localStorage.getItem(sendMessageForm.receiver.value)) {
           return alert('Receiver identity not found');
         }
 
         const formData = {
-          sender: identities[sendMessageForm.sender.value],
-          receiver: identities[sendMessageForm.receiver.value],
+          sender: JSON.parse(window.localStorage.getItem(sendMessageForm.sender.value)),
+          receiver: JSON.parse(window.localStorage.getItem(sendMessageForm.receiver.value)),
+          nonconfidential_data: sendMessageForm.nonconfidential.value,
           message: sendMessageForm.message.value,
         };
         const response = await fetch('/send-message', {
@@ -277,23 +314,62 @@
         });
 
         if (response.ok) {
+          sendMessageForm.nonconfidential.value = '';
           sendMessageForm.message.value = '';
           const message = await response.json();
-          const key = `message:${await sha256(message)}`;
-          window.localStorage.setItem(key, message);
-          updateMessages();
+
+          const messagesContainer = document.querySelector('.messages');
+          messagesContainer.innerHTML = '';
+          messagesContainer.appendChild(renderMessage(message));
         } else {
           window.alert('Failed to create the TSP message');
         }
       });
 
-      document.querySelector('.load').addEventListener('click', async () => {
-        window.alert('Not yet implemented');
+      // receive message form
+      const receiveMessageForm = document.getElementById('receive-messages');
+
+      receiveMessageForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+
+        const formData = window.localStorage.getItem(sendMessageForm.receiver.value);
+
+        if (!formData) {
+          return window.alert('Receiver identity not found');
+        }
+
+        const response = await fetch('/receive-messages', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json;charset=UTF-8'
+          },
+          body: formData,
+        });
+
+        if (!response.ok) {
+          return window.alert('Failed to create the TSP message');
+        }
+
+        const messages = await response.json();
+
+        const receivedMessagesContainer = document.querySelector('.received-messages');
+
+        if (Object.values(messages).length === 0) {
+          receivedMessagesContainer.innerHTML = `
+            <div class="text-muted p-3">
+              <em>None</em>
+            </div>`;
+        } else {
+          receivedMessagesContainer.innerHTML = '';
+        }
+
+        messages.forEach((message) => {
+          receivedMessagesContainer.appendChild(renderMessage(message));
+        });
       });
 
       // initial load
       updateIdentities();
-      updateMessages();
     });
   </script>
 </head>
@@ -305,7 +381,7 @@
         <h2>Test identities</h2>
         <form class="mb-4 card p-3 text-bg-light" id="create-identity">
           <div class="form-group">
-            <label for="name">Createtest VID:</label>
+            <label for="name">Create test VID:</label>
             <input type="text" id="name" name="name" pattern="[a-z]{3,100}"
               placeholder="username e.g. alice"
               title="use only lowercase characters, at least 3" class="form-control" required>
@@ -340,20 +416,33 @@
             <input type="text" id="receiver" name="receiver" class="form-control" />
           </div>
           <div class="form-group mt-2">
+            <label for="nonconfidential">Non-confidential data:</label>
+            <textarea id="nonconfidential" name="nonconfidential" class="form-control" rows="2"></textarea>
+          </div>
+          <div class="form-group mt-2">
             <label for="message">Message:</label>
-            <textarea id="message" name="message" class="form-control" rows="8" required></textarea>
+            <textarea id="message" name="message" class="form-control" rows="4" required></textarea>
           </div>
           <div class="form-group mt-2">
             <input type="submit" value="Send message" class="btn btn-primary" />
           </div>
         </form>
-        <h2>Sent messages</h2>
-        <hr>
         <div class="messages row"></div>
       </div>
       <div class="col overflow-auto border-start p-3">
         <h2>Receive messages</h2>
-        <button role="button" class="btn btn-outline-primary load">Load</button>
+        <form class="mb-4 card p-3 text-bg-light" id="receive-messages">
+          <div class="form-group mt-2">
+            <label for="message-receiver">Receiver:</label>
+            <input type="text" id="message-receiver" name="message-receiver" class="form-control" />
+          </div>
+          <div class="form-group mt-2">
+            <input type="submit" value="Load messages" class="btn btn-primary" />
+          </div>
+        </form>
+        <h3>Received messages</h3>
+        <hr>
+        <div class="received-messages row"></div>
       </div>
     </div>
   </div>

@@ -11,6 +11,7 @@ rust-version.workspace = true
 [dependencies]
 tsp-vid = { path = "../tsp-vid" }
 tsp-crypto = { path = "../tsp-crypto" }
+tsp-cesr = { path = "../tsp-cesr" }
 tsp-definitions = { path = "../tsp-definitions" }
 
 axum = "0.7"
