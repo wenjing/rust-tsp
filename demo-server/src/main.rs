@@ -8,14 +8,13 @@ use axum::{
     routing::{get, post},
     Form, Json, Router,
 };
-use base64ct::{Base64Url, Encoding};
+use base64ct::{Base64UrlUnpadded, Encoding};
 use futures::{sink::SinkExt, stream::StreamExt};
 use serde::Deserialize;
 use serde_json::json;
 use std::{collections::HashMap, sync::Arc};
 use tokio::sync::{broadcast, RwLock};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
-use tsp_cesr::CipherView;
 use tsp_definitions::{Payload, VerifiedVid};
 use tsp_vid::{PrivateVid, Vid};
 
@@ -130,30 +129,40 @@ async fn get_did_doc(State(state): State<Arc<AppState>>, Path(name): Path<String
     }
 }
 
-fn view_to_range_json(view: CipherView) -> serde_json::Value {
+// fn view_to_range_json(view: CipherView) -> serde_json::Value {
+//     json!({
+//         "sender": (view.sender.start, view.sender.end),
+//         "receiver": view.receiver.map(|r| (r.start, r.end)),
+//         "nonconfidential_data": view.nonconfidential_data.map(|r| (r.start, r.end)),
+//         "signed_data": (view.signed_data.start,view.signed_data.end),
+//         "ciphertext": view.ciphertext.map(|r| (r.start, r.end)),
+//     })
+// }
+
+fn format_part(title: &str, part: &tsp_cesr::Part, plain: Option<&[u8]>) -> serde_json::Value {
+    let full = [&part.prefix[..], &part.data[..]].concat();
+
     json!({
-        "sender": (view.sender.start, view.sender.end),
-        "receiver": view.receiver.map(|r| (r.start, r.end)),
-        "nonconfidential_data": view.nonconfidential_data.map(|r| (r.start, r.end)),
-        "signed_data": (view.signed_data.start,view.signed_data.end),
-        "ciphertext": view.ciphertext.map(|r| (r.start, r.end)),
+        "title": title,
+        "prefix": part.prefix,
+        "data": Base64UrlUnpadded::encode_string(&full),
+        "plain": plain
+            .and_then(|b| std::str::from_utf8(b).ok())
+            .or(std::str::from_utf8(&part.data).ok()),
     })
 }
 
-fn decode_message(
-    receiver: &PrivateVid,
-    sender: &Vid,
-    message: &[u8],
-) -> Option<serde_json::Value> {
-    let mut message = message.to_vec();
-    let view = tsp_cesr::decode_envelope_mut(&mut message).ok()?;
-    let mut json = view_to_range_json(view);
-    json["message"] = Base64Url::encode_string(&message).into();
+fn decode_message(message: &[u8], payload: &[u8]) -> Option<serde_json::Value> {
+    let parts = tsp_cesr::decode_message_into_parts(message).ok()?;
 
-    let payload = tsp_crypto::open(receiver, sender, &mut message).ok()?;
-    json["payload"] = String::from_utf8_lossy(payload.1.as_bytes()).into();
-
-    Some(json)
+    Some(json!({
+        "prefix": format_part("Prefix", &parts.prefix, None),
+        "sender": format_part("Sender", &parts.sender, None),
+        "receiver": parts.receiver.map(|v| format_part("Receiver", &v, None)),
+        "nonconfidentialData": parts.nonconfidential_data.map(|v| format_part("Non-confidential data", &v, None)),
+        "ciphertext": parts.ciphertext.map(|v| format_part("Ciphertext", &v, Some(payload))),
+        "signature": format_part("Signature", &parts.signature, None),
+    }))
 }
 
 #[derive(Deserialize, Debug)]
@@ -182,7 +191,7 @@ async fn send_message(
     );
 
     match result {
-        Ok(mut message) => {
+        Ok(message) => {
             // insert message in queue
             state
                 .tx
@@ -193,13 +202,9 @@ async fn send_message(
                 ))
                 .unwrap();
 
-            let message_encoded = Base64Url::encode_string(&message);
-            let view = tsp_cesr::decode_envelope_mut(&mut message).unwrap();
-            let mut json = view_to_range_json(view);
-            json["message"] = message_encoded.into();
-            json["payload"] = form.message.into();
+            let decoded = decode_message(&message, form.message.as_bytes()).unwrap();
 
-            Json(json).into_response()
+            Json(decoded).into_response()
         }
         Err(_) => (StatusCode::INTERNAL_SERVER_ERROR, "error creating message").into_response(),
     }
@@ -234,7 +239,14 @@ async fn websocket(stream: WebSocket, state: Arc<AppState>) {
 
             tracing::debug!("forwarding message {sender_id} {receiver_id}");
 
-            let Some(decoded) = decode_message(receiver_vid, sender_vid, &message) else {
+            let mut encrypted_message = message.clone();
+            let Ok((_, payload, _)) =
+                tsp_crypto::open(receiver_vid, sender_vid, &mut encrypted_message)
+            else {
+                continue;
+            };
+
+            let Some(decoded) = decode_message(&message, payload.as_bytes()) else {
                 continue;
             };
 

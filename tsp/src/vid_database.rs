@@ -353,8 +353,6 @@ mod test {
             .await?;
         bob_db.resolve_vid(&nested_alice_vid).await?;
 
-        dbg!(&nested_bob_vid);
-
         // send a message using inner vid
         alice_db
             .send_nested(
