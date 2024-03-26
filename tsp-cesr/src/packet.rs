@@ -376,15 +376,15 @@ use std::ops::Range;
 pub struct CipherView<'a> {
     data: &'a mut [u8],
 
-    pub sender: Range<usize>,
-    pub receiver: Option<Range<usize>>,
-    pub nonconfidential_data: Option<Range<usize>>,
+    sender: Range<usize>,
+    receiver: Option<Range<usize>>,
+    nonconfidential_data: Option<Range<usize>>,
 
-    pub associated_data: Range<usize>,
+    associated_data: Range<usize>,
     signature: &'a Signature,
 
-    pub signed_data: Range<usize>,
-    pub ciphertext: Option<Range<usize>>,
+    signed_data: Range<usize>,
+    ciphertext: Option<Range<usize>>,
 }
 
 impl<'a> CipherView<'a> {
