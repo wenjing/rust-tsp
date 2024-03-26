@@ -335,7 +335,7 @@ mod test {
                 .await
                 .unwrap();
 
-            let stream = receive(&bob_receiver, Some(receiver_tx)).unwrap();
+            let stream = receive(&bob_receiver, Some(receiver_tx)).await.unwrap();
             tokio::pin!(stream);
 
             while stream.next().await.unwrap().is_err() {}
