@@ -20,16 +20,19 @@ use tsp_vid::{PrivateVid, Vid};
 
 const DOMAIN: &str = "tsp-test.org";
 
+/// Identity struct, used to store the DID document and VID of a user
 struct Identity {
     did_doc: serde_json::Value,
     vid: Vid,
 }
 
+/// Application state, used to store the identities and the broadcast channel
 struct AppState {
     db: RwLock<HashMap<String, Identity>>,
     tx: broadcast::Sender<(String, String, Vec<u8>)>,
 }
 
+/// Define the routes and start a server
 #[tokio::main]
 async fn main() {
     tracing_subscriber::registry()
@@ -92,6 +95,7 @@ struct CreateIdentityInput {
     name: String,
 }
 
+/// Create a new identity (private VID)
 async fn create_identity(
     State(state): State<Arc<AppState>>,
     Form(form): Form<CreateIdentityInput>,
@@ -117,6 +121,7 @@ struct ResolveVidInput {
     vid: String,
 }
 
+/// Resolve a VID to JSON encoded key material
 async fn resolve_vid(
     State(state): State<Arc<AppState>>,
     Form(form): Form<ResolveVidInput>,
@@ -135,6 +140,7 @@ async fn resolve_vid(
     }
 }
 
+/// Get the DID document of a user
 async fn get_did_doc(State(state): State<Arc<AppState>>, Path(name): Path<String>) -> Response {
     let key = format!("did:web:{DOMAIN}:{name}");
 
@@ -144,6 +150,7 @@ async fn get_did_doc(State(state): State<Arc<AppState>>, Path(name): Path<String
     }
 }
 
+/// Format CESR encoded message parts to descriptive JSON
 fn format_part(title: &str, part: &tsp_cesr::Part, plain: Option<&[u8]>) -> serde_json::Value {
     let full = [&part.prefix[..], &part.data[..]].concat();
 
@@ -157,6 +164,7 @@ fn format_part(title: &str, part: &tsp_cesr::Part, plain: Option<&[u8]>) -> serd
     })
 }
 
+/// Decode a CESR encoded message into descriptive JSON
 fn decode_message(message: &[u8], payload: &[u8]) -> Option<serde_json::Value> {
     let parts = tsp_cesr::decode_message_into_parts(message).ok()?;
 
@@ -170,6 +178,7 @@ fn decode_message(message: &[u8], payload: &[u8]) -> Option<serde_json::Value> {
     }))
 }
 
+/// Form to send a TSP message
 #[derive(Deserialize, Debug)]
 struct SendMessageForm {
     message: String,
@@ -178,6 +187,7 @@ struct SendMessageForm {
     receiver: Vid,
 }
 
+/// Send a TSP message using a HTML form
 async fn send_message(
     State(state): State<Arc<AppState>>,
     Json(form): Json<SendMessageForm>,
@@ -215,6 +225,7 @@ async fn send_message(
     }
 }
 
+/// Handle incoming websocket connections
 async fn websocket_handler(
     ws: WebSocketUpgrade,
     State(state): State<Arc<AppState>>,
@@ -222,12 +233,15 @@ async fn websocket_handler(
     ws.on_upgrade(|socket| websocket(socket, state))
 }
 
+/// Handle the websocket connection
+/// Keep track of the verified VID's, private VID's and forward messages 
 async fn websocket(stream: WebSocket, state: Arc<AppState>) {
     let (mut sender, mut receiver) = stream.split();
     let mut rx = state.tx.subscribe();
     let senders = Arc::new(RwLock::new(HashMap::<String, Vid>::new()));
     let receivers = Arc::new(RwLock::new(HashMap::<String, PrivateVid>::new()));
 
+    // Forward messages from the broadcast channel to the websocket
     let incoming_senders = senders.clone();
     let incoming_receivers = receivers.clone();
     let mut send_task = tokio::spawn(async move {
@@ -265,6 +279,7 @@ async fn websocket(stream: WebSocket, state: Arc<AppState>) {
         }
     });
 
+    // Receive encoded VID's from the websocket and store them in the local state
     let mut recv_task = tokio::spawn(async move {
         while let Some(Ok(Message::Text(identity))) = receiver.next().await {
             if let Ok(identity) = serde_json::from_str::<PrivateVid>(&identity) {
@@ -283,6 +298,7 @@ async fn websocket(stream: WebSocket, state: Arc<AppState>) {
         }
     });
 
+    // Abort the tasks when one of them finishes
     tokio::select! {
         _ = (&mut send_task) => recv_task.abort(),
         _ = (&mut recv_task) => send_task.abort(),

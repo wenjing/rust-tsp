@@ -36,6 +36,7 @@ const updateIdentities = async () => {
     card.innerHTML = `
     <div class="card mb-4 text-bg-light" style="max-width:40rem">
       <div class="card-body">
+        ${identity.sigkey ? '' : '<span class="badge bg-success float-end">verified</span>'}
         <h5 class="card-title">
           ${identity.sigkey ? 'Private' : 'Public'} VID
         </h5>
@@ -152,6 +153,7 @@ function renderMessage(message) {
     <ul class="list-group list-group-flush">
       ${parts.map((part, index) => message[part] ? `
         <li class="list-group-item">
+          ${part === 'sender' || part === 'signature' ? '<span class="badge bg-success float-end">verified</span>' : ''}
           <span class="text-muted d-block">${message[part].title}:</span>
           ${message[part].plain ? `<span class="d-block">${message[part].plain}</span>`: ''}
           <span class="message-part d-block">CESR selector: ${message[part].prefix}</span>
