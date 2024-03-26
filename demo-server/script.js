@@ -140,11 +140,11 @@ function renderMessage(message) {
   const colors = ['#800000', '#911eb4', '#000075', '#3cb44b', '#9A6324', '#469990'];
 
   card.innerHTML = `
-  <div class="card mb-4 text-bg-light" style="max-width:40rem">
+  <div class="card mb-4 text-bg-light">
     <div class="card-body">
       <span class="float-end">${(new Date()).toISOString().slice(0, 19).replace('T', ' ')}</span>
       <h5 class="card-title">Message</h5>
-      <p class="card-text">
+      <p class="card-text overflow-auto">
         ${parts.map((part, index) =>
           message[part] ? `<span class="message-part" style="color:${colors[index]}">${message[part].data}</span>` : ''
         ).join('')}
@@ -152,7 +152,7 @@ function renderMessage(message) {
     </div>
     <ul class="list-group list-group-flush">
       ${parts.map((part, index) => message[part] ? `
-        <li class="list-group-item">
+        <li class="list-group-item overflow-auto">
           ${part === 'sender' || part === 'signature' ? '<span class="badge bg-success float-end">verified</span>' : ''}
           <span class="text-muted d-block">${message[part].title}:</span>
           ${message[part].plain ? `<span class="d-block">${message[part].plain}</span>`: ''}
