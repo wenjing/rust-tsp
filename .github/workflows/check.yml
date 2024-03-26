@@ -24,7 +24,7 @@ jobs:
           restore-keys: linux-x86-64-gnu-
 
       - name: Check, clippy and format
-        run: cargo check && cargo clippy -- --deny "warnings" && cargo fmt --check
+        run: cargo check && cargo clippy --tests -- --deny "warnings" && cargo fmt --check
 
       - name: Deny
         uses: EmbarkStudios/cargo-deny-action@v1
