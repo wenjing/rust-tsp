@@ -964,7 +964,7 @@ mod test {
         use base64ct::{Base64UrlUnpadded, Encoding};
 
         let message = Base64UrlUnpadded::decode_vec("-EABXAAA7VIDAAAEZGlkOnRlc3Q6Ym9i8VIDAAAFAGRpZDp0ZXN0OmFsaWNl6BAEAABleHRyYSBkYXRh4CAXScvzIiBCgfOu9jHtGwd1qN-KlMB7uhFbE9YOSyTmnp9yziA1LVPdQmST27yjuDRTlxeRo7H7gfuaGFY4iyf2EsfiqvEg0BBNDbKoW0DDczGxj7rNWKH_suyj18HCUxMZ6-mDymZdNhHZIS8zIstC9Kxv5Q-GxmI-1v4SNbeCemuCMBzMPogK").unwrap();
-        let parts = decode_message_into_parts(&mut message.as_ref()).unwrap();
+        let parts = decode_message_into_parts(&message).unwrap();
 
         dbg!(&parts);
 
