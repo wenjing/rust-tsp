@@ -294,4 +294,72 @@ mod test {
 
         handle.await.unwrap();
     }
+
+    async fn faulty_send(
+        sender: &impl super::Sender,
+        receiver: &impl super::VerifiedVid,
+        nonconfidential_data: Option<&[u8]>,
+        message: &[u8],
+        corrupt: impl FnOnce(&mut [u8]),
+    ) -> Result<(), super::Error> {
+        let mut tsp_message = tsp_crypto::seal(
+            sender,
+            receiver,
+            nonconfidential_data,
+            super::Payload::Content(message),
+        )?;
+        corrupt(&mut tsp_message);
+        tsp_transport::send_message(receiver.endpoint(), &tsp_message).await?;
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    #[serial_test::serial(tcp)]
+    async fn attack_failures() {
+        let alice = tsp_vid::PrivateVid::from_file("../examples/test/alice.json")
+            .await
+            .unwrap();
+
+        let bob = resolve_vid("did:web:did.tsp-test.org:user:bob")
+            .await
+            .unwrap();
+
+        let payload = b"hello world";
+
+        start_broadcast_server("127.0.0.1:1337").await.unwrap();
+
+        let (receiver_tx, receiver_rx) = oneshot::channel::<()>();
+        let handle = tokio::task::spawn(async move {
+            let bob_receiver = tsp_vid::PrivateVid::from_file("../examples/test/bob.json")
+                .await
+                .unwrap();
+
+            let stream = receive(&bob_receiver, Some(receiver_tx)).unwrap();
+            tokio::pin!(stream);
+
+            while stream.next().await.unwrap().is_err() {}
+        });
+
+        receiver_rx.await.unwrap();
+
+        let mut stop = false;
+        for i in 0.. {
+            faulty_send(&alice, &bob, None, payload, |data| {
+                if i >= data.len() {
+                    stop = true
+                } else {
+                    data[i] ^= 0x10
+                }
+            })
+            .await
+            .unwrap();
+            if stop {
+                break;
+            }
+        }
+
+        assert!(!handle.is_finished());
+        handle.abort();
+    }
 }
