@@ -3,7 +3,7 @@ use axum::{
         ws::{Message, WebSocket},
         Path, State, WebSocketUpgrade,
     },
-    http::StatusCode,
+    http::{header, StatusCode},
     response::{Html, IntoResponse, Response},
     routing::{get, post},
     Form, Json, Router,
@@ -48,6 +48,7 @@ async fn main() {
     // Compose the routes
     let app = Router::new()
         .route("/", get(index))
+        .route("/script.js", get(script))
         .route("/create-identity", post(create_identity))
         .route("/resolve-vid", post(resolve_vid))
         .route("/user/:name/did.json", get(get_did_doc))
@@ -62,14 +63,28 @@ async fn main() {
 
 #[cfg(debug_assertions)]
 async fn index() -> Html<String> {
-    let body = std::fs::read_to_string("demo-server/index.html").unwrap();
-
-    Html(body)
+    Html(std::fs::read_to_string("demo-server/index.html").unwrap())
 }
 
 #[cfg(not(debug_assertions))]
 async fn index() -> Html<String> {
     Html(std::include_str!("../index.html").to_string())
+}
+
+#[cfg(debug_assertions)]
+async fn script() -> impl IntoResponse {
+    (
+        [(header::CONTENT_TYPE, "text/javascript")],
+        std::fs::read_to_string("demo-server/script.js").unwrap(),
+    )
+}
+
+#[cfg(not(debug_assertions))]
+async fn script() -> impl IntoResponse {
+    (
+        [(header::CONTENT_TYPE, "text/javascript")],
+        std::include_str!("../script.js").to_string(),
+    )
 }
 
 #[derive(Deserialize, Debug)]
@@ -129,22 +144,12 @@ async fn get_did_doc(State(state): State<Arc<AppState>>, Path(name): Path<String
     }
 }
 
-// fn view_to_range_json(view: CipherView) -> serde_json::Value {
-//     json!({
-//         "sender": (view.sender.start, view.sender.end),
-//         "receiver": view.receiver.map(|r| (r.start, r.end)),
-//         "nonconfidential_data": view.nonconfidential_data.map(|r| (r.start, r.end)),
-//         "signed_data": (view.signed_data.start,view.signed_data.end),
-//         "ciphertext": view.ciphertext.map(|r| (r.start, r.end)),
-//     })
-// }
-
 fn format_part(title: &str, part: &tsp_cesr::Part, plain: Option<&[u8]>) -> serde_json::Value {
     let full = [&part.prefix[..], &part.data[..]].concat();
 
     json!({
         "title": title,
-        "prefix": part.prefix,
+        "prefix": part.prefix.iter().map(|b| format!("{:#04x}", b)).collect::<Vec<String>>().join(" "),
         "data": Base64UrlUnpadded::encode_string(&full),
         "plain": plain
             .and_then(|b| std::str::from_utf8(b).ok())

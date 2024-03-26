@@ -221,7 +221,7 @@ mod test {
         ); // 1 lead byte
     }
 
-    use base64ct::{Base64Url, Encoding};
+    use base64ct::{Base64UrlUnpadded, Encoding};
 
     #[test]
     fn decode_and_encode() {
@@ -236,20 +236,28 @@ mod test {
             assert_eq!(input, output);
         }
 
-        fixed_roundtrip(12, [1, 2], &Base64Url::decode_vec("MAEC").unwrap());
-        fixed_roundtrip(5, [1, 2, 3], &Base64Url::decode_vec("1AAFAQID").unwrap());
-        fixed_roundtrip(7, [1, 2, 3, 4], &Base64Url::decode_vec("0HABAgME").unwrap());
+        fixed_roundtrip(12, [1, 2], &Base64UrlUnpadded::decode_vec("MAEC").unwrap());
+        fixed_roundtrip(
+            5,
+            [1, 2, 3],
+            &Base64UrlUnpadded::decode_vec("1AAFAQID").unwrap(),
+        );
+        fixed_roundtrip(
+            7,
+            [1, 2, 3, 4],
+            &Base64UrlUnpadded::decode_vec("0HABAgME").unwrap(),
+        );
         fixed_roundtrip(
             13,
             [1, 2, 3, 4, 5, 6, 7, 8],
-            &Base64Url::decode_vec("NAECAwQFBgcI").unwrap(),
+            &Base64UrlUnpadded::decode_vec("NAECAwQFBgcI").unwrap(),
         );
         let mut funky_data = <[u8; 24]>::default();
-        Base64Url::decode("2022-10-25T12c04c30d175309p00c00", &mut funky_data).unwrap();
+        Base64UrlUnpadded::decode("2022-10-25T12c04c30d175309p00c00", &mut funky_data).unwrap();
         fixed_roundtrip(
             6,
             funky_data,
-            &Base64Url::decode_vec("1AAG2022-10-25T12c04c30d175309p00c00").unwrap(),
+            &Base64UrlUnpadded::decode_vec("1AAG2022-10-25T12c04c30d175309p00c00").unwrap(),
         );
 
         fn variable_roundtrip(ident: u32, content: &[u8], input: &[u8]) {
@@ -265,28 +273,32 @@ mod test {
 
         variable_roundtrip(
             0,
-            &Base64Url::decode_vec("barf").unwrap(),
-            &Base64Url::decode_vec("4AABbarf").unwrap(),
+            &Base64UrlUnpadded::decode_vec("barf").unwrap(),
+            &Base64UrlUnpadded::decode_vec("4AABbarf").unwrap(),
         );
 
         variable_roundtrip(
             0,
-            &Base64Url::decode_vec("AFoo").unwrap()[1..],
-            &Base64Url::decode_vec("5AABAFoo").unwrap(),
+            &Base64UrlUnpadded::decode_vec("AFoo").unwrap()[1..],
+            &Base64UrlUnpadded::decode_vec("5AABAFoo").unwrap(),
         );
 
         variable_roundtrip(
             0,
-            &Base64Url::decode_vec("AAA-field0-field1-field3").unwrap()[2..],
-            &Base64Url::decode_vec("6AAGAAA-field0-field1-field3").unwrap(),
+            &Base64UrlUnpadded::decode_vec("AAA-field0-field1-field3").unwrap()[2..],
+            &Base64UrlUnpadded::decode_vec("6AAGAAA-field0-field1-field3").unwrap(),
         );
 
-        variable_roundtrip(1, b"1337", &Base64Url::decode_vec("6BACAAAxMzM3").unwrap());
+        variable_roundtrip(
+            1,
+            b"1337",
+            &Base64UrlUnpadded::decode_vec("6BACAAAxMzM3").unwrap(),
+        );
 
         variable_roundtrip(
             1,
             &[1, 2, 3, 4, 5, 6, 7, 8],
-            &Base64Url::decode_vec("5BADAAECAwQFBgcI").unwrap(),
+            &Base64UrlUnpadded::decode_vec("5BADAAECAwQFBgcI").unwrap(),
         );
     }
 
@@ -301,13 +313,13 @@ mod test {
 
         roundtrip(
             0,
-            &Base64Url::decode_vec("9AAAAAABAAA-").unwrap(),
-            &Base64Url::decode_vec("6AABAAA-").unwrap(),
+            &Base64UrlUnpadded::decode_vec("9AAAAAABAAA-").unwrap(),
+            &Base64UrlUnpadded::decode_vec("6AABAAA-").unwrap(),
         );
         roundtrip(
             1,
-            &Base64Url::decode_vec("8AABAAADAAECAwQFBgcI").unwrap(),
-            &Base64Url::decode_vec("5BADAAECAwQFBgcI").unwrap(),
+            &Base64UrlUnpadded::decode_vec("8AABAAADAAECAwQFBgcI").unwrap(),
+            &Base64UrlUnpadded::decode_vec("5BADAAECAwQFBgcI").unwrap(),
         );
     }
 
@@ -347,7 +359,7 @@ ABBgeqntZW3Gu4HL0h3odYz6LaZ_SMfmITL-Btoq_7OZFe3L16jmOe49Ur108wH7mnBaq2E_0U0N0c5v
 ACTD7NDX93ZGTkZBBuSeSGsAQ7u0hngpNTZTK_Um7rUZGnLRNJvo5oOnnC1J2iBQHuxoq8PyjdT3BHS2LiPrs2Cg\
 ";
 
-        let data = Base64Url::decode_vec(base64_data).unwrap();
+        let data = Base64UrlUnpadded::decode_vec(base64_data).unwrap();
 
         let slice = &mut &data[..];
 

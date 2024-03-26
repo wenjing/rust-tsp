@@ -1,4 +1,4 @@
-use base64ct::{Base64Url, Encoding};
+use base64ct::{Base64UrlUnpadded, Encoding};
 use serde::Deserialize;
 use serde_json::json;
 use tsp_definitions::{Error, Receiver, Sender, VerifiedVid};
@@ -81,7 +81,7 @@ pub fn find_first_key(
         })
         .and_then(|method| {
             if method.public_key_jwk.crv == curve && method.public_key_jwk.usage == usage {
-                Base64Url::decode_vec(&method.public_key_jwk.x).ok()
+                Base64UrlUnpadded::decode_vec(&method.public_key_jwk.x).ok()
             } else {
                 None
             }
@@ -143,8 +143,8 @@ pub fn create_did_web(
 
     let private_doc = json!({
         "vid": did,
-        "decryption-key": Base64Url::encode_string(private_vid.decryption_key()),
-        "signing-key": Base64Url::encode_string(private_vid.signing_key()),
+        "decryption-key": Base64UrlUnpadded::encode_string(private_vid.decryption_key()),
+        "signing-key": Base64UrlUnpadded::encode_string(private_vid.signing_key()),
     });
 
     let did_doc = json!({
@@ -162,7 +162,7 @@ pub fn create_did_web(
                     "kty": "OKP",
                     "crv": "Ed25519",
                     "use": "sig",
-                    "x": Base64Url::encode_string(private_vid.verifying_key()),
+                    "x": Base64UrlUnpadded::encode_string(private_vid.verifying_key()),
                 }
             },
             {
@@ -173,7 +173,7 @@ pub fn create_did_web(
                     "kty": "OKP",
                     "crv": "X25519",
                     "use": "enc",
-                    "x": Base64Url::encode_string(private_vid.encryption_key()),
+                    "x": Base64UrlUnpadded::encode_string(private_vid.encryption_key()),
                 }
             },
         ],
