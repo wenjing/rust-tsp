@@ -74,7 +74,7 @@ pub async fn broadcast_server<A: ToSocketAddrs + Display>(
     startup_signal: Option<Sender<()>>,
 ) -> Result<(), Error> {
     let _ = tracing_subscriber::fmt()
-        .with_env_filter(EnvFilter::from_default_env().add_directive("info".parse().unwrap()))
+        .with_env_filter(EnvFilter::from_default_env().add_directive("warn".parse().unwrap()))
         .try_init();
 
     let state = Arc::new(Mutex::new(Shared::new()));

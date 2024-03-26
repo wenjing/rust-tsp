@@ -12,10 +12,6 @@ rust-version.workspace = true
 name = "create-did-web"
 path = "src/create-did-web.rs"
 
-[[bin]]
-name = "tcp-broadcast"
-path = "src/tcp-broadcast.rs"
-
 [dependencies]
 tsp-crypto = { path = "../tsp-crypto" }
 tsp-transport = { path = "../tsp-transport" }
