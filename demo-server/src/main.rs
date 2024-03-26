@@ -234,7 +234,7 @@ async fn websocket_handler(
 }
 
 /// Handle the websocket connection
-/// Keep track of the verified VID's, private VID's and forward messages 
+/// Keep track of the verified VID's, private VID's and forward messages
 async fn websocket(stream: WebSocket, state: Arc<AppState>) {
     let (mut sender, mut receiver) = stream.split();
     let mut rx = state.tx.subscribe();
