@@ -527,12 +527,14 @@ pub fn encode_s_envelope_vec<Vid: AsRef<[u8]>>(
     Ok(data)
 }
 
+/// Describes the bytes in a CESR encoded message part
 #[derive(Default, Debug)]
 pub struct Part {
     pub prefix: Vec<u8>,
     pub data: Vec<u8>,
 }
 
+/// Decode a CESR encoded data into a Part
 impl Part {
     fn decode(identifier: u32, data: &[u8], pos: &mut usize) -> Option<Part> {
         match decode_variable_data_index(identifier, &data[*pos..]) {
@@ -550,6 +552,7 @@ impl Part {
     }
 }
 
+/// Describes the CESR encoded parts of a TSP message
 #[derive(Default, Debug)]
 pub struct MessageParts {
     pub prefix: Part,
@@ -560,6 +563,7 @@ pub struct MessageParts {
     pub signature: Part,
 }
 
+/// Decode a CESR encoded message into its CESR encoded parts
 pub fn decode_message_into_parts(data: &[u8]) -> Result<MessageParts, DecodeError> {
     let (mut pos, _) = detected_tsp_header_size_and_confidentiality(&mut (data as &[u8]))?;
 
