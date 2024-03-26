@@ -23,8 +23,8 @@ impl PrivateVid {
 
         let resolved = resolve_vid(&vid_data.vid).await?;
 
-        let sigkey = base64ct::Base64Url::decode_vec(&vid_data.signing_key)?;
-        let enckey = base64ct::Base64Url::decode_vec(&vid_data.decryption_key)?;
+        let sigkey = base64ct::Base64UrlUnpadded::decode_vec(&vid_data.signing_key)?;
+        let enckey = base64ct::Base64UrlUnpadded::decode_vec(&vid_data.decryption_key)?;
 
         Ok(Self {
             vid: resolved,
@@ -35,7 +35,7 @@ impl PrivateVid {
 }
 
 pub(crate) mod serde_key_data {
-    use base64ct::{Base64Url, Encoding};
+    use base64ct::{Base64UrlUnpadded, Encoding};
     use serde::{Deserialize, Deserializer, Serializer};
     use tsp_definitions::KeyData;
 
@@ -43,7 +43,7 @@ pub(crate) mod serde_key_data {
     where
         S: Serializer,
     {
-        let key = Base64Url::encode_string(key);
+        let key = Base64UrlUnpadded::encode_string(key);
         serializer.serialize_str(&key)
     }
 
@@ -52,7 +52,7 @@ pub(crate) mod serde_key_data {
         D: Deserializer<'de>,
     {
         let encoded: &str = Deserialize::deserialize(deserializer)?;
-        let key = Base64Url::decode_vec(encoded).map_err(serde::de::Error::custom)?;
+        let key = Base64UrlUnpadded::decode_vec(encoded).map_err(serde::de::Error::custom)?;
         let key: [u8; 32] = key
             .try_into()
             .map_err(|_| serde::de::Error::custom("key data is not exactly 32 bytes"))?;
@@ -63,14 +63,14 @@ pub(crate) mod serde_key_data {
 
 pub(crate) mod serde_sigkey {
     use super::Ed;
-    use base64ct::{Base64Url, Encoding};
+    use base64ct::{Base64UrlUnpadded, Encoding};
     use serde::{Deserialize, Deserializer, Serializer};
 
     pub fn serialize<S>(key: &Ed::SigningKey, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
     {
-        let key = Base64Url::encode_string(key.as_bytes());
+        let key = Base64UrlUnpadded::encode_string(key.as_bytes());
         serializer.serialize_str(&key)
     }
 
@@ -79,7 +79,7 @@ pub(crate) mod serde_sigkey {
         D: Deserializer<'de>,
     {
         let encoded: &str = Deserialize::deserialize(deserializer)?;
-        let key = Base64Url::decode_vec(encoded).map_err(serde::de::Error::custom)?;
+        let key = Base64UrlUnpadded::decode_vec(encoded).map_err(serde::de::Error::custom)?;
         let key: &[u8; 32] = key
             .as_slice()
             .try_into()
@@ -91,14 +91,14 @@ pub(crate) mod serde_sigkey {
 
 pub(crate) mod serde_public_sigkey {
     use super::Ed;
-    use base64ct::{Base64Url, Encoding};
+    use base64ct::{Base64UrlUnpadded, Encoding};
     use serde::{Deserialize, Deserializer, Serializer};
 
     pub fn serialize<S>(key: &Ed::VerifyingKey, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
     {
-        let key = Base64Url::encode_string(key.as_bytes());
+        let key = Base64UrlUnpadded::encode_string(key.as_bytes());
         serializer.serialize_str(&key)
     }
 
@@ -107,7 +107,7 @@ pub(crate) mod serde_public_sigkey {
         D: Deserializer<'de>,
     {
         let encoded: &str = Deserialize::deserialize(deserializer)?;
-        let key = Base64Url::decode_vec(encoded).map_err(serde::de::Error::custom)?;
+        let key = Base64UrlUnpadded::decode_vec(encoded).map_err(serde::de::Error::custom)?;
         let key: &[u8; 32] = key
             .as_slice()
             .try_into()

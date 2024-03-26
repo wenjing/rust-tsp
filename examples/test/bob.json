@@ -1,5 +1,5 @@
 {
-  "decryption-key": "txmV4rtnQjLMCHtiyIPXiqrFaP9-QbRzOdaQok5CuEg=",
-  "signing-key": "HN0p3_W3rT_dxjoG8f4to7eT2scXGYgblRS4I_tBeL0=",
+  "decryption-key": "txmV4rtnQjLMCHtiyIPXiqrFaP9-QbRzOdaQok5CuEg",
+  "signing-key": "HN0p3_W3rT_dxjoG8f4to7eT2scXGYgblRS4I_tBeL0",
   "vid": "did:web:did.tsp-test.org:user:bob"
 }
