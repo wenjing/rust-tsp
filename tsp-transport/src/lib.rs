@@ -12,11 +12,11 @@ pub async fn send_message(transport: &Url, tsp_message: &[u8]) -> Result<(), Err
     }
 }
 
-pub fn receive_messages(
+pub async fn receive_messages(
     transport: &Url,
 ) -> Result<impl Stream<Item = Result<BytesMut, Error>>, Error> {
     match transport.scheme() {
-        tcp::SCHEME => tcp::receive_messages(transport),
+        tcp::SCHEME => tcp::receive_messages(transport).await,
         _ => Err(Error::InvalidTransportScheme),
     }
 }
