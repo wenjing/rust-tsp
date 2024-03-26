@@ -25,7 +25,7 @@ async fn main() {
 
     for (me, you) in [(alice, bob), (bob, alice)] {
         tokio::spawn(async move {
-            let stream = tsp::receive(me, None).unwrap();
+            let stream = tsp::receive(me, None).await.unwrap();
             tokio::pin!(stream);
 
             loop {

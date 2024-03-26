@@ -79,7 +79,7 @@ pub async fn send(
 ///
 /// # Example
 ///
-/// ```
+/// ```no_run
 /// #[tokio::main]
 /// async fn main() {
 ///     use tsp_vid::PrivateVid;
@@ -87,7 +87,7 @@ pub async fn send(
 ///
 ///     let receiver = PrivateVid::from_file("../examples/test/bob.json").await.unwrap();
 ///
-///     let messages = tsp::receive(&receiver, None).unwrap();
+///     let messages = tsp::receive(&receiver, None).await.unwrap();
 ///     tokio::pin!(messages);
 ///
 ///     while let Some(Ok(msg)) = messages.next().await {
@@ -95,11 +95,11 @@ pub async fn send(
 ///     }
 /// }
 /// ```
-pub fn receive(
+pub async fn receive(
     receiver: &impl Receiver,
     listening: Option<tokio::sync::oneshot::Sender<()>>,
 ) -> Result<impl Stream<Item = Result<ReceivedTspMessage<Vid>, Error>> + '_, Error> {
-    let messages = tsp_transport::receive_messages(receiver.endpoint())?;
+    let messages = tsp_transport::receive_messages(receiver.endpoint()).await?;
 
     listening.map(|s| s.send(()));
 
@@ -182,7 +182,7 @@ pub async fn send_relationship_request(
 ///
 /// # Example
 ///
-/// ```
+/// ```no_run
 /// #[tokio::main]
 /// async fn main() {
 ///     use futures::StreamExt;
@@ -191,7 +191,7 @@ pub async fn send_relationship_request(
 ///
 ///     let owner = PrivateVid::from_file("../examples/test/alice.json").await.unwrap();
 ///
-///     let messages = tsp::receive(&owner, None).unwrap();
+///     let messages = tsp::receive(&owner, None).await.unwrap();
 ///     tokio::pin!(messages);
 ///
 ///     while let Some(Ok(msg)) = messages.next().await {
@@ -276,7 +276,7 @@ mod test {
                 .await
                 .unwrap();
 
-            let stream = receive(&bob_receiver, Some(receiver_tx)).unwrap();
+            let stream = receive(&bob_receiver, Some(receiver_tx)).await.unwrap();
             tokio::pin!(stream);
 
             let tsp_definitions::ReceivedTspMessage::GenericMessage { message, .. } =

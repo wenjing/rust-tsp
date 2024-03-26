@@ -262,7 +262,7 @@ impl VidDatabase {
         let receivers = Arc::new(receivers);
         let verified_vids = self.verified_vids.clone();
         let (tx, rx) = mpsc::channel(16);
-        let messages = tsp_transport::receive_messages(receiver.endpoint())?;
+        let messages = tsp_transport::receive_messages(receiver.endpoint()).await?;
 
         tokio::task::spawn(async move {
             let decrypted_messages = messages.then(move |data| {
