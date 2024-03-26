@@ -31,7 +31,7 @@ pub(crate) async fn send_message(tsp_message: &[u8], url: &Url) -> Result<(), Er
     Ok(())
 }
 
-pub(crate) fn receive_messages(
+pub(crate) async fn receive_messages(
     address: &Url,
 ) -> Result<impl Stream<Item = Result<BytesMut, Error>>, Error> {
     let addresses = address.socket_addrs(|| None)?;
@@ -39,13 +39,12 @@ pub(crate) fn receive_messages(
         return Err(Error::InvalidAddress);
     };
 
-    Ok(stream! {
-        if let Ok(stream) = tokio::net::TcpStream::connect(address).await {
-            let mut messages = Framed::new(stream, BytesCodec::new());
+    let stream = tokio::net::TcpStream::connect(address).await?;
+    let mut messages = Framed::new(stream, BytesCodec::new());
 
-            while let Some(m) = messages.next().await {
-                yield m.map_err(Error::from);
-            }
+    Ok(stream! {
+        while let Some(m) = messages.next().await {
+            yield m.map_err(Error::from);
         }
     })
 }
