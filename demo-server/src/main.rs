@@ -165,15 +165,16 @@ fn format_part(title: &str, part: &tsp_cesr::Part, plain: Option<&[u8]>) -> serd
 }
 
 /// Decode a CESR encoded message into descriptive JSON
-fn decode_message(message: &[u8], payload: &[u8]) -> Option<serde_json::Value> {
+fn decode_message(message: &[u8], payload: Option<&[u8]>) -> Option<serde_json::Value> {
     let parts = tsp_cesr::decode_message_into_parts(message).ok()?;
 
     Some(json!({
+        "original": Base64UrlUnpadded::encode_string(message),
         "prefix": format_part("Prefix", &parts.prefix, None),
         "sender": format_part("Sender", &parts.sender, None),
         "receiver": parts.receiver.map(|v| format_part("Receiver", &v, None)),
         "nonconfidentialData": parts.nonconfidential_data.map(|v| format_part("Non-confidential data", &v, None)),
-        "ciphertext": parts.ciphertext.map(|v| format_part("Ciphertext", &v, Some(payload))),
+        "ciphertext": parts.ciphertext.map(|v| format_part("Ciphertext", &v, payload)),
         "signature": format_part("Signature", &parts.signature, None),
     }))
 }
@@ -217,7 +218,7 @@ async fn send_message(
                 ))
                 .unwrap();
 
-            let decoded = decode_message(&message, form.message.as_bytes()).unwrap();
+            let decoded = decode_message(&message, Some(form.message.as_bytes())).unwrap();
 
             Json(decoded).into_response()
         }
@@ -231,6 +232,13 @@ async fn websocket_handler(
     State(state): State<Arc<AppState>>,
 ) -> impl IntoResponse {
     ws.on_upgrade(|socket| websocket(socket, state))
+}
+
+#[derive(Deserialize, Debug)]
+struct EncodedMessage {
+    sender: String,
+    receiver: String,
+    message: String,
 }
 
 /// Handle the websocket connection
@@ -247,9 +255,6 @@ async fn websocket(stream: WebSocket, state: Arc<AppState>) {
     let mut send_task = tokio::spawn(async move {
         while let Ok((sender_id, receiver_id, message)) = rx.recv().await {
             let incoming_senders_read = incoming_senders.read().await;
-            let Some(sender_vid) = incoming_senders_read.get(&sender_id) else {
-                continue;
-            };
 
             let incoming_receivers_read = incoming_receivers.read().await;
             let Some(receiver_vid) = incoming_receivers_read.get(&receiver_id) else {
@@ -259,13 +264,21 @@ async fn websocket(stream: WebSocket, state: Arc<AppState>) {
             tracing::debug!("forwarding message {sender_id} {receiver_id}");
 
             let mut encrypted_message = message.clone();
-            let Ok((_, payload, _)) =
-                tsp_crypto::open(receiver_vid, sender_vid, &mut encrypted_message)
-            else {
-                continue;
+
+            // if the sender is verified, decrypt the message
+            let result = if let Some(sender_vid) = incoming_senders_read.get(&sender_id) {
+                let Ok((_, payload, _)) =
+                    tsp_crypto::open(receiver_vid, sender_vid, &mut encrypted_message)
+                else {
+                    continue;
+                };
+
+                decode_message(&message, Some(payload.as_bytes()))
+            } else {
+                decode_message(&message, None)
             };
 
-            let Some(decoded) = decode_message(&message, payload.as_bytes()) else {
+            let Some(decoded) = result else {
                 continue;
             };
 
@@ -281,19 +294,28 @@ async fn websocket(stream: WebSocket, state: Arc<AppState>) {
 
     // Receive encoded VID's from the websocket and store them in the local state
     let mut recv_task = tokio::spawn(async move {
-        while let Some(Ok(Message::Text(identity))) = receiver.next().await {
-            if let Ok(identity) = serde_json::from_str::<PrivateVid>(&identity) {
+        while let Some(Ok(Message::Text(incoming_message))) = receiver.next().await {
+            if let Ok(identity) = serde_json::from_str::<PrivateVid>(&incoming_message) {
                 receivers
                     .write()
                     .await
                     .insert(identity.identifier().to_string(), identity);
             }
 
-            if let Ok(identity) = serde_json::from_str::<Vid>(&identity) {
+            if let Ok(identity) = serde_json::from_str::<Vid>(&incoming_message) {
                 senders
                     .write()
                     .await
                     .insert(identity.identifier().to_string(), identity);
+            }
+
+            if let Ok(encoded) = serde_json::from_str::<EncodedMessage>(&incoming_message) {
+                if let Ok(original) = Base64UrlUnpadded::decode_vec(&encoded.message) {
+                    state
+                        .tx
+                        .send((encoded.sender, encoded.receiver, original))
+                        .unwrap();
+                }
             }
         }
     });
