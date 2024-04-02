@@ -120,14 +120,6 @@ const updateIdentities = async () => {
         registered.push(identity.id);
       });
     });
-  } else {
-    // only send new identities
-    Object.values(identities)
-      .filter(({ id }) => !registered.includes(id))
-      .forEach((identity) => {
-        ws.send(JSON.stringify(identity));
-        registered.push(identity.id);
-      });
   }
 };
 
@@ -153,15 +145,44 @@ function renderMessage(message) {
     <ul class="list-group list-group-flush">
       ${parts.map((part, index) => message[part] ? `
         <li class="list-group-item">
-          ${part === 'sender' || part === 'signature' ? '<span class="badge bg-success float-end">verified</span>' : ''}
+          ${(part === 'sender' || part === 'signature') ? (
+            message.ciphertext.plain 
+            ? '<span class="badge bg-success float-end">verified</span>'
+            : '<span class="badge bg-danger float-end">unverified</span>'
+          ) : ''}
           <span class="text-muted d-block">${message[part].title}:</span>
           ${message[part].plain ? `<span class="d-block">${message[part].plain}</span>`: ''}
           <span class="message-part d-block">CESR selector: ${message[part].prefix}</span>
           <span class="message-part d-block" style="color:${colors[index]}">${message[part].data}</span>
+          ${part === 'sender' && !message.ciphertext.plain 
+          ? '<button class="btn btn-outline-primary mt-2 verify">Verify sender</span>': ''}
         </li>
       ` : '').join('\n')}
     </ul>
   </div>`;
+
+  const verifySender = card.querySelector('.verify');
+  if (verifySender) {
+    verifySender.addEventListener('click', (event) => {
+      event.preventDefault();
+      const formData = new FormData();
+      formData.append('vid', message.sender.plain);
+
+      if (resolveVid(formData)) {
+        if (card.parentNode) {
+          card.parentNode.removeChild(card);
+        }
+
+        setTimeout(() => {  
+          ws.send(JSON.stringify({
+            sender: message.sender.plain,
+            receiver: message.receiver.plain,
+            message: message.original,
+          }));
+        }, 500);
+      }
+    });
+  }
 
   return card;
 }
@@ -186,23 +207,21 @@ createForm.addEventListener('submit', async (event) => {
     const key = identity.id;
     window.localStorage.setItem(key, JSON.stringify(identity));
     updateIdentities();
+    ws.send(JSON.stringify(identity));
   } else {
     window.alert('Failed to create identity');
   }
 });
 
 // resolve vid form
-const resolveForm = document.getElementById('resolve-vid');
-
-resolveForm.addEventListener('submit', async (event) => {
-  event.preventDefault();
-  const formData = new URLSearchParams(new FormData(resolveForm));
+async function resolveVid(formData) {
+  const body = new URLSearchParams(formData);
   const response = await fetch('/resolve-vid', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8',
     },
-    body: formData,
+    body: body,
   });
 
   if (response.ok) {
@@ -211,9 +230,21 @@ resolveForm.addEventListener('submit', async (event) => {
     const key = identity.id;
     window.localStorage.setItem(key, JSON.stringify(identity));
     updateIdentities();
-  } else {
-    window.alert('Failed to resolve VID');
+    ws.send(JSON.stringify(identity));
+
+    return true;
   }
+
+  window.alert('Failed to resolve VID');
+
+  return false;
+}
+
+const resolveForm = document.getElementById('resolve-vid');
+
+resolveForm.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  resolveVid(new FormData(resolveForm));
 });
 
 // send TSP message form
