@@ -11,6 +11,8 @@ use tsp_vid::{PrivateVid, Vid};
 
 /// Holds private ands verified VID's
 #[derive(Debug, Default)]
+/// A VidDatabase contains verified vid's, our relationship status to them,
+/// as well as the private vid's that this application has control over.
 pub struct VidDatabase {
     private_vids: Arc<RwLock<HashMap<String, PrivateVid>>>,
     verified_vids: Arc<RwLock<HashMap<String, Vid>>>,
@@ -18,10 +20,12 @@ pub struct VidDatabase {
 
 /// This database is used to store and resolve VID's
 impl VidDatabase {
+    /// Create a new, empty VID database
     pub fn new() -> Self {
         Default::default()
     }
 
+    /// Adds [private_vid] to the database
     pub async fn add_private_vid(&self, private_vid: PrivateVid) -> Result<(), Error> {
         let mut private_vids = self.private_vids.write().await;
         private_vids.insert(private_vid.identifier().to_string(), private_vid);
@@ -29,8 +33,10 @@ impl VidDatabase {
         Ok(())
     }
 
-    /// Create a nested VID, currently only supports one level of nesting
-    /// The nested vid has the did:peer format
+    /// Creates a private nested VID identified by [vid] that can be used for nested relationships. If [relation_vid]
+    /// is `Some(other_vid)`, this private VID will be associated with that `other_vid`.
+    /// Currently only supports one level of nesting. The nested vid must have the did:peer format.
+    // TODO: Split this function into a 'create private nested vid' and 'add relationship to vid' ?
     pub async fn create_private_nested_vid(
         &self,
         vid: &str,
@@ -47,7 +53,7 @@ impl VidDatabase {
         Ok(id)
     }
 
-    /// Adds a verified VID to the database
+    /// Add the already resolved [verified_vid] to the database as a relationship
     pub async fn add_verified_vid(&self, verified_vid: Vid) -> Result<(), Error> {
         let mut verified_vids = self.verified_vids.write().await;
         verified_vids.insert(verified_vid.identifier().to_string(), verified_vid);
@@ -63,7 +69,7 @@ impl VidDatabase {
         self.add_private_vid(private_vid).await
     }
 
-    /// Resolve public key material for a VID and add it to the detabase as a relation
+    /// Resolve public key material for a VID identified by [vid] and add it to the database as a relationship
     pub async fn resolve_vid(&mut self, vid: &str) -> Result<(), Error> {
         let mut verified_vids = self.verified_vids.write().await;
 
@@ -73,8 +79,10 @@ impl VidDatabase {
         Ok(())
     }
 
-    /// Resolve public key material for a VID and add it to the detabase as a relation
-    /// In addition specify the parent VID for this VID
+    /// Resolve public key material for a VID identified by [vid], and add it to the database as with [resolve_vid], but also
+    /// specify that its parent is the publically known VID identified by [parent_vid] (that must already be resolved).
+    /// If [relation_vid] is not `None`, use the provided vid (which must resolve to a private vid) as our local nested VID that
+    /// will have a relationship with [vid].
     pub async fn resolve_vid_with_parent(
         &mut self,
         vid: &str,
@@ -184,7 +192,8 @@ impl VidDatabase {
         Ok(())
     }
 
-    /// Accept a direct relationship with a resolved VID using the TSP
+    /// Accept a direct relationship between the resolved VID's identifier by [sender] and [receiver].
+    /// [thread_id] must be the same as the one that was present in the relationship request.
     /// Encodes the control message, encrypts, signs and sends a TSP message
     pub async fn send_relationship_accept(
         &self,
@@ -206,7 +215,7 @@ impl VidDatabase {
         Ok(())
     }
 
-    /// Cancels a direct relationship with a resolved VID using the TSP
+    /// Cancels a direct relationship between the resolved [sender] and [receiver] VID's.
     /// Encodes the control message, encrypts, signs and sends a TSP message
     pub async fn send_relationship_cancel(
         &self,
@@ -222,12 +231,15 @@ impl VidDatabase {
         Ok(())
     }
 
-    /// Send a nested TSP message given earlier resolved VID's
+    /// Send a nested TSP message given earlier resolved VID's: [receiver] is recipient. Since this must indicate a resolved
+    /// nested VID, this message will be sent with our related private VID as an origin. As with the direct [send] method,
+    /// [nonconfidential_data] is data that is sent in the clear (signed but not encrypted), [message] is the confidential
+    /// message (signed and encrypted).
     pub async fn send_nested(
         &self,
         receiver: &str,
         nonconfidential_data: Option<&[u8]>,
-        payload: &[u8],
+        message: &[u8],
     ) -> Result<(), Error> {
         let inner_receiver = self.get_verified_vid(receiver).await?;
 
@@ -236,7 +248,7 @@ impl VidDatabase {
                 (Some(parent_receiver), Some(inner_sender)) => {
                     let inner_sender = self.get_private_vid(inner_sender).await?;
                     let tsp_message =
-                        tsp_crypto::sign(&inner_sender, Some(&inner_receiver), payload)?;
+                        tsp_crypto::sign(&inner_sender, Some(&inner_receiver), message)?;
 
                     match inner_sender.parent_vid() {
                         Some(parent_sender) => {
@@ -264,7 +276,7 @@ impl VidDatabase {
         Ok(())
     }
 
-    /// Get a private VID from the database
+    /// Retrieve the [PrivateVid] identified by [vid] from the database, if it exists.
     async fn get_private_vid(&self, vid: &str) -> Result<PrivateVid, Error> {
         match self.private_vids.read().await.get(vid) {
             Some(resolved) => Ok(resolved.clone()),
@@ -272,7 +284,7 @@ impl VidDatabase {
         }
     }
 
-    /// Get a verified VID from the database
+    /// Retrieve the [Vid] identified by [vid] from the database, if it exists.
     async fn get_verified_vid(&self, vid: &str) -> Result<Vid, Error> {
         match self.verified_vids.read().await.get(vid) {
             Some(resolved) => Ok(resolved.clone()),
@@ -280,7 +292,8 @@ impl VidDatabase {
         }
     }
 
-    /// Decode a TSP message, decrypt and verify the message
+    /// Decode an encrypted [message], which has to be addressed to one of the VID's in [receivers], and has to have
+    /// [verified_vids] as one of the senders.
     #[async_recursion]
     async fn decode_message(
         receivers: Arc<HashMap<String, PrivateVid>>,
@@ -366,9 +379,10 @@ impl VidDatabase {
         }
     }
 
-    /// Receive TSP messages given the receivers transport
+    /// Receive TSP messages for the private VID identified by [vid], using the appropriate transport mechanism for it.
     /// Messages will be queued in a channel
     /// The returned channel contains a maximum of 16 messages
+    // TODO: is it useful to specify multiple receivers here?
     pub async fn receive(
         &self,
         vid: &str,
