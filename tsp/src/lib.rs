@@ -38,7 +38,7 @@ impl VidDatabase {
     ) -> Result<String, Error> {
         let nested = match self.private_vids.read().await.get(vid) {
             Some(resolved) => resolved.create_nested(relation_vid),
-            None => return Err(Error::UnVerifiedVid(vid.to_string())),
+            None => return Err(Error::UnverifiedVid(vid.to_string())),
         };
 
         let id = nested.identifier().to_string();
@@ -268,7 +268,7 @@ impl VidDatabase {
     async fn get_private_vid(&self, vid: &str) -> Result<PrivateVid, Error> {
         match self.private_vids.read().await.get(vid) {
             Some(resolved) => Ok(resolved.clone()),
-            None => Err(Error::UnVerifiedVid(vid.to_string())),
+            None => Err(Error::UnverifiedVid(vid.to_string())),
         }
     }
 
@@ -276,7 +276,7 @@ impl VidDatabase {
     async fn get_verified_vid(&self, vid: &str) -> Result<Vid, Error> {
         match self.verified_vids.read().await.get(vid) {
             Some(resolved) => Ok(resolved.clone()),
-            None => Err(Error::UnVerifiedVid(vid.to_string())),
+            None => Err(Error::UnverifiedVid(vid.to_string())),
         }
     }
 
@@ -303,7 +303,7 @@ impl VidDatabase {
                 let sender = std::str::from_utf8(sender)?;
 
                 let Some(sender) = verified_vids.read().await.get(sender).cloned() else {
-                    return Err(Error::UnVerifiedVid(sender.to_string()));
+                    return Err(Error::UnverifiedVid(sender.to_string()));
                 };
 
                 let (nonconfidential_data, payload, raw_bytes) =
@@ -351,7 +351,7 @@ impl VidDatabase {
                 let sender = std::str::from_utf8(sender)?;
 
                 let Some(sender) = verified_vids.read().await.get(sender).cloned() else {
-                    return Err(Error::UnVerifiedVid(sender.to_string()));
+                    return Err(Error::UnverifiedVid(sender.to_string()));
                 };
 
                 let payload = tsp_crypto::verify(&sender, message)?;
