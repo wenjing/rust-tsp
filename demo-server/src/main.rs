@@ -142,11 +142,17 @@ async fn resolve_vid(
 
 /// Get the DID document of a user
 async fn get_did_doc(State(state): State<Arc<AppState>>, Path(name): Path<String>) -> Response {
-    let key = format!("did:web:{DOMAIN}:{name}");
+    let key = format!("did:web:{DOMAIN}:user:{name}");
 
     match state.db.read().await.get(&key) {
         Some(identity) => Json(identity.did_doc.clone()).into_response(),
-        None => (StatusCode::NOT_FOUND, "no user found").into_response(),
+        None => {
+            let keys = state.db.read().await;
+            let keys = keys.keys().collect::<Vec<_>>();
+            eprintln!("{key} not found, stored identities: {:?}", keys);
+
+            (StatusCode::NOT_FOUND, "no user found").into_response()
+        }
     }
 }
 
