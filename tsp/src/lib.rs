@@ -296,6 +296,54 @@ impl VidDatabase {
         Ok(())
     }
 
+    /// Send a routed, nested TSP [message] given earlier resolved VID's.
+    /// The message is routed through the route that has been established with [receiver].
+    /// The [intermediary_extra_data] is "non-confidential data" that is not visible to the outside
+    /// world, but can be seen by every intermediary node.
+    pub async fn send_routed(
+        &self,
+        receiver: &str,
+        intermediary_extra_data: Option<&[u8]>,
+        message: &[u8],
+    ) -> Result<(), Error> {
+        let inner_receiver = self.get_verified_vid(receiver).await?;
+
+        let intermediaries = self.get_route(inner_receiver).await?;
+
+        let first_hop = intermediaries
+            .get(0)
+            .ok_or_else(|| Error::InvalidVID("missing first hop VID in route"))?;
+
+        let (sender, inner_message) = match (first_hop.relation_vid(), inner_receiver.relation_vid()) {
+            (Some(first_sender), Some(inner_sender)) => {
+                let inner_sender = self.get_private_vid(inner_sender).await?;
+                let tsp_message = tsp_crypto::seal(
+                    &inner_sender,
+                    &inner_receiver,
+                    intermediary_extra_data,
+                    Payload::Content(message),
+                )?;
+
+                let first_sender = self.get_private_vid(first_sender).await?;
+
+                (first_sender, tsp_message)
+            }
+            (None, _) => return Err(Error::InvalidVID("missing sender VID for first hop")),
+            (_, None) => return Err(Error::InvalidVID("missing sender VID for receiver")),
+        };
+
+        let tsp_message = tsp_crypto::seal(
+            &sender,
+            first_hop,
+            None,
+            Payload::RoutedMessage(&intermediaries[1..], &inner_message),
+        )?;
+
+        tsp_transport::send_message(first_hop.endpoint(), &tsp_message).await?;
+
+        Ok(())
+    }
+
     /// Retrieve the [PrivateVid] identified by [vid] from the database, if it exists.
     async fn get_private_vid(&self, vid: &str) -> Result<PrivateVid, Error> {
         match self.private_vids.read().await.get(vid) {
@@ -310,6 +358,11 @@ impl VidDatabase {
             Some(resolved) => Ok(resolved.clone()),
             None => Err(Error::UnverifiedVid(vid.to_string())),
         }
+    }
+
+    /// Retrieve the route to [vid] from the database, if it exists.
+    async fn get_route(&self, _vid: Vid) -> Result<Vec<Vid>, Error> {
+	todo!()
     }
 
     /// Decode an encrypted [message], which has to be addressed to one of the VID's in [receivers], and has to have
@@ -353,6 +406,9 @@ impl VidDatabase {
                         // TODO: do not allocate
                         let mut inner = message.to_owned();
                         VidDatabase::decode_message(receivers, verified_vids, &mut inner).await
+                    }
+                    Payload::RoutedMessage(_, _message) => {
+                        todo!();
                     }
                     Payload::RequestRelationship => Ok(ReceivedTspMessage::RequestRelationship {
                         sender,
