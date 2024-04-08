@@ -11,7 +11,7 @@ rust-version.workspace = true
 [dependencies]
 tsp-definitions = { path = "../tsp-definitions" }
 url = { workspace = true }
-#tcp
+# tcp transport
 tokio = { workspace = true }
 tokio-util = { workspace = true }
 tokio-stream = { workspace = true }
@@ -19,3 +19,6 @@ async-stream = { workspace = true }
 futures = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
+# http / https transport
+reqwest = { workspace = true }
+futures-util = { workspace = true }
