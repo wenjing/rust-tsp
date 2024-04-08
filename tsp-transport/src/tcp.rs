@@ -1,5 +1,5 @@
 use async_stream::stream;
-use futures::{SinkExt, Stream};
+use futures::SinkExt;
 use std::{collections::HashMap, fmt::Display, io, net::SocketAddr, sync::Arc};
 use tokio::{
     io::AsyncWriteExt,
@@ -17,6 +17,8 @@ use url::Url;
 
 use tsp_definitions::Error;
 
+use crate::TSPStream;
+
 pub(crate) const SCHEME: &str = "tcp";
 
 pub(crate) async fn send_message(tsp_message: &[u8], url: &Url) -> Result<(), Error> {
@@ -31,9 +33,7 @@ pub(crate) async fn send_message(tsp_message: &[u8], url: &Url) -> Result<(), Er
     Ok(())
 }
 
-pub(crate) async fn receive_messages(
-    address: &Url,
-) -> Result<impl Stream<Item = Result<BytesMut, Error>>, Error> {
+pub(crate) async fn receive_messages(address: &Url) -> Result<TSPStream, Error> {
     let addresses = address.socket_addrs(|| None)?;
     let Some(address) = addresses.into_iter().next() else {
         return Err(Error::InvalidAddress);
@@ -42,11 +42,11 @@ pub(crate) async fn receive_messages(
     let stream = tokio::net::TcpStream::connect(address).await?;
     let mut messages = Framed::new(stream, BytesCodec::new());
 
-    Ok(stream! {
+    Ok(Box::pin(stream! {
         while let Some(m) = messages.next().await {
             yield m.map_err(Error::from);
         }
-    })
+    }))
 }
 
 pub async fn start_broadcast_server(addr: &str) -> Result<JoinHandle<()>, Error> {
