@@ -415,8 +415,20 @@ impl VidDatabase {
                         let mut inner = message.to_owned();
                         VidDatabase::decode_message(receivers, verified_vids, &mut inner).await
                     }
-                    Payload::RoutedMessage(_, _message) => {
-                        todo!();
+                    Payload::RoutedMessage(hops, message) => {
+                        let next_hop = std::str::from_utf8(hops[0])?;
+
+                        let Some(next_hop) = verified_vids.read().await.get(next_hop).cloned()
+                        else {
+                            return Err(Error::UnverifiedVid(next_hop.to_string()));
+                        };
+
+                        Ok(ReceivedTspMessage::ForwardRequest {
+                            sender,
+                            next_hop,
+                            route: hops[1..].iter().map(|x| x.to_vec()).collect(),
+                            opaque_payload: message.to_owned(),
+                        })
                     }
                     Payload::RequestRelationship => Ok(ReceivedTspMessage::RequestRelationship {
                         sender,
