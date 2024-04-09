@@ -1,8 +1,13 @@
 use axum::{
-    body::Bytes, extract::{
+    body::Bytes,
+    extract::{
         ws::{Message, WebSocket},
         Path, State, WebSocketUpgrade,
-    }, http::{header, StatusCode}, response::{Html, IntoResponse, Response}, routing::{get, post}, Form, Json, Router
+    },
+    http::{header, StatusCode},
+    response::{Html, IntoResponse, Response},
+    routing::{get, post},
+    Form, Json, Router,
 };
 use base64ct::{Base64UrlUnpadded, Encoding};
 use futures::{sink::SinkExt, stream::StreamExt};
@@ -52,7 +57,8 @@ async fn main() {
         .route("/resolve-vid", post(resolve_vid))
         .route("/add-vid", post(add_vid))
         .route("/user/:name/did.json", get(get_did_doc))
-        .route("/user/:name", post(send_message_to_user))
+        .route("/user/:user", get(websocket_user_handler))
+        .route("/user/:user", post(route_message))
         .route("/send-message", post(send_message))
         .route("/receive-messages", get(websocket_handler))
         .with_state(state);
@@ -98,8 +104,11 @@ async fn create_identity(
     State(state): State<Arc<AppState>>,
     Form(form): Form<CreateIdentityInput>,
 ) -> impl IntoResponse {
-    let (did_doc, _, private_vid) =
-        tsp_vid::create_did_web(&form.name, DOMAIN, "tcp://127.0.0.1:1337");
+    let (did_doc, _, private_vid) = tsp_vid::create_did_web(
+        &form.name,
+        DOMAIN,
+        &format!("https://{DOMAIN}/user/{}", form.name),
+    );
 
     let key = private_vid.identifier();
 
@@ -207,14 +216,27 @@ struct SendMessageForm {
     receiver: Vid,
 }
 
-async fn send_message_to_user(
-    State(state): State<Arc<AppState>>,
-    Path(name): Path<String>,
-    body: Bytes,
-) -> Response {
-    
-    
+async fn route_message(State(state): State<Arc<AppState>>, body: Bytes) -> Response {
+    let mut message: Vec<u8> = body.to_vec();
+    let Ok((sender, Some(receiver))) = tsp_cesr::get_sender_receiver(&mut message) else {
+        return (StatusCode::BAD_REQUEST, "invalid message").into_response();
+    };
+
+    // insert message in queue
+    let _ = state.tx.send((
+        String::from_utf8_lossy(sender).to_string(),
+        String::from_utf8_lossy(receiver).to_string(),
+        body.to_vec(),
+    ));
+
     StatusCode::OK.into_response()
+}
+
+async fn websocket_handler(
+    ws: WebSocketUpgrade,
+    State(state): State<Arc<AppState>>,
+) -> impl IntoResponse {
+    ws.on_upgrade(|socket| websocket(socket, state))
 }
 
 /// Send a TSP message using a HTML form
@@ -238,14 +260,11 @@ async fn send_message(
     match result {
         Ok(message) => {
             // insert message in queue
-            state
-                .tx
-                .send((
-                    form.sender.identifier().to_owned(),
-                    form.receiver.identifier().to_owned(),
-                    message.clone(),
-                ))
-                .unwrap();
+            let _ = state.tx.send((
+                form.sender.identifier().to_owned(),
+                form.receiver.identifier().to_owned(),
+                message.clone(),
+            ));
 
             let decoded = decode_message(&message, Some(form.message.as_bytes())).unwrap();
 
@@ -256,11 +275,25 @@ async fn send_message(
 }
 
 /// Handle incoming websocket connections
-async fn websocket_handler(
+async fn websocket_user_handler(
     ws: WebSocketUpgrade,
     State(state): State<Arc<AppState>>,
+    Path(name): Path<String>,
 ) -> impl IntoResponse {
-    ws.on_upgrade(|socket| websocket(socket, state))
+    let mut messages_rx = state.tx.subscribe();
+    let current = format!("did:web:{DOMAIN}:user:{name}");
+
+    ws.on_upgrade(|socket| {
+        let (mut ws_send, _) = socket.split();
+
+        async move {
+            while let Ok((_, receiver, message)) = messages_rx.recv().await {
+                if receiver == current {
+                    let _ = ws_send.send(Message::Binary(message)).await;
+                }
+            }
+        }
+    })
 }
 
 #[derive(Deserialize, Debug)]
@@ -340,10 +373,7 @@ async fn websocket(stream: WebSocket, state: Arc<AppState>) {
 
             if let Ok(encoded) = serde_json::from_str::<EncodedMessage>(&incoming_message) {
                 if let Ok(original) = Base64UrlUnpadded::decode_vec(&encoded.message) {
-                    state
-                        .tx
-                        .send((encoded.sender, encoded.receiver, original))
-                        .unwrap();
+                    let _ = state.tx.send((encoded.sender, encoded.receiver, original));
                 }
             }
         }
