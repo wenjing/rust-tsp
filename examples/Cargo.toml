@@ -20,6 +20,8 @@ path = "src/cli.rs"
 tsp = { path = "../tsp" }
 tsp-vid = { path = "../tsp-vid" }
 tokio = { workspace = true}
+url = { workspace = true}
 clap = { workspace = true}
+reqwest = { workspace = true}
 serde = { workspace = true}
 serde_json = { workspace = true}

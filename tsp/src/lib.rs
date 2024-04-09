@@ -6,9 +6,9 @@ use tokio::sync::{
     RwLock,
 };
 use tsp_cesr::EnvelopeType;
-use tsp_definitions::{Digest, MessageType, Payload, VerifiedVid};
+use tsp_definitions::{Digest, MessageType, Payload};
 
-pub use tsp_definitions::{Error, ReceivedTspMessage};
+pub use tsp_definitions::{Error, ReceivedTspMessage, VerifiedVid};
 pub use tsp_vid::{PrivateVid, Vid};
 
 /// Holds private ands verified VID's
