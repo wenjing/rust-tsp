@@ -1,6 +1,6 @@
 use async_stream::stream;
 use futures_util::StreamExt;
-use tokio_util::codec::{BytesCodec, Framed};
+use tokio_util::bytes::BytesMut;
 use url::Url;
 
 use tsp_definitions::Error;
@@ -23,13 +23,13 @@ pub(crate) async fn send_message(tsp_message: &[u8], url: &Url) -> Result<(), Er
 }
 
 pub(crate) async fn receive_messages(address: &Url) -> Result<TSPStream, Error> {
-    let mut stream = reqwest::get(address.clone())
-        .await?
-        .bytes_stream();
+    let mut stream = reqwest::get(address.clone()).await?.bytes_stream();
 
     Ok(Box::pin(stream! {
         while let Some(item) = stream.next().await {
-            yield item.map_err(Error::from);
+            yield item
+                .map(|b| BytesMut::from(&b[..]))
+                .map_err(Error::from);
         }
     }))
 }
