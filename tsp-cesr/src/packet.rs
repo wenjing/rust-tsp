@@ -66,7 +66,6 @@ pub struct PairedKeys<'a> {
     pub encrypting: &'a [u8; 32],
 }
 
-///TODO: add control messages
 /// A type to distinguish "normal" TSP messages from "control" messages
 #[repr(u32)]
 #[derive(Debug)]

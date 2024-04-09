@@ -337,7 +337,7 @@ impl VidDatabase {
         let hops = intermediaries
             .iter()
             .skip(1)
-            .map(|x| x.id.clone())
+            .map(|x| x.as_ref())
             .collect::<Vec<_>>();
 
         let tsp_message = tsp_crypto::seal(
