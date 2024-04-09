@@ -29,18 +29,17 @@ where
         &mut data,
     )?;
 
-    let secret_payload = match &secret_payload {
+    let secret_payload = match secret_payload {
         Payload::Content(data) => tsp_cesr::Payload::GenericMessage(data),
         Payload::RequestRelationship => tsp_cesr::Payload::DirectRelationProposal {
             nonce: fresh_nonce(&mut csprng),
         },
-        Payload::AcceptRelationship { thread_id } => {
+        Payload::AcceptRelationship { ref thread_id } => {
             tsp_cesr::Payload::DirectRelationAffirm { reply: thread_id }
         }
         Payload::CancelRelationship => tsp_cesr::Payload::RelationshipCancel,
         Payload::NestedMessage(data) => tsp_cesr::Payload::NestedMessage(data),
-        //TODO: this allocation is annoying
-        Payload::RoutedMessage(hops, data) => tsp_cesr::Payload::RoutedMessage(hops.to_vec(), data),
+        Payload::RoutedMessage(hops, data) => tsp_cesr::Payload::RoutedMessage(hops, data),
     };
 
     // prepare CESR encoded ciphertext
