@@ -13,7 +13,7 @@ name = "create-did-web"
 path = "src/create-did-web.rs"
 
 [[bin]]
-name = "cli"
+name = "tsp"
 path = "src/cli.rs"
 
 [dependencies]
@@ -25,3 +25,5 @@ clap = { workspace = true}
 reqwest = { workspace = true}
 serde = { workspace = true}
 serde_json = { workspace = true}
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }

@@ -1,0 +1,42 @@
+{
+  "private_vids": [
+    {
+      "id": "did:web:tsp-test.org:user:marlon",
+      "transport": "https://tsp-test.org/user/marlon",
+      "publicSigkey": "gSwX-VLQIA18SlvGGkQfRHqSUadId9VQuhZRv3MA9W4",
+      "publicEnckey": "BT-QZPbGlzzTkn0LWCsPNrIfdBJowIYdR-iL-qDEQWc",
+      "relationVid": null,
+      "parentVid": null,
+      "sigkey": "urruUz8sGcEZnN4cpPi91moWMQXvQdh1xZ1l4dgY1hw",
+      "enckey": "gAxUE17OiQ0pNk2JWU3v3UTtiJug9YQ7kGnDnUaBr4s"
+    },
+    {
+      "id": "did:web:tsp-test.org:user:marc",
+      "transport": "https://tsp-test.org/user/marc",
+      "publicSigkey": "6bnoUsp4tFRt9W5yfLAHNOFWIi9R1RgcnVaaxmSa8C4",
+      "publicEnckey": "qx1So14DTAWNod_K4a7jbEWjUhnWX6_p-is45YkvK3A",
+      "relationVid": null,
+      "parentVid": null,
+      "sigkey": "8b0BYLd8gafEqQtl4si8kWnsC4V_IDVN7Bcv5LLAG_4",
+      "enckey": "GOcMsiXAUAa-uSHXzUiAT5yv_P9egtGZ-suRTLOz43k"
+    }
+  ],
+  "verified_vids": [
+    {
+      "id": "did:web:tsp-test.org:user:marlon",
+      "transport": "https://tsp-test.org/user/marlon",
+      "publicSigkey": "gSwX-VLQIA18SlvGGkQfRHqSUadId9VQuhZRv3MA9W4",
+      "publicEnckey": "BT-QZPbGlzzTkn0LWCsPNrIfdBJowIYdR-iL-qDEQWc",
+      "relationVid": null,
+      "parentVid": null
+    },
+    {
+      "id": "did:web:tsp-test.org:user:marc",
+      "transport": "https://tsp-test.org/user/marc",
+      "publicSigkey": "6bnoUsp4tFRt9W5yfLAHNOFWIi9R1RgcnVaaxmSa8C4",
+      "publicEnckey": "qx1So14DTAWNod_K4a7jbEWjUhnWX6_p-is45YkvK3A",
+      "relationVid": null,
+      "parentVid": null
+    }
+  ]
+}
