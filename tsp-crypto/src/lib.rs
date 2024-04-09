@@ -20,7 +20,11 @@ pub fn seal(
     tsp_hpke::seal::<Aead, Kdf, Kem>(sender, receiver, nonconfidential_data, payload)
 }
 
-pub type MessageContents<'a> = (Option<NonConfidentialData<'a>>, Payload<&'a [u8]>, &'a [u8]);
+pub type MessageContents<'a> = (
+    Option<NonConfidentialData<'a>>,
+    Payload<'a, &'a [u8]>,
+    &'a [u8],
+);
 
 /// Decode a CESR Authentic Confidential Message, verify the signature and decrypt its contents
 pub fn open<'a>(

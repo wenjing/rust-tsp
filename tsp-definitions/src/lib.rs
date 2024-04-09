@@ -40,16 +40,16 @@ pub enum ReceivedTspMessage<V: VerifiedVid> {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum Payload<Bytes: AsRef<[u8]>> {
+pub enum Payload<'a, Bytes: AsRef<[u8]>> {
     Content(Bytes),
     NestedMessage(Bytes),
-    RoutedMessage(Vec<String>, Bytes),
+    RoutedMessage(Vec<VidData<'a>>, Bytes),
     CancelRelationship,
     RequestRelationship,
     AcceptRelationship { thread_id: Digest },
 }
 
-impl<Bytes: AsRef<[u8]>> Payload<Bytes> {
+impl<'a, Bytes: AsRef<[u8]>> Payload<'a, Bytes> {
     pub fn as_bytes(&self) -> &[u8] {
         match self {
             Payload::Content(bytes) => bytes.as_ref(),
@@ -62,7 +62,7 @@ impl<Bytes: AsRef<[u8]>> Payload<Bytes> {
     }
 }
 
-impl<Bytes: AsRef<[u8]>> fmt::Display for Payload<Bytes> {
+impl<'a, Bytes: AsRef<[u8]>> fmt::Display for Payload<'a, Bytes> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Payload::Content(bytes) => {
@@ -80,7 +80,7 @@ impl<Bytes: AsRef<[u8]>> fmt::Display for Payload<Bytes> {
                     String::from_utf8_lossy(bytes.as_ref())
                 )?;
                 for vid in hops {
-                    write!(f, "{}", vid)?
+                    write!(f, "{:?}", &vid[..])?
                 }
                 write!(f, "]")
             }
