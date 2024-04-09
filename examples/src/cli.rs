@@ -2,6 +2,8 @@ use clap::{Parser, Subcommand};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 use tokio::io::AsyncReadExt;
+use tracing::{info, trace};
+use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 use tsp::{Error, PrivateVid, ReceivedTspMessage, VerifiedVid, Vid, VidDatabase};
 
 #[derive(Debug, Parser)]
@@ -35,7 +37,11 @@ enum Commands {
         non_confidential_data: Option<String>,
     },
     #[command(arg_required_else_help = true)]
-    Receive { vid: String },
+    Receive {
+        vid: String,
+        #[arg(short, long)]
+        one: bool,
+    },
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -58,7 +64,7 @@ async fn write_database(database_file: &str, db: &VidDatabase) -> Result<(), Err
 
     tokio::fs::write(db_path, db_contents_json).await?;
 
-    println!("> persisted database to {database_file}");
+    info!("persisted database to {database_file}");
 
     Ok(())
 }
@@ -71,15 +77,15 @@ async fn read_database(database_file: &str) -> Result<VidDatabase, Error> {
 
         let db = VidDatabase::new();
 
-        println!("> opened database {database_file}");
+        info!("opened database {database_file}");
 
         for private_vid in db_contents.private_vids {
-            println!("* loaded {} (private)", private_vid.identifier());
+            trace!("loaded {} (private)", private_vid.identifier());
             db.add_private_vid(private_vid).await?;
         }
 
         for verified_vid in db_contents.verified_vids {
-            println!("* loaded {}", verified_vid.identifier());
+            trace!("loaded {}", verified_vid.identifier());
             db.add_verified_vid(verified_vid).await?;
         }
 
@@ -88,7 +94,7 @@ async fn read_database(database_file: &str) -> Result<VidDatabase, Error> {
         let db = VidDatabase::new();
         write_database(database_file, &db).await?;
 
-        println!("> created new database");
+        info!("created new database");
 
         Ok(db)
     }
@@ -98,12 +104,22 @@ async fn read_database(database_file: &str) -> Result<VidDatabase, Error> {
 async fn main() -> Result<(), Error> {
     let args = Cli::parse();
 
+    tracing_subscriber::registry()
+        .with(tracing_subscriber::fmt::layer())
+        .with(
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| "tsp=trace".into()),
+        )
+        .init();
+
     let mut vid_database = read_database(&args.database).await?;
 
     match args.command {
         Commands::Verify { vid } => {
             vid_database.resolve_vid(&vid).await?;
-            println!("> {vid} is verified and added to the database");
+            write_database(&args.database, &vid_database).await?;
+
+            info!("{vid} is verified and added to the database");
         }
         Commands::Create { username } => {
             let did = format!("did:web:tsp-test.org:user:{username}");
@@ -118,8 +134,9 @@ async fn main() -> Result<(), Error> {
                 .await?;
 
             vid_database.add_private_vid(private_vid.clone()).await?;
+            write_database(&args.database, &vid_database).await?;
 
-            println!("> created identity {}", private_vid.identifier());
+            info!("created identity {}", private_vid.identifier());
         }
         Commands::Send {
             sender_vid,
@@ -135,13 +152,15 @@ async fn main() -> Result<(), Error> {
                 .send(&sender_vid, &receiver_vid, non_confidential_data, &message)
                 .await?;
 
-            println!(
-                "> sent message ({} bytes) from {sender_vid} to {receiver_vid}",
+            info!(
+                "sent message ({} bytes) from {sender_vid} to {receiver_vid}",
                 message.len()
             );
         }
-        Commands::Receive { vid } => {
+        Commands::Receive { vid, one } => {
             let mut messages = vid_database.receive(&vid).await?;
+
+            info!("listening for messages...");
 
             while let Some(Ok(message)) = messages.recv().await {
                 match message {
@@ -151,8 +170,8 @@ async fn main() -> Result<(), Error> {
                         message,
                         message_type: _,
                     } => {
-                        println!(
-                            "> received message ({} bytes) from {}:",
+                        info!(
+                            "received message ({} bytes) from {}",
                             message.len(),
                             sender.identifier(),
                         );
@@ -162,29 +181,22 @@ async fn main() -> Result<(), Error> {
                         sender,
                         thread_id: _,
                     } => {
-                        println!(
-                            "> received relationship request from {}",
-                            sender.identifier(),
-                        );
+                        info!("received relationship request from {}", sender.identifier(),);
                     }
                     ReceivedTspMessage::AcceptRelationship { sender } => {
-                        println!(
-                            "> received accept relationship from {}",
-                            sender.identifier(),
-                        );
+                        info!("received accept relationship from {}", sender.identifier(),);
                     }
                     ReceivedTspMessage::CancelRelationship { sender } => {
-                        println!(
-                            "> received cancel relationship from {}",
-                            sender.identifier(),
-                        );
+                        info!("received cancel relationship from {}", sender.identifier(),);
                     }
+                }
+
+                if one {
+                    break;
                 }
             }
         }
     }
-
-    write_database(&args.database, &vid_database).await?;
 
     Ok(())
 }
