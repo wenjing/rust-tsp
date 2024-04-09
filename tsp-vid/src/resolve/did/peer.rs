@@ -127,6 +127,7 @@ pub(crate) fn resolve_did_peer(parts: &[&str]) -> Result<Vid, Error> {
             public_enckey,
             relation_vid: None,
             parent_vid: None,
+            tunnel: None,
         }),
         (None, _, _) => Err(Error::ResolveVid("missing verification key in did:peer")),
         (_, None, _) => Err(Error::ResolveVid("missing encryption key in did:peer")),
@@ -158,6 +159,7 @@ mod test {
             public_enckey: public_enckey.to_bytes().into(),
             relation_vid: None,
             parent_vid: None,
+            tunnel: None,
         };
 
         vid.id = encode_did_peer(&vid);

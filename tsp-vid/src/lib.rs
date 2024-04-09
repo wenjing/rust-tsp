@@ -27,6 +27,7 @@ pub struct Vid {
     public_enckey: KeyData,
     relation_vid: Option<String>,
     parent_vid: Option<String>,
+    tunnel: Option<Box<[String]>>,
 }
 
 impl Vid {
@@ -36,6 +37,18 @@ impl Vid {
 
     pub fn set_relation_vid(&mut self, relation_vid: Option<&str>) {
         self.relation_vid = relation_vid.map(|r| r.to_string());
+    }
+
+    pub fn set_route(&mut self, route: &[impl AsRef<str>]) {
+        if route.is_empty() {
+            self.tunnel = None;
+        } else {
+            self.tunnel = Some(route.iter().map(|x| x.as_ref().to_owned()).collect())
+        }
+    }
+
+    pub fn get_route(&self) -> Option<&[String]> {
+        self.tunnel.as_deref()
     }
 }
 
@@ -145,6 +158,7 @@ impl PrivateVid {
                 public_enckey: public_enckey.to_bytes().into(),
                 relation_vid: None,
                 parent_vid: None,
+                tunnel: None,
             },
             sigkey,
             enckey: enckey.to_bytes().into(),
@@ -162,6 +176,7 @@ impl PrivateVid {
             public_enckey: public_enckey.to_bytes().into(),
             relation_vid: relation_vid.map(|s| s.to_string()),
             parent_vid: Some(self.identifier().to_string()),
+            tunnel: None,
         };
 
         vid.id = crate::resolve::did::peer::encode_did_peer(&vid);
