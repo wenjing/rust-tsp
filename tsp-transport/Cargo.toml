@@ -22,3 +22,4 @@ tracing-subscriber = { workspace = true }
 # http / https transport
 reqwest = { workspace = true }
 futures-util = { workspace = true }
+tokio-tungstenite = { workspace = true }

@@ -1,8 +1,8 @@
-use std::path::Path;
-
 use clap::{Parser, Subcommand};
 use serde::{Deserialize, Serialize};
-use tsp::{Error, PrivateVid, Vid, VidDatabase, VerifiedVid};
+use std::path::Path;
+use tokio::io::AsyncReadExt;
+use tsp::{Error, PrivateVid, ReceivedTspMessage, VerifiedVid, Vid, VidDatabase};
 
 #[derive(Debug, Parser)]
 #[command(name = "tsp")]
@@ -31,7 +31,11 @@ enum Commands {
         sender_vid: String,
         #[arg(short, long, required = true)]
         receiver_vid: String,
+        #[arg(short, long)]
+        non_confidential_data: Option<String>,
     },
+    #[command(arg_required_else_help = true)]
+    Receive { vid: String },
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -54,7 +58,7 @@ async fn write_database(database_file: &str, db: &VidDatabase) -> Result<(), Err
 
     tokio::fs::write(db_path, db_contents_json).await?;
 
-    print!("> persisted database to {database_file}");
+    println!("> persisted database to {database_file}");
 
     Ok(())
 }
@@ -84,7 +88,7 @@ async fn read_database(database_file: &str) -> Result<VidDatabase, Error> {
         let db = VidDatabase::new();
         write_database(database_file, &db).await?;
 
-        print!("> created new database");
+        println!("> created new database");
 
         Ok(db)
     }
@@ -103,7 +107,8 @@ async fn main() -> Result<(), Error> {
         }
         Commands::Create { username } => {
             let did = format!("did:web:tsp-test.org:user:{username}");
-            let transport = url::Url::parse(&format!("https://tsp-test.org/user/{username}")).unwrap();
+            let transport =
+                url::Url::parse(&format!("https://tsp-test.org/user/{username}")).unwrap();
             let private_vid = PrivateVid::bind(&did, transport);
 
             reqwest::Client::new()
@@ -116,7 +121,67 @@ async fn main() -> Result<(), Error> {
 
             println!("> created identity {}", private_vid.identifier());
         }
-        _ => println!("Nope"),
+        Commands::Send {
+            sender_vid,
+            receiver_vid,
+            non_confidential_data,
+        } => {
+            let non_confidential_data = non_confidential_data.as_deref().map(|s| s.as_bytes());
+
+            let mut message = Vec::new();
+            tokio::io::stdin().read_to_end(&mut message).await?;
+
+            vid_database
+                .send(&sender_vid, &receiver_vid, non_confidential_data, &message)
+                .await?;
+
+            println!(
+                "> sent message ({} bytes) from {sender_vid} to {receiver_vid}",
+                message.len()
+            );
+        }
+        Commands::Receive { vid } => {
+            let mut messages = vid_database.receive(&vid).await?;
+
+            while let Some(Ok(message)) = messages.recv().await {
+                match message {
+                    ReceivedTspMessage::GenericMessage {
+                        sender,
+                        nonconfidential_data: _,
+                        message,
+                        message_type: _,
+                    } => {
+                        println!(
+                            "> received message ({} bytes) from {}:",
+                            message.len(),
+                            sender.identifier(),
+                        );
+                        println!("{}", String::from_utf8_lossy(&message),);
+                    }
+                    ReceivedTspMessage::RequestRelationship {
+                        sender,
+                        thread_id: _,
+                    } => {
+                        println!(
+                            "> received relationship request from {}",
+                            sender.identifier(),
+                        );
+                    }
+                    ReceivedTspMessage::AcceptRelationship { sender } => {
+                        println!(
+                            "> received accept relationship from {}",
+                            sender.identifier(),
+                        );
+                    }
+                    ReceivedTspMessage::CancelRelationship { sender } => {
+                        println!(
+                            "> received cancel relationship from {}",
+                            sender.identifier(),
+                        );
+                    }
+                }
+            }
+        }
     }
 
     write_database(&args.database, &vid_database).await?;
