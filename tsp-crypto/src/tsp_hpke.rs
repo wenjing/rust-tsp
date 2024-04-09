@@ -39,7 +39,7 @@ where
         }
         Payload::CancelRelationship => tsp_cesr::Payload::RelationshipCancel,
         Payload::NestedMessage(data) => tsp_cesr::Payload::NestedMessage(data),
-        Payload::RoutedMessage(hops, data) => todo!(),
+        Payload::RoutedMessage(hops, data) => tsp_cesr::Payload::RoutedMessage(&hops, data),
     };
 
     // prepare CESR encoded ciphertext
@@ -153,6 +153,7 @@ where
         tsp_cesr::Payload::NestedRelationAffirm { .. } => todo!(),
         tsp_cesr::Payload::RelationshipCancel => Payload::CancelRelationship,
         tsp_cesr::Payload::NestedMessage(data) => Payload::NestedMessage(data),
+        tsp_cesr::Payload::RoutedMessage(hops, data) => Payload::RoutedMessage(hops.to_vec(), data),
     };
 
     Ok((envelope.nonconfidential_data, secret_payload, ciphertext))

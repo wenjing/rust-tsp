@@ -333,8 +333,12 @@ impl VidDatabase {
                 (_, None) => return Err(Error::InvalidVID("missing sender VID for receiver")),
             };
 
-	//TODO: is collect necessary here?
-	let hops = intermediaries.iter().skip(1).map(|x| x.id.clone()).collect::<Vec<_>>();
+        //TODO: is collect necessary here?
+        let hops = intermediaries
+            .iter()
+            .skip(1)
+            .map(|x| x.id.clone())
+            .collect::<Vec<_>>();
 
         let tsp_message = tsp_crypto::seal(
             &sender,

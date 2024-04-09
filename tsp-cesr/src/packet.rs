@@ -15,12 +15,14 @@ const HPKE_PUBLICKEY: u32 = (b'Q' - b'A') as u32;
 /// Constants that determine the specific CESR types for the framing codes
 const TSP_ETS_WRAPPER: u16 = (b'E' - b'A') as u16;
 const TSP_S_WRAPPER: u16 = (b'S' - b'A') as u16;
+const TSP_HOP_LIST: u16 = (b'I' - b'A') as u16;
 const TSP_PAYLOAD: u16 = (b'Z' - b'A') as u16;
 
 /// Constants to encode message types
 mod msgtype {
     pub(super) const GEN_MSG: [u8; 2] = [0, 0];
     pub(super) const NEST_MSG: [u8; 2] = [0, 1];
+    pub(super) const ROUTE_MSG: [u8; 2] = [0, 2];
     pub(super) const NEW_REL: [u8; 2] = [1, 0];
     pub(super) const NEW_REL_REPLY: [u8; 2] = [1, 1];
     pub(super) const NEW_NEST_REL: [u8; 2] = [1, 2];
@@ -69,11 +71,13 @@ pub struct PairedKeys<'a> {
 #[repr(u32)]
 #[derive(Debug)]
 #[cfg_attr(test, derive(PartialEq, Eq, Clone))]
-pub enum Payload<'a, Bytes: AsRef<[u8]>> {
+pub enum Payload<'a, Bytes: AsRef<[u8]>, Vid> {
     /// A TSP message which consists only of a message which will be protected using HPKE
     GenericMessage(Bytes),
-    /// A payload that conists of a TSP Envelope+Message (TODO: maybe add some extra decoding)
+    /// A payload that consists of a TSP Envelope+Message (TODO: maybe add some extra decoding)
     NestedMessage(Bytes),
+    /// A routed payload; same as above but with routing information attached
+    RoutedMessage(Vec<Vid>, Bytes),
     /// A TSP message requesting a relationship
     DirectRelationProposal { nonce: Nonce },
     /// A TSP message confiming a relationship
@@ -89,7 +93,7 @@ pub enum Payload<'a, Bytes: AsRef<[u8]>> {
     RelationshipCancel,
 }
 
-impl<'a, Bytes: AsRef<[u8]>> Payload<'a, Bytes> {
+impl<'a, Bytes: AsRef<[u8]>, Vid> Payload<'a, Bytes, Vid> {
     pub fn estimate_size(&self) -> usize {
         0 // TODO
     }
@@ -132,7 +136,7 @@ fn checked_encode_variable_data(
 /// Encode a TSP Payload into CESR for encryption
 /// TODO: add 'hops'
 pub fn encode_payload(
-    payload: Payload<impl AsRef<[u8]>>,
+    payload: Payload<impl AsRef<[u8]>, impl AsRef<[u8]>>,
     output: &mut impl for<'a> Extend<&'a u8>,
 ) -> Result<(), EncodeError> {
     encode_count(TSP_PAYLOAD, 1, output);
@@ -143,6 +147,14 @@ pub fn encode_payload(
         }
         Payload::NestedMessage(data) => {
             encode_fixed_data(TSP_TYPECODE, &msgtype::NEST_MSG, output);
+            checked_encode_variable_data(TSP_PLAINTEXT, data.as_ref(), output)?;
+        }
+        Payload::RoutedMessage(hops, data) => {
+            encode_fixed_data(TSP_TYPECODE, &msgtype::ROUTE_MSG, output);
+            encode_count(TSP_HOP_LIST, hops.len() as u16, output);
+            for hop in hops {
+                checked_encode_variable_data(TSP_DEVELOPMENT_VID, hop.as_ref(), output)?;
+            }
             checked_encode_variable_data(TSP_PLAINTEXT, data.as_ref(), output)?;
         }
         Payload::DirectRelationProposal { nonce } => {
@@ -173,7 +185,9 @@ pub fn encode_payload(
 }
 
 /// Decode a TSP Payload
-pub fn decode_payload(mut stream: &[u8]) -> Result<Payload<&[u8]>, DecodeError> {
+pub fn decode_payload<'a, Vid: TryFrom<&'a [u8]>>(
+    mut stream: &'a [u8],
+) -> Result<Payload<&'a [u8], Vid>, DecodeError> {
     let Some(1) = decode_count(TSP_PAYLOAD, &mut stream) else {
         return Err(DecodeError::VersionMismatch);
     };
@@ -190,6 +204,24 @@ pub fn decode_payload(mut stream: &[u8]) -> Result<Payload<&[u8]>, DecodeError> 
             }),
             msgtype::NEST_MSG => {
                 decode_variable_data(TSP_PLAINTEXT, &mut stream).map(Payload::NestedMessage)
+            }
+            msgtype::ROUTE_MSG => {
+                let hops =
+                    decode_count(TSP_HOP_LIST, &mut stream).ok_or(DecodeError::UnexpectedData)?;
+                if hops < 1 || hops > 63 {
+                    return Err(DecodeError::HopLength(hops));
+                }
+                let mut hop_list = Vec::with_capacity(hops as usize);
+                for _ in 0..hops {
+                    hop_list.push(
+                        decode_variable_data(TSP_DEVELOPMENT_VID, &mut stream)
+                            .ok_or(DecodeError::UnexpectedData)?
+                            .try_into()
+                            .map_err(|_| DecodeError::VidError)?,
+                    );
+                }
+                decode_variable_data(TSP_PLAINTEXT, &mut stream)
+                    .map(|msg| Payload::RoutedMessage(hop_list, msg))
             }
             msgtype::NEW_REL_REPLY => decode_fixed_data(TSP_SHA256, &mut stream)
                 .map(|reply| Payload::DirectRelationAffirm { reply }),
@@ -498,7 +530,9 @@ pub fn decode_envelope_mut<'a>(stream: &'a mut [u8]) -> Result<CipherView<'a>, D
 
 /// Allocating variant of [encode_payload]
 #[cfg(any(feature = "alloc", test))]
-pub fn encode_payload_vec(payload: Payload<impl AsRef<[u8]>>) -> Result<Vec<u8>, EncodeError> {
+pub fn encode_payload_vec(
+    payload: Payload<impl AsRef<[u8]>, impl AsRef<[u8]>>,
+) -> Result<Vec<u8>, EncodeError> {
     let mut data = vec![];
     encode_payload(payload, &mut data)?;
 
@@ -686,7 +720,8 @@ mod test {
         }
         let fixed_sig = [1; 64];
 
-        let cesr_payload = { encode_payload_vec(Payload::GenericMessage(b"Hello TSP!")).unwrap() };
+        let cesr_payload =
+            { encode_payload_vec(Payload::<_, &[u8]>::GenericMessage(b"Hello TSP!")).unwrap() };
 
         let mut outer = encode_ets_envelope_vec(Envelope {
             sender: &b"Alister"[..],
@@ -714,7 +749,7 @@ mod test {
         assert_eq!(env.receiver, Some(&b"Bobbi"[..]));
         assert_eq!(env.nonconfidential_data, None);
 
-        let Payload::GenericMessage(data) =
+        let Payload::<_, &[u8]>::GenericMessage(data) =
             decode_payload(dummy_crypt(ciphertext.unwrap())).unwrap()
         else {
             unreachable!();
@@ -729,7 +764,8 @@ mod test {
         }
         let fixed_sig = [1; 64];
 
-        let cesr_payload = { encode_payload_vec(Payload::GenericMessage(b"Hello TSP!")).unwrap() };
+        let cesr_payload =
+            { encode_payload_vec(Payload::<_, &[u8]>::GenericMessage(b"Hello TSP!")).unwrap() };
 
         let mut outer = encode_ets_envelope_vec(Envelope {
             sender: &b"Alister"[..],
@@ -757,7 +793,7 @@ mod test {
         assert_eq!(env.receiver, Some(&b"Bobbi"[..]));
         assert_eq!(env.nonconfidential_data, Some(&b"treasure"[..]));
 
-        let Payload::GenericMessage(data) =
+        let Payload::<_, &[u8]>::GenericMessage(data) =
             decode_payload(dummy_crypt(ciphertext.unwrap())).unwrap()
         else {
             unreachable!();
@@ -803,7 +839,8 @@ mod test {
         }
         let fixed_sig = [1; 64];
 
-        let cesr_payload = { encode_payload_vec(Payload::GenericMessage(b"Hello TSP!")).unwrap() };
+        let cesr_payload =
+            { encode_payload_vec(Payload::<_, &[u8]>::GenericMessage(b"Hello TSP!")).unwrap() };
 
         let mut outer = encode_s_envelope_vec(Envelope {
             sender: &b"Alister"[..],
@@ -897,7 +934,15 @@ mod test {
         test_turn_around(Payload::NestedMessage(&b"Hello TSP!"[..]));
     }
 
-    fn test_turn_around(payload: Payload<&[u8]>) {
+    #[test]
+    fn test_routed_msg() {
+        test_turn_around(Payload::RoutedMessage(
+            vec![b"foo", b"bar"],
+            &b"Hello TSP!"[..],
+        ));
+    }
+
+    fn test_turn_around(payload: Payload<&[u8], &[u8]>) {
         fn dummy_crypt(data: &[u8]) -> &[u8] {
             data
         }
