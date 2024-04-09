@@ -308,35 +308,39 @@ impl VidDatabase {
     ) -> Result<(), Error> {
         let inner_receiver = self.get_verified_vid(receiver).await?;
 
-        let intermediaries = self.get_route(inner_receiver).await?;
+        let intermediaries = self.get_route(&inner_receiver).await?;
 
         let first_hop = intermediaries
             .get(0)
             .ok_or_else(|| Error::InvalidVID("missing first hop VID in route"))?;
 
-        let (sender, inner_message) = match (first_hop.relation_vid(), inner_receiver.relation_vid()) {
-            (Some(first_sender), Some(inner_sender)) => {
-                let inner_sender = self.get_private_vid(inner_sender).await?;
-                let tsp_message = tsp_crypto::seal(
-                    &inner_sender,
-                    &inner_receiver,
-                    intermediary_extra_data,
-                    Payload::Content(message),
-                )?;
+        let (sender, inner_message) =
+            match (first_hop.relation_vid(), inner_receiver.relation_vid()) {
+                (Some(first_sender), Some(inner_sender)) => {
+                    let inner_sender = self.get_private_vid(inner_sender).await?;
+                    let tsp_message = tsp_crypto::seal(
+                        &inner_sender,
+                        &inner_receiver,
+                        intermediary_extra_data,
+                        Payload::Content(message),
+                    )?;
 
-                let first_sender = self.get_private_vid(first_sender).await?;
+                    let first_sender = self.get_private_vid(first_sender).await?;
 
-                (first_sender, tsp_message)
-            }
-            (None, _) => return Err(Error::InvalidVID("missing sender VID for first hop")),
-            (_, None) => return Err(Error::InvalidVID("missing sender VID for receiver")),
-        };
+                    (first_sender, tsp_message)
+                }
+                (None, _) => return Err(Error::InvalidVID("missing sender VID for first hop")),
+                (_, None) => return Err(Error::InvalidVID("missing sender VID for receiver")),
+            };
+
+	//TODO: is collect necessary here?
+	let hops = intermediaries.iter().skip(1).map(|x| x.id.clone()).collect::<Vec<_>>();
 
         let tsp_message = tsp_crypto::seal(
             &sender,
             first_hop,
             None,
-            Payload::RoutedMessage(&intermediaries[1..], &inner_message),
+            Payload::RoutedMessage(hops, &inner_message),
         )?;
 
         tsp_transport::send_message(first_hop.endpoint(), &tsp_message).await?;
@@ -361,8 +365,8 @@ impl VidDatabase {
     }
 
     /// Retrieve the route to [vid] from the database, if it exists.
-    async fn get_route(&self, _vid: Vid) -> Result<Vec<Vid>, Error> {
-	todo!()
+    async fn get_route(&self, _vid: &Vid) -> Result<Vec<Vid>, Error> {
+        todo!()
     }
 
     /// Decode an encrypted [message], which has to be addressed to one of the VID's in [receivers], and has to have

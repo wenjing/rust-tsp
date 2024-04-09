@@ -39,6 +39,7 @@ where
         }
         Payload::CancelRelationship => tsp_cesr::Payload::RelationshipCancel,
         Payload::NestedMessage(data) => tsp_cesr::Payload::NestedMessage(data),
+        Payload::RoutedMessage(hops, data) => todo!(),
     };
 
     // prepare CESR encoded ciphertext

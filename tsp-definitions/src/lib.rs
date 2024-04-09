@@ -39,10 +39,11 @@ pub enum ReceivedTspMessage<V: VerifiedVid> {
     },
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Payload<Bytes: AsRef<[u8]>> {
     Content(Bytes),
     NestedMessage(Bytes),
+    RoutedMessage(Vec<String>, Bytes),
     CancelRelationship,
     RequestRelationship,
     AcceptRelationship { thread_id: Digest },
@@ -53,6 +54,7 @@ impl<Bytes: AsRef<[u8]>> Payload<Bytes> {
         match self {
             Payload::Content(bytes) => bytes.as_ref(),
             Payload::NestedMessage(bytes) => bytes.as_ref(),
+            Payload::RoutedMessage(_, bytes) => bytes.as_ref(),
             Payload::CancelRelationship => &[],
             Payload::RequestRelationship => &[],
             Payload::AcceptRelationship { thread_id } => thread_id,
@@ -71,6 +73,17 @@ impl<Bytes: AsRef<[u8]>> fmt::Display for Payload<Bytes> {
                 "Nested Message: {}",
                 String::from_utf8_lossy(bytes.as_ref())
             ),
+            Payload::RoutedMessage(hops, bytes) => {
+                write!(
+                    f,
+                    "Routed Message: {}, route: [",
+                    String::from_utf8_lossy(bytes.as_ref())
+                )?;
+                for vid in hops {
+                    write!(f, "{}", vid)?
+                }
+                write!(f, "]")
+            }
             Payload::CancelRelationship => write!(f, "Cancel Relationship"),
             Payload::RequestRelationship => write!(f, "Request Relationship"),
             Payload::AcceptRelationship { thread_id: _ } => write!(f, "Accept Relationship"),
