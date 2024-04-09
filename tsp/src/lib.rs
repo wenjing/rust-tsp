@@ -6,8 +6,10 @@ use tokio::sync::{
     RwLock,
 };
 use tsp_cesr::EnvelopeType;
-use tsp_definitions::{Digest, Error, MessageType, Payload, ReceivedTspMessage, VerifiedVid};
-use tsp_vid::{PrivateVid, Vid};
+use tsp_definitions::{Digest, MessageType, Payload, VerifiedVid};
+
+pub use tsp_definitions::{Error, ReceivedTspMessage};
+pub use tsp_vid::{PrivateVid, Vid};
 
 /// Holds private ands verified VID's
 #[derive(Debug, Default)]
@@ -67,6 +69,14 @@ impl VidDatabase {
         let private_vid = PrivateVid::from_file(format!("../examples/{name}")).await?;
 
         self.add_private_vid(private_vid).await
+    }
+
+    /// Export the database as a tuple of private and verified VID's
+    pub async fn export(&self) -> Result<(Vec<PrivateVid>, Vec<Vid>), Error> {
+        let private_vids = self.private_vids.read().await.values().cloned().collect();
+        let verified_vids = self.verified_vids.read().await.values().cloned().collect();
+
+        Ok((private_vids, verified_vids))
     }
 
     /// Resolve public key material for a VID identified by [vid] and add it to the database as a relationship
