@@ -131,6 +131,7 @@ pub fn resolve_document(did_document: DidDocument, target_id: &str) -> Result<Vi
         public_enckey,
         relation_vid: None,
         parent_vid: None,
+        tunnel: None,
     })
 }
 

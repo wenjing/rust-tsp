@@ -308,11 +308,11 @@ impl VidDatabase {
     ) -> Result<(), Error> {
         let inner_receiver = self.get_verified_vid(receiver).await?;
 
-        let intermediaries = self.get_route(&inner_receiver).await?;
+        let Some(intermediaries) = inner_receiver.get_route() else {
+            return Err(VidError::ResolveVid("no route established for VID").into());
+        };
 
-        let first_hop = intermediaries
-            .get(0)
-            .ok_or_else(|| Error::InvalidVID("missing first hop VID in route"))?;
+        let first_hop = self.get_verified_vid(&intermediaries[0]).await?;
 
         let (sender, inner_message) =
             match (first_hop.relation_vid(), inner_receiver.relation_vid()) {
@@ -329,20 +329,23 @@ impl VidDatabase {
 
                     (first_sender, tsp_message)
                 }
-                (None, _) => return Err(Error::InvalidVID("missing sender VID for first hop")),
-                (_, None) => return Err(Error::InvalidVID("missing sender VID for receiver")),
+                (None, _) => {
+                    return Err(VidError::ResolveVid("missing sender VID for first hop").into())
+                }
+                (_, None) => {
+                    return Err(VidError::ResolveVid("missing sender VID for receiver").into())
+                }
             };
 
         //TODO: is collect necessary here?
-        let hops = intermediaries
+        let hops = intermediaries[1..]
             .iter()
-            .skip(1)
             .map(|x| x.as_ref())
             .collect::<Vec<_>>();
 
         let tsp_message = tsp_crypto::seal(
             &sender,
-            first_hop,
+            &first_hop,
             None,
             Payload::RoutedMessage(hops, &inner_message),
         )?;
@@ -366,11 +369,6 @@ impl VidDatabase {
             Some(resolved) => Ok(resolved.clone()),
             None => Err(Error::UnverifiedVid(vid.to_string())),
         }
-    }
-
-    /// Retrieve the route to [vid] from the database, if it exists.
-    async fn get_route(&self, _vid: &Vid) -> Result<Vec<Vid>, Error> {
-        todo!()
     }
 
     /// Decode an encrypted [message], which has to be addressed to one of the VID's in [receivers], and has to have
