@@ -37,6 +37,12 @@ pub enum ReceivedTspMessage<V: VerifiedVid> {
     CancelRelationship {
         sender: V,
     },
+    ForwardRequest {
+        sender: V,
+        next_hop: V,
+        route: Vec<Vec<u8>>,
+        opaque_payload: Vec<u8>,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
