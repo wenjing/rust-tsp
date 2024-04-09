@@ -2,7 +2,7 @@ use std::path::Path;
 
 use clap::{Parser, Subcommand};
 use serde::{Deserialize, Serialize};
-use tsp::{Error, PrivateVid, Vid, VidDatabase};
+use tsp::{Error, PrivateVid, Vid, VidDatabase, VerifiedVid};
 
 #[derive(Debug, Parser)]
 #[command(name = "tsp")]
@@ -24,7 +24,7 @@ enum Commands {
     #[command(arg_required_else_help = true)]
     Verify { vid: String },
     #[command(arg_required_else_help = true)]
-    Add { identity_file: String },
+    Create { username: String },
     #[command(arg_required_else_help = true)]
     Send {
         #[arg(short, long, required = true)]
@@ -50,9 +50,11 @@ async fn write_database(database_file: &str, db: &VidDatabase) -> Result<(), Err
         verified_vids,
     };
 
-    let db_contents_json = serde_json::to_string(&db_contents)?;
+    let db_contents_json = serde_json::to_string_pretty(&db_contents)?;
 
     tokio::fs::write(db_path, db_contents_json).await?;
+
+    print!("> persisted database to {database_file}");
 
     Ok(())
 }
@@ -65,11 +67,15 @@ async fn read_database(database_file: &str) -> Result<VidDatabase, Error> {
 
         let db = VidDatabase::new();
 
+        println!("> opened database {database_file}");
+
         for private_vid in db_contents.private_vids {
+            println!("* loaded {} (private)", private_vid.identifier());
             db.add_private_vid(private_vid).await?;
         }
 
         for verified_vid in db_contents.verified_vids {
+            println!("* loaded {}", verified_vid.identifier());
             db.add_verified_vid(verified_vid).await?;
         }
 
@@ -77,6 +83,8 @@ async fn read_database(database_file: &str) -> Result<VidDatabase, Error> {
     } else {
         let db = VidDatabase::new();
         write_database(database_file, &db).await?;
+
+        print!("> created new database");
 
         Ok(db)
     }
@@ -86,14 +94,32 @@ async fn read_database(database_file: &str) -> Result<VidDatabase, Error> {
 async fn main() -> Result<(), Error> {
     let args = Cli::parse();
 
-    let _vid_database = read_database(&args.database).await?;
+    let mut vid_database = read_database(&args.database).await?;
 
     match args.command {
         Commands::Verify { vid } => {
-            println!("{vid}");
+            vid_database.resolve_vid(&vid).await?;
+            println!("> {vid} is verified and added to the database");
+        }
+        Commands::Create { username } => {
+            let did = format!("did:web:tsp-test.org:user:{username}");
+            let transport = url::Url::parse(&format!("https://tsp-test.org/user/{username}")).unwrap();
+            let private_vid = PrivateVid::bind(&did, transport);
+
+            reqwest::Client::new()
+                .post("https://tsp-test.org/add-vid")
+                .json(&private_vid)
+                .send()
+                .await?;
+
+            vid_database.add_private_vid(private_vid.clone()).await?;
+
+            println!("> created identity {}", private_vid.identifier());
         }
         _ => println!("Nope"),
     }
+
+    write_database(&args.database, &vid_database).await?;
 
     Ok(())
 }

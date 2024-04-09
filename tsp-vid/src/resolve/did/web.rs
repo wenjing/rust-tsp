@@ -133,6 +133,53 @@ pub fn resolve_document(did_document: DidDocument, target_id: &str) -> Result<Vi
     })
 }
 
+pub fn vid_to_did_document(vid: &Vid) -> serde_json::Value {
+    let id = vid.identifier();
+
+    json!({
+        "@context": [
+            "https://www.w3.org/ns/did/v1",
+            "https://w3id.org/security/suites/jws-2020/v1"
+        ],
+        "id": id,
+        "verificationMethod": [
+            {
+                "id": format!("{id}#verification-key"),
+                "type": "JsonWebKey2020",
+                "controller":  format!("{id}"),
+                "publicKeyJwk": {
+                    "kty": "OKP",
+                    "crv": "Ed25519",
+                    "use": "sig",
+                    "x": Base64UrlUnpadded::encode_string(vid.verifying_key()),
+                }
+            },
+            {
+                "id": format!("{id}#encryption-key"),
+                "type": "JsonWebKey2020",
+                "controller": format!("{id}"),
+                "publicKeyJwk": {
+                    "kty": "OKP",
+                    "crv": "X25519",
+                    "use": "enc",
+                    "x": Base64UrlUnpadded::encode_string(vid.encryption_key()),
+                }
+            },
+        ],
+        "authentication": [
+            format!("{id}#verification-key"),
+        ],
+        "keyAgreement": [
+            format!("{id}#encryption-key"),
+        ],
+        "service": [{
+            "id": "#tsp-transport",
+            "type": "TSPTransport",
+            "serviceEndpoint": vid.transport.to_string()
+        }]
+    })
+}
+
 pub fn create_did_web(
     name: &str,
     domain: &str,
@@ -147,48 +194,7 @@ pub fn create_did_web(
         "signing-key": Base64UrlUnpadded::encode_string(private_vid.signing_key()),
     });
 
-    let did_doc = json!({
-        "@context": [
-            "https://www.w3.org/ns/did/v1",
-            "https://w3id.org/security/suites/jws-2020/v1"
-        ],
-        "id": did,
-        "verificationMethod": [
-            {
-                "id": format!("{did}#verification-key"),
-                "type": "JsonWebKey2020",
-                "controller":  format!("{did}"),
-                "publicKeyJwk": {
-                    "kty": "OKP",
-                    "crv": "Ed25519",
-                    "use": "sig",
-                    "x": Base64UrlUnpadded::encode_string(private_vid.verifying_key()),
-                }
-            },
-            {
-                "id": format!("{did}#encryption-key"),
-                "type": "JsonWebKey2020",
-                "controller": format!("{did}"),
-                "publicKeyJwk": {
-                    "kty": "OKP",
-                    "crv": "X25519",
-                    "use": "enc",
-                    "x": Base64UrlUnpadded::encode_string(private_vid.encryption_key()),
-                }
-            },
-        ],
-        "authentication": [
-            format!("{did}#verification-key"),
-        ],
-        "keyAgreement": [
-            format!("{did}#encryption-key"),
-        ],
-        "service": [{
-            "id": "#tsp-transport",
-            "type": "TSPTransport",
-            "serviceEndpoint": transport
-        }]
-    });
+    let did_doc = vid_to_did_document(private_vid.vid());
 
     (did_doc, private_doc, private_vid)
 }

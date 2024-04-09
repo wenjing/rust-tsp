@@ -1,12 +1,8 @@
 use axum::{
-    extract::{
+    body::Bytes, extract::{
         ws::{Message, WebSocket},
         Path, State, WebSocketUpgrade,
-    },
-    http::{header, StatusCode},
-    response::{Html, IntoResponse, Response},
-    routing::{get, post},
-    Form, Json, Router,
+    }, http::{header, StatusCode}, response::{Html, IntoResponse, Response}, routing::{get, post}, Form, Json, Router
 };
 use base64ct::{Base64UrlUnpadded, Encoding};
 use futures::{sink::SinkExt, stream::StreamExt};
@@ -54,7 +50,9 @@ async fn main() {
         .route("/script.js", get(script))
         .route("/create-identity", post(create_identity))
         .route("/resolve-vid", post(resolve_vid))
+        .route("/add-vid", post(add_vid))
         .route("/user/:name/did.json", get(get_did_doc))
+        .route("/user/:name", post(send_message_to_user))
         .route("/send-message", post(send_message))
         .route("/receive-messages", get(websocket_handler))
         .with_state(state);
@@ -140,6 +138,21 @@ async fn resolve_vid(
     }
 }
 
+/// Add did document to the local state
+async fn add_vid(State(state): State<Arc<AppState>>, Json(vid): Json<Vid>) -> Response {
+    let did_doc = tsp_vid::vid_to_did_document(&vid);
+
+    state.db.write().await.insert(
+        vid.identifier().to_string(),
+        Identity {
+            did_doc,
+            vid: vid.clone(),
+        },
+    );
+
+    Json(&vid).into_response()
+}
+
 /// Get the DID document of a user
 async fn get_did_doc(State(state): State<Arc<AppState>>, Path(name): Path<String>) -> Response {
     let key = format!("did:web:{DOMAIN}:user:{name}");
@@ -192,6 +205,16 @@ struct SendMessageForm {
     nonconfidential_data: Option<String>,
     sender: PrivateVid,
     receiver: Vid,
+}
+
+async fn send_message_to_user(
+    State(state): State<Arc<AppState>>,
+    Path(name): Path<String>,
+    body: Bytes,
+) -> Response {
+    
+    
+    StatusCode::OK.into_response()
 }
 
 /// Send a TSP message using a HTML form
