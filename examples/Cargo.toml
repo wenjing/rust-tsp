@@ -12,6 +12,14 @@ rust-version.workspace = true
 name = "create-did-web"
 path = "src/create-did-web.rs"
 
+[[bin]]
+name = "cli"
+path = "src/cli.rs"
+
 [dependencies]
+tsp = { path = "../tsp" }
 tsp-vid = { path = "../tsp-vid" }
-serde_json = { version = "1.0" }
+tokio = { workspace = true}
+clap = { workspace = true}
+serde = { workspace = true}
+serde_json = { workspace = true}
