@@ -13,6 +13,7 @@ pub enum DecodeError {
     SignatureError,
     VidError,
     VersionMismatch,
+    HopLength(u16),
 }
 
 #[cfg(feature = "std")]
