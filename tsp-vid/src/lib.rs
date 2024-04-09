@@ -19,7 +19,7 @@ pub use resolve::{
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Vid {
-    id: String,
+    pub id: String,
     transport: url::Url,
     #[serde(with = "serde_public_sigkey")]
     public_sigkey: Ed::VerifyingKey,
