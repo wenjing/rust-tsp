@@ -62,6 +62,35 @@ Or if you had already followed the build instructions above, simply open `target
 
 In the future, documentation will be available at [docs.rs](https://docs.rs).
 
+# Test CLI
+
+The examples crate contains a test CLI interface for this library.
+
+Install it by running the following command in the project root:
+```sh
+cargo install --path examples/ --bin tsp
+```
+
+To create an identity:
+```sh
+tsp create bob
+```
+
+To verify a VID:
+```sh
+tsp verify did:web:tsp-test.org:user:alice
+```
+
+To listen for - and receive messages:
+```sh
+tsp receive --one did:web:tsp-test.org:user:bob
+```
+
+To send a message:
+```sh
+echo "Hello World!" | tsp send -s did:web:tsp-test.org:user:alice -r did:web:tsp-test.org:user:bob
+```
+
 # Technical specification
 
 See https://hackmd.io/@2JvzP98CRBm6AyIDDz-2tw/H147MYkjp for the technical specification.
