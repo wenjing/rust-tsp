@@ -8,6 +8,13 @@ allow-osi-fsf-free = "either"
 copyleft = "deny"
 private = { ignore = true }
 
+# note: this is temporary; a future update to RusTLS will
+# remove ring from the dependency tree
+[[licenses.clarify]]
+crate = "ring"
+expression = "ISC AND OpenSSL AND MIT"
+license-files = [ { path = "LICENSE", hash = 0xbd0eed23 } ]
+
 [sources]
 allow-git = [
     "https://github.com/marlonbaeten/rust-hpke",
