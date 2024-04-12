@@ -207,7 +207,7 @@ pub fn decode_payload<'a, Vid: TryFrom<&'a [u8]>>(
             msgtype::ROUTE_MSG => {
                 let hops =
                     decode_count(TSP_HOP_LIST, &mut stream).ok_or(DecodeError::UnexpectedData)?;
-                if hops < 1 || hops > 63 {
+                if !(1..=63).contains(&hops) {
                     return Err(DecodeError::HopLength(hops));
                 }
                 let mut hop_list = Vec::with_capacity(hops as usize);
