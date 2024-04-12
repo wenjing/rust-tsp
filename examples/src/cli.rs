@@ -199,6 +199,15 @@ async fn run() -> Result<(), Error> {
                     ReceivedTspMessage::CancelRelationship { sender } => {
                         info!("received cancel relationship from {}", sender.identifier(),);
                     }
+                    ReceivedTspMessage::ForwardRequest {
+                        sender, next_hop, ..
+                    } => {
+                        info!(
+                            "messaing forwarding request from {} to {}",
+                            sender.identifier(),
+                            next_hop.identifier()
+                        );
+                    }
                 }
 
                 if one {
