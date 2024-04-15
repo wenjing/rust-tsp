@@ -13,6 +13,7 @@ tsp-definitions = { path = "../tsp-definitions" }
 url = { workspace = true }
 hpke = { workspace = true }
 rand ={ workspace = true }
+thiserror = { workspace = true }
 # resolve
 reqwest = { workspace = true }
 serde = { workspace = true }

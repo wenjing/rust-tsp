@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 use tsp_definitions::{KeyData, VerifiedVid};
 
 pub mod deserialize;
+pub mod error;
 pub mod resolve;
 
 pub use resolve::{

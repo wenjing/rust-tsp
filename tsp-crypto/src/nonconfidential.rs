@@ -1,6 +1,8 @@
 use ed25519_dalek::ed25519::signature::Signer;
 use tsp_cesr::{DecodedEnvelope, Envelope};
-use tsp_definitions::{Error, Sender, TSPMessage, VerifiedVid};
+use tsp_definitions::{Sender, TSPMessage, VerifiedVid};
+
+use crate::error::Error;
 
 /// Construct and sign a non-confidential TSP message
 pub fn sign(

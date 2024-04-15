@@ -1,8 +1,8 @@
-use tsp_definitions::{
-    Error, NonConfidentialData, Payload, Receiver, Sender, TSPMessage, VerifiedVid,
-};
+use crate::error::Error;
+use tsp_definitions::{NonConfidentialData, Payload, Receiver, Sender, TSPMessage, VerifiedVid};
 
 mod digest;
+pub mod error;
 mod nonconfidential;
 mod tsp_hpke;
 

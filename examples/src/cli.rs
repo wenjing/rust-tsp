@@ -60,9 +60,12 @@ async fn write_database(database_file: &str, db: &VidDatabase) -> Result<(), Err
         verified_vids,
     };
 
-    let db_contents_json = serde_json::to_string_pretty(&db_contents)?;
+    let db_contents_json =
+        serde_json::to_string_pretty(&db_contents).expect("Could not serialize database");
 
-    tokio::fs::write(db_path, db_contents_json).await?;
+    tokio::fs::write(db_path, db_contents_json)
+        .await
+        .expect("Could not write database");
 
     info!("persisted database to {database_file}");
 
@@ -72,8 +75,12 @@ async fn write_database(database_file: &str, db: &VidDatabase) -> Result<(), Err
 async fn read_database(database_file: &str) -> Result<VidDatabase, Error> {
     let db_path = Path::new(database_file);
     if db_path.exists() {
-        let contents = tokio::fs::read_to_string(db_path).await?;
-        let db_contents: DatabaseContents = serde_json::from_str(&contents)?;
+        let contents = tokio::fs::read_to_string(db_path)
+            .await
+            .expect("Could not read database file");
+
+        let db_contents: DatabaseContents =
+            serde_json::from_str(&contents).expect("Could not deserialize database");
 
         let db = VidDatabase::new();
 
@@ -131,7 +138,8 @@ async fn main() -> Result<(), Error> {
                 .post("https://tsp-test.org/add-vid")
                 .json(&private_vid)
                 .send()
-                .await?;
+                .await
+                .expect("Could not publis VID on server");
 
             vid_database.add_private_vid(private_vid.clone()).await?;
             write_database(&args.database, &vid_database).await?;
@@ -146,7 +154,10 @@ async fn main() -> Result<(), Error> {
             let non_confidential_data = non_confidential_data.as_deref().map(|s| s.as_bytes());
 
             let mut message = Vec::new();
-            tokio::io::stdin().read_to_end(&mut message).await?;
+            tokio::io::stdin()
+                .read_to_end(&mut message)
+                .await
+                .expect("Could not read message from stdin");
 
             vid_database
                 .send(&sender_vid, &receiver_vid, non_confidential_data, &message)

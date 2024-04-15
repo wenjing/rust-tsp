@@ -24,6 +24,7 @@ async-stream = { workspace = true }
 futures = { workspace = true }
 tokio-util = { workspace = true }
 async-recursion = { workspace = true }
+thiserror = { workspace = true }
 
 [dev-dependencies]
 serial_test = { version = "3.0" }
