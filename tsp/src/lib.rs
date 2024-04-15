@@ -65,13 +65,10 @@ impl VidDatabase {
         vid: &str,
         change: impl FnOnce(&mut Vid) -> Result<(), Error>,
     ) -> Result<(), Error> {
-        let mut locked_vids = self.verified_vids.write().await;
-
-        let Some(resolved) = locked_vids.get_mut(vid) else {
-            return Err(Error::UnverifiedVid(vid.to_string()));
-        };
-
-        change(resolved)
+        match self.verified_vids.write().await.get_mut(vid) {
+            Some(resolved) => change(resolved),
+            None => Err(Error::UnverifiedVid(vid.to_string())),
+        }
     }
 
     /// Adds a relation to an already existing vid, making it a nested Vid
@@ -81,25 +78,20 @@ impl VidDatabase {
         relation_vid: Option<&str>,
     ) -> Result<(), Error> {
         self.modify_verified_vid(vid, |resolved| {
-            if resolved.parent_vid().is_some() {
-                resolved.set_relation_vid(relation_vid);
+            resolved.set_relation_vid(relation_vid);
 
-                Ok(())
-            } else {
-                Err(Error::InvalidVID(
-                    "attempt to set a relation for a non-nested vid",
-                ))
-            }
+            Ok(())
         })
         .await
     }
 
     /// Adds a route to an already existing vid, making it a nested Vid
-    pub async fn set_route_for_vid(
-        &self,
-        vid: &str,
-        route: &[impl AsRef<str>],
-    ) -> Result<(), Error> {
+    pub async fn set_route_for_vid(&self, vid: &str, route: &[&str]) -> Result<(), Error> {
+        if route.len() == 1 {
+            return Err(Error::InvalidRoute(
+                "A route must have at least two VID's".into(),
+            ));
+        }
         self.modify_verified_vid(vid, |resolved| {
             resolved.set_route(route);
 
@@ -699,6 +691,112 @@ mod test {
         };
 
         assert_eq!(message, b"hello nested world".to_vec());
+    }
+
+    #[tokio::test]
+    #[serial_test::serial(tcp)]
+    async fn test_routed_mode() {
+        use tsp_definitions::VerifiedVid;
+        tsp_transport::tcp::start_broadcast_server("127.0.0.1:1337")
+            .await
+            .unwrap();
+
+        let mut bob_db = VidDatabase::new();
+        bob_db
+            .add_private_vid_from_file("test/bob.json")
+            .await
+            .unwrap();
+
+        let mut alice_db = VidDatabase::new();
+        alice_db
+            .add_private_vid_from_file("test/alice.json")
+            .await
+            .unwrap();
+
+        // inform bob about alice
+        bob_db
+            .resolve_vid("did:web:did.tsp-test.org:user:alice")
+            .await
+            .unwrap();
+        bob_db
+            .resolve_vid("did:web:did.tsp-test.org:user:bob")
+            .await
+            .unwrap();
+
+        // let alice listen
+        let mut _alice_messages = alice_db
+            .receive("did:web:did.tsp-test.org:user:alice")
+            .await
+            .unwrap();
+
+        // let bob listen as an intermediary
+        let mut bobs_messages = bob_db
+            .receive("did:web:did.tsp-test.org:user:bob")
+            .await
+            .unwrap();
+
+        // inform alice about the nodes
+        alice_db
+            .resolve_vid("did:web:did.tsp-test.org:user:alice")
+            .await
+            .unwrap();
+        alice_db
+            .resolve_vid("did:web:did.tsp-test.org:user:bob")
+            .await
+            .unwrap();
+        alice_db
+            .set_route_for_vid(
+                "did:web:did.tsp-test.org:user:alice",
+                &[
+                    "did:web:did.tsp-test.org:user:bob",
+                    "did:web:did.tsp-test.org:user:alice",
+                    "did:web:hidden.web:user:realbob",
+                ],
+            )
+            .await
+            .unwrap();
+        alice_db
+            .set_relation_for_vid(
+                "did:web:did.tsp-test.org:user:bob",
+                Some("did:web:did.tsp-test.org:user:alice"),
+            )
+            .await
+            .unwrap();
+        alice_db
+            .set_relation_for_vid(
+                "did:web:did.tsp-test.org:user:alice",
+                Some("did:web:did.tsp-test.org:user:alice"),
+            )
+            .await
+            .unwrap();
+
+        // let alice send a message via bob to herself
+        alice_db
+            .send_routed(
+                "did:web:did.tsp-test.org:user:alice",
+                None,
+                b"hello self (via bob)",
+            )
+            .await
+            .unwrap();
+
+        // let bob receive the message
+        let tsp_definitions::ReceivedTspMessage::ForwardRequest {
+            opaque_payload: _,
+            sender,
+            next_hop,
+            route,
+        } = bobs_messages.recv().await.unwrap().unwrap()
+        else {
+            panic!("bob did not receive a forward request")
+        };
+
+        assert_eq!(sender.identifier(), "did:web:did.tsp-test.org:user:alice");
+        assert_eq!(next_hop.identifier(), "did:web:did.tsp-test.org:user:alice");
+        assert_eq!(route, vec![b"did:web:hidden.web:user:realbob"]);
+
+        // bob is going to ignore the routing information and send it to alice
+        //bob_db.send_nested("did:web:did.tsp-test.org:user:alice", None, opaque_payload) ??
     }
 
     async fn faulty_send(
