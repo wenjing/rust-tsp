@@ -59,6 +59,55 @@ impl VidDatabase {
         Ok(id)
     }
 
+    /// Modify a verified-vid by applying an operation to it (internal use only)
+    async fn modify_verified_vid(
+        &self,
+        vid: &str,
+        change: impl FnOnce(&mut Vid) -> Result<(), Error>,
+    ) -> Result<(), Error> {
+        let mut locked_vids = self.verified_vids.write().await;
+
+        let Some(resolved) = locked_vids.get_mut(vid) else {
+            return Err(Error::UnverifiedVid(vid.to_string()));
+        };
+
+        change(resolved)
+    }
+
+    /// Adds a relation to an already existing vid, making it a nested Vid
+    pub async fn set_relation_for_vid(
+        &self,
+        vid: &str,
+        relation_vid: Option<&str>,
+    ) -> Result<(), Error> {
+        self.modify_verified_vid(vid, |resolved| {
+            if resolved.parent_vid().is_some() {
+                resolved.set_relation_vid(relation_vid);
+
+                Ok(())
+            } else {
+                Err(Error::InvalidVID(
+                    "attempt to set a relation for a non-nested vid",
+                ))
+            }
+        })
+        .await
+    }
+
+    /// Adds a route to an already existing vid, making it a nested Vid
+    pub async fn set_route_for_vid(
+        &self,
+        vid: &str,
+        route: &[impl AsRef<str>],
+    ) -> Result<(), Error> {
+        self.modify_verified_vid(vid, |resolved| {
+            resolved.set_route(route);
+
+            Ok(())
+        })
+        .await
+    }
+
     /// Add the already resolved [verified_vid] to the database as a relationship
     pub async fn add_verified_vid(&self, verified_vid: Vid) -> Result<(), Error> {
         let mut verified_vids = self.verified_vids.write().await;
