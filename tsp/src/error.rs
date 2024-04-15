@@ -12,6 +12,8 @@ pub enum Error {
     Vid(#[from] tsp_vid::error::Error),
     #[error("Error: {0}")]
     Utf8(#[from] std::str::Utf8Error),
+    #[error("Error: {0}")]
+    InvalidRoute(String),
     #[error("Error: unresolved vid {0}")]
     UnverifiedVid(String),
 }
