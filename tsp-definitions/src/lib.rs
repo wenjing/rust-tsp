@@ -1,7 +1,7 @@
+use core::fmt;
 use futures::Stream;
 use std::pin::Pin;
 use tokio_util::bytes::BytesMut;
-use core::fmt;
 
 pub type KeyData = [u8; 32];
 pub type Digest = [u8; 32];
