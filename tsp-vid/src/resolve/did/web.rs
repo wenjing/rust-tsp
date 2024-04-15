@@ -1,10 +1,10 @@
 use base64ct::{Base64UrlUnpadded, Encoding};
 use serde::Deserialize;
 use serde_json::json;
-use tsp_definitions::{Error, Receiver, Sender, VerifiedVid};
+use tsp_definitions::{Receiver, Sender, VerifiedVid};
 use url::Url;
 
-use crate::{PrivateVid, Vid};
+use crate::{error::Error, PrivateVid, Vid};
 
 pub(crate) const SCHEME: &str = "web";
 
@@ -54,14 +54,15 @@ pub struct PublicKeyJwk {
 }
 
 pub fn resolve_url(parts: &[&str]) -> Result<Url, Error> {
-    Ok(match parts {
+    match parts {
         ["did", "web", domain] => format!("{PROTOCOL}{domain}/{DEFAULT_PATH}/{DOCUMENT}"),
         ["did", "web", domain, "user", username] => {
             format!("{PROTOCOL}{domain}/user/{username}/{DOCUMENT}")
         }
-        _ => return Err(Error::InvalidVID("unknown VID type")),
+        _ => return Err(Error::InvalidVid(parts.join(":"))),
     }
-    .parse()?)
+    .parse()
+    .map_err(|_| Error::InvalidVid(parts.join(":")))
 }
 
 pub fn find_first_key(
@@ -91,7 +92,7 @@ pub fn find_first_key(
 
 pub fn resolve_document(did_document: DidDocument, target_id: &str) -> Result<Vid, Error> {
     if did_document.id != target_id {
-        return Err(Error::ResolveVID("Invalid id specified in DID document"));
+        return Err(Error::ResolveVid("Invalid id specified in DID document"));
     }
 
     let Some(public_sigkey) = find_first_key(
@@ -101,13 +102,13 @@ pub fn resolve_document(did_document: DidDocument, target_id: &str) -> Result<Vi
         "sig",
     )
     .and_then(|key| ed25519_dalek::VerifyingKey::from_bytes(&key).ok()) else {
-        return Err(Error::ResolveVID("No valid sign key found in DID document"));
+        return Err(Error::ResolveVid("No valid sign key found in DID document"));
     };
 
     let Some(public_enckey) =
         find_first_key(&did_document, &did_document.key_agreement, "X25519", "enc")
     else {
-        return Err(Error::ResolveVID(
+        return Err(Error::ResolveVid(
             "No valid encryption key found in DID document",
         ));
     };
@@ -120,7 +121,7 @@ pub fn resolve_document(did_document: DidDocument, target_id: &str) -> Result<Vi
         }
     }) {
         Some(service) => service.service_endpoint,
-        None => return Err(Error::ResolveVID("No transport found in the DID document")),
+        None => return Err(Error::ResolveVid("No transport found in the DID document")),
     };
 
     Ok(Vid {
@@ -202,10 +203,13 @@ pub fn create_did_web(
 #[cfg(test)]
 mod tests {
     use std::fs;
-    use tsp_definitions::{Error, VerifiedVid};
+    use tsp_definitions::VerifiedVid;
     use url::Url;
 
-    use crate::resolve::did::web::{resolve_document, DidDocument};
+    use crate::{
+        error::Error,
+        resolve::did::web::{resolve_document, DidDocument},
+    };
 
     use super::resolve_url;
 

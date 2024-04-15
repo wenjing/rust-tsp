@@ -6,10 +6,14 @@ use tokio::sync::{
     RwLock,
 };
 use tsp_cesr::EnvelopeType;
+use tsp_crypto::error::Error as CryptoError;
 use tsp_definitions::{Digest, MessageType, Payload};
 
-pub use tsp_definitions::{Error, ReceivedTspMessage, VerifiedVid};
-pub use tsp_vid::{PrivateVid, Vid};
+pub use crate::error::Error;
+pub use tsp_definitions::{ReceivedTspMessage, VerifiedVid};
+pub use tsp_vid::{error::Error as VidError, PrivateVid, Vid};
+
+mod error;
 
 /// Holds private ands verified VID's
 #[derive(Debug, Default)]
@@ -267,11 +271,17 @@ impl VidDatabase {
 
                             (parent_sender, parent_receiver, tsp_message)
                         }
-                        None => return Err(Error::InvalidVID("missing parent for inner VID")),
+                        None => {
+                            return Err(VidError::ResolveVid("missing parent for inner VID").into())
+                        }
                     }
                 }
-                (None, _) => return Err(Error::InvalidVID("missing parent VID for receiver")),
-                (_, None) => return Err(Error::InvalidVID("missing sender VID for receiver")),
+                (None, _) => {
+                    return Err(VidError::ResolveVid("missing parent VID for receiver").into())
+                }
+                (_, None) => {
+                    return Err(VidError::ResolveVid("missing sender VID for receiver").into())
+                }
             };
 
         let tsp_message = tsp_crypto::seal(
@@ -320,7 +330,7 @@ impl VidDatabase {
                 let intended_receiver = std::str::from_utf8(intended_receiver)?;
 
                 let Some(intended_receiver) = receivers.get(intended_receiver) else {
-                    return Err(Error::UnexpectedRecipient);
+                    return Err(CryptoError::UnexpectedRecipient.into());
                 };
 
                 let sender = std::str::from_utf8(sender)?;
@@ -367,7 +377,7 @@ impl VidDatabase {
                     let intended_receiver = std::str::from_utf8(intended_receiver)?;
 
                     if !receivers.contains_key(intended_receiver) {
-                        return Err(Error::UnexpectedRecipient);
+                        return Err(CryptoError::UnexpectedRecipient.into());
                     }
                 };
 

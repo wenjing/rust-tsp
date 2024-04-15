@@ -11,6 +11,7 @@ rust-version.workspace = true
 [dependencies]
 tsp-definitions = { path = "../tsp-definitions" }
 url = { workspace = true }
+thiserror = { workspace = true }
 # tcp transport
 tokio = { workspace = true }
 tokio-util = { workspace = true }

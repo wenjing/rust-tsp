@@ -2,11 +2,9 @@ use ed25519_dalek::Signer;
 use hpke::{aead::AeadTag, Deserializable, OpModeR, OpModeS, Serializable};
 use rand::{rngs::StdRng, SeedableRng};
 use tsp_cesr::DecodedEnvelope;
-use tsp_definitions::{
-    Error, NonConfidentialData, Payload, Receiver, Sender, TSPMessage, VerifiedVid,
-};
+use tsp_definitions::{NonConfidentialData, Payload, Receiver, Sender, TSPMessage, VerifiedVid};
 
-use crate::MessageContents;
+use crate::{error::Error, MessageContents};
 
 pub(crate) fn seal<A, Kdf, Kem>(
     sender: &dyn Sender,

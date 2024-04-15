@@ -1,7 +1,7 @@
-mod error;
+use futures::Stream;
+use std::pin::Pin;
+use tokio_util::bytes::BytesMut;
 use core::fmt;
-
-pub use crate::error::Error;
 
 pub type KeyData = [u8; 32];
 pub type Digest = [u8; 32];
@@ -10,6 +10,8 @@ pub type PublicKeyData<'a> = &'a KeyData;
 pub type VidData<'a> = &'a [u8];
 pub type NonConfidentialData<'a> = &'a [u8];
 pub type TSPMessage = Vec<u8>;
+
+pub type TSPStream<E> = Pin<Box<dyn Stream<Item = Result<BytesMut, E>> + Send>>;
 
 #[derive(Debug)]
 pub enum MessageType {
