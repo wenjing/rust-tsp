@@ -11,7 +11,7 @@ pub mod resolve;
 
 pub use resolve::{
     did::web::{create_did_web, vid_to_did_document},
-    resolve_vid,
+    verify_vid,
 };
 
 /// A Vid represents a *verified* Identifier

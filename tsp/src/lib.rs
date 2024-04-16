@@ -31,7 +31,7 @@ impl VidDatabase {
         Default::default()
     }
 
-    /// Adds [private_vid] to the database
+    /// Adds `private_vid` to the database
     pub async fn add_private_vid(&self, private_vid: PrivateVid) -> Result<(), Error> {
         let mut private_vids = self.private_vids.write().await;
         private_vids.insert(private_vid.identifier().to_string(), private_vid);
@@ -39,7 +39,7 @@ impl VidDatabase {
         Ok(())
     }
 
-    /// Creates a private nested VID identified by [vid] that can be used for nested relationships. If [relation_vid]
+    /// Creates a private nested VID identified by `vid` that can be used for nested relationships. If `relation_vid`
     /// is `Some(other_vid)`, this private VID will be associated with that `other_vid`.
     /// Currently only supports one level of nesting. The nested vid must have the did:peer format.
     // TODO: Split this function into a 'create private nested vid' and 'add relationship to vid' ?
@@ -100,7 +100,7 @@ impl VidDatabase {
         .await
     }
 
-    /// Add the already resolved [verified_vid] to the database as a relationship
+    /// Add the already resolved `verified_vid` to the database as a relationship
     pub async fn add_verified_vid(&self, verified_vid: Vid) -> Result<(), Error> {
         let mut verified_vids = self.verified_vids.write().await;
         verified_vids.insert(verified_vid.identifier().to_string(), verified_vid);
@@ -124,21 +124,21 @@ impl VidDatabase {
         Ok((private_vids, verified_vids))
     }
 
-    /// Resolve public key material for a VID identified by [vid] and add it to the database as a relationship
-    pub async fn resolve_vid(&mut self, vid: &str) -> Result<(), Error> {
+    /// Resolve and verify public key material for a VID identified by `vid` and add it to the database as a relationship
+    pub async fn verify_vid(&mut self, vid: &str) -> Result<(), Error> {
         let mut verified_vids = self.verified_vids.write().await;
 
-        let resolved_vid = tsp_vid::resolve_vid(vid).await?;
-        verified_vids.insert(vid.to_string(), resolved_vid);
+        let verified_vid = tsp_vid::verify_vid(vid).await?;
+        verified_vids.insert(vid.to_string(), verified_vid);
 
         Ok(())
     }
 
-    /// Resolve public key material for a VID identified by [vid], and add it to the database as with [resolve_vid], but also
-    /// specify that its parent is the publically known VID identified by [parent_vid] (that must already be resolved).
-    /// If [relation_vid] is not `None`, use the provided vid (which must resolve to a private vid) as our local nested VID that
-    /// will have a relationship with [vid].
-    pub async fn resolve_vid_with_parent(
+    /// Resolve and verify public key material for a VID identified by `vid`, and add it to the database as with `verify_vid`, but also
+    /// specify that its parent is the publically known VID identified by `parent_vid` (that must already be resolved).
+    /// If `relation_vid` is not `None`, use the provided vid (which must resolve to a private vid) as our local nested VID that
+    /// will have a relationship with `vid`.
+    pub async fn verify_vid_with_parent(
         &mut self,
         vid: &str,
         parent_vid: &str,
@@ -146,11 +146,11 @@ impl VidDatabase {
     ) -> Result<(), Error> {
         let mut verified_vids = self.verified_vids.write().await;
 
-        let mut resolved_vid = tsp_vid::resolve_vid(vid).await?;
+        let mut verified_vid = tsp_vid::verify_vid(vid).await?;
 
-        resolved_vid.set_parent_vid(parent_vid.to_string());
-        resolved_vid.set_relation_vid(relation_vid);
-        verified_vids.insert(vid.to_string(), resolved_vid);
+        verified_vid.set_parent_vid(parent_vid.to_string());
+        verified_vid.set_relation_vid(relation_vid);
+        verified_vids.insert(vid.to_string(), verified_vid);
 
         Ok(())
     }
@@ -176,7 +176,7 @@ impl VidDatabase {
     ///     let mut db = VidDatabase::new();
     ///     let private_vid = PrivateVid::from_file(format!("../examples/test/bob.json")).await.unwrap();
     ///     db.add_private_vid(private_vid).await.unwrap();
-    ///     db.resolve_vid("did:web:did.tsp-test.org:user:alice").await.unwrap();
+    ///     db.verify_vid("did:web:did.tsp-test.org:user:alice").await.unwrap();
     ///
     ///     let sender = "did:web:did.tsp-test.org:user:bob";
     ///     let receiver = "did:web:did.tsp-test.org:user:alice";
@@ -224,7 +224,7 @@ impl VidDatabase {
     ///     let mut db = VidDatabase::new();
     ///     let private_vid = PrivateVid::from_file(format!("../examples/test/bob.json")).await.unwrap();
     ///     db.add_private_vid(private_vid).await.unwrap();
-    ///     db.resolve_vid("did:web:did.tsp-test.org:user:alice").await.unwrap();
+    ///     db.verify_vid("did:web:did.tsp-test.org:user:alice").await.unwrap();
     ///
     ///     let sender = "did:web:did.tsp-test.org:user:bob";
     ///     let receiver = "did:web:did.tsp-test.org:user:alice";
@@ -247,8 +247,8 @@ impl VidDatabase {
         Ok(())
     }
 
-    /// Accept a direct relationship between the resolved VID's identifier by [sender] and [receiver].
-    /// [thread_id] must be the same as the one that was present in the relationship request.
+    /// Accept a direct relationship between the resolved VID's identifier by `sender` and `receiver`.
+    /// `thread_id` must be the same as the one that was present in the relationship request.
     /// Encodes the control message, encrypts, signs and sends a TSP message
     pub async fn send_relationship_accept(
         &self,
@@ -270,7 +270,7 @@ impl VidDatabase {
         Ok(())
     }
 
-    /// Cancels a direct relationship between the resolved [sender] and [receiver] VID's.
+    /// Cancels a direct relationship between the resolved `sender` and `receiver` VID's.
     /// Encodes the control message, encrypts, signs and sends a TSP message
     pub async fn send_relationship_cancel(
         &self,
@@ -286,9 +286,9 @@ impl VidDatabase {
         Ok(())
     }
 
-    /// Send a nested TSP message given earlier resolved VID's: [receiver] is recipient. Since this must indicate a resolved
-    /// nested VID, this message will be sent with our related private VID as an origin. As with the direct [send] method,
-    /// [nonconfidential_data] is data that is sent in the clear (signed but not encrypted), [message] is the confidential
+    /// Send a nested TSP message given earlier resolved VID's: `receiver` is recipient. Since this must indicate a resolved
+    /// nested VID, this message will be sent with our related private VID as an origin. As with the direct [fn send] method,
+    /// `nonconfidential_data` is data that is sent in the clear (signed but not encrypted), `message` is the confidential
     /// message (signed and encrypted).
     pub async fn send_nested(
         &self,
@@ -337,9 +337,9 @@ impl VidDatabase {
         Ok(())
     }
 
-    /// Send a routed, nested TSP [message] given earlier resolved VID's.
-    /// The message is routed through the route that has been established with [receiver].
-    /// The [intermediary_extra_data] is "non-confidential data" that is not visible to the outside
+    /// Send a routed, nested TSP `message` given earlier resolved VID's.
+    /// The message is routed through the route that has been established with `receiver`.
+    /// The `intermediary_extra_data` is "non-confidential data" that is not visible to the outside
     /// world, but can be seen by every intermediary node.
     pub async fn send_routed(
         &self,
@@ -396,7 +396,7 @@ impl VidDatabase {
         Ok(())
     }
 
-    /// Retrieve the [PrivateVid] identified by [vid] from the database, if it exists.
+    /// Retrieve the [PrivateVid] identified by `vid` from the database, if it exists.
     async fn get_private_vid(&self, vid: &str) -> Result<PrivateVid, Error> {
         match self.private_vids.read().await.get(vid) {
             Some(resolved) => Ok(resolved.clone()),
@@ -404,7 +404,7 @@ impl VidDatabase {
         }
     }
 
-    /// Retrieve the [Vid] identified by [vid] from the database, if it exists.
+    /// Retrieve the [Vid] identified by `vid` from the database, if it exists.
     async fn get_verified_vid(&self, vid: &str) -> Result<Vid, Error> {
         match self.verified_vids.read().await.get(vid) {
             Some(resolved) => Ok(resolved.clone()),
@@ -412,8 +412,8 @@ impl VidDatabase {
         }
     }
 
-    /// Decode an encrypted [message], which has to be addressed to one of the VID's in [receivers], and has to have
-    /// [verified_vids] as one of the senders.
+    /// Decode an encrypted `message``, which has to be addressed to one of the VID's in `receivers`, and has to have
+    /// `verified_vids` as one of the senders.
     #[async_recursion]
     async fn decode_message(
         receivers: Arc<HashMap<String, PrivateVid>>,
@@ -514,10 +514,9 @@ impl VidDatabase {
         }
     }
 
-    /// Receive TSP messages for the private VID identified by [vid], using the appropriate transport mechanism for it.
+    /// Receive TSP messages for the private VID identified by `vid`, using the appropriate transport mechanism for it.
     /// Messages will be queued in a channel
     /// The returned channel contains a maximum of 16 messages
-    // TODO: is it useful to specify multiple receivers here?
     pub async fn receive(
         &self,
         vid: &str,
@@ -578,7 +577,7 @@ mod test {
             .await
             .unwrap();
         bob_db
-            .resolve_vid("did:web:did.tsp-test.org:user:alice")
+            .verify_vid("did:web:did.tsp-test.org:user:alice")
             .await
             .unwrap();
 
@@ -594,7 +593,7 @@ mod test {
             .await
             .unwrap();
         alice_db
-            .resolve_vid("did:web:did.tsp-test.org:user:bob")
+            .verify_vid("did:web:did.tsp-test.org:user:bob")
             .await
             .unwrap();
 
@@ -633,7 +632,7 @@ mod test {
             .await
             .unwrap();
         bob_db
-            .resolve_vid("did:web:did.tsp-test.org:user:alice")
+            .verify_vid("did:web:did.tsp-test.org:user:alice")
             .await
             .unwrap();
 
@@ -644,7 +643,7 @@ mod test {
             .await
             .unwrap();
         alice_db
-            .resolve_vid("did:web:did.tsp-test.org:user:bob")
+            .verify_vid("did:web:did.tsp-test.org:user:bob")
             .await
             .unwrap();
 
@@ -663,7 +662,7 @@ mod test {
             .unwrap();
 
         alice_db
-            .resolve_vid_with_parent(
+            .verify_vid_with_parent(
                 &nested_bob_vid,
                 "did:web:did.tsp-test.org:user:bob",
                 Some(&nested_alice_vid),
@@ -671,7 +670,7 @@ mod test {
             .await
             .unwrap();
 
-        bob_db.resolve_vid(&nested_alice_vid).await.unwrap();
+        bob_db.verify_vid(&nested_alice_vid).await.unwrap();
 
         // send a message using inner vid
         alice_db
@@ -715,11 +714,11 @@ mod test {
 
         // inform bob about alice
         bob_db
-            .resolve_vid("did:web:did.tsp-test.org:user:alice")
+            .verify_vid("did:web:did.tsp-test.org:user:alice")
             .await
             .unwrap();
         bob_db
-            .resolve_vid("did:web:did.tsp-test.org:user:bob")
+            .verify_vid("did:web:did.tsp-test.org:user:bob")
             .await
             .unwrap();
 
@@ -737,11 +736,11 @@ mod test {
 
         // inform alice about the nodes
         alice_db
-            .resolve_vid("did:web:did.tsp-test.org:user:alice")
+            .verify_vid("did:web:did.tsp-test.org:user:alice")
             .await
             .unwrap();
         alice_db
-            .resolve_vid("did:web:did.tsp-test.org:user:bob")
+            .verify_vid("did:web:did.tsp-test.org:user:bob")
             .await
             .unwrap();
         alice_db
@@ -832,7 +831,7 @@ mod test {
             .await
             .unwrap();
         bob_db
-            .resolve_vid("did:web:did.tsp-test.org:user:alice")
+            .verify_vid("did:web:did.tsp-test.org:user:alice")
             .await
             .unwrap();
 
@@ -845,7 +844,7 @@ mod test {
             .await
             .unwrap();
 
-        let bob = tsp_vid::resolve_vid("did:web:did.tsp-test.org:user:bob")
+        let bob = tsp_vid::verify_vid("did:web:did.tsp-test.org:user:bob")
             .await
             .unwrap();
 

@@ -216,7 +216,7 @@ createForm.addEventListener('submit', async (event) => {
 // resolve vid form
 async function resolveVid(formData) {
   const body = new URLSearchParams(formData);
-  const response = await fetch('/resolve-vid', {
+  const response = await fetch('/verify-vid', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8',
@@ -235,7 +235,7 @@ async function resolveVid(formData) {
     return true;
   }
 
-  window.alert('Failed to resolve VID');
+  window.alert('Failed to resolve and verify VID');
 
   return false;
 }

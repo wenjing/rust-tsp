@@ -47,7 +47,7 @@ pub(crate) fn encode_did_peer(vid: &Vid) -> String {
     format!("did:peer:2.Vz{verification_key}.Ez{encryption_key}.S{service}")
 }
 
-pub(crate) fn resolve_did_peer(parts: &[&str]) -> Result<Vid, Error> {
+pub(crate) fn verify_did_peer(parts: &[&str]) -> Result<Vid, Error> {
     let peer_parts = parts[2].split('.').collect::<Vec<&str>>();
 
     // only numalgo 2 is supported
@@ -145,7 +145,7 @@ mod test {
 
     use crate::Vid;
 
-    use super::{encode_did_peer, resolve_did_peer};
+    use super::{encode_did_peer, verify_did_peer};
 
     #[test]
     fn encode_decode() {
@@ -166,7 +166,7 @@ mod test {
 
         let parts = vid.id.split(':').collect::<Vec<&str>>();
 
-        let resolved_vid = resolve_did_peer(&parts).unwrap();
+        let resolved_vid = verify_did_peer(&parts).unwrap();
 
         assert_eq!(vid.verifying_key(), resolved_vid.verifying_key());
         assert_eq!(vid.encryption_key(), resolved_vid.encryption_key());
