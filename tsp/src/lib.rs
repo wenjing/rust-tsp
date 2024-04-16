@@ -37,8 +37,8 @@
 //!     ).await?;
 //!
 //!     // receive a message
-//!     let ReceivedTspMessage::GenericMessage { message, .. } =
-//!         bobs_messages.recv().await?? else {
+//!     let Some(Ok(ReceivedTspMessage::GenericMessage { message, .. }))=
+//!         bobs_messages.recv().await else {
 //!         panic!("bob did not receive a generic message")
 //!     };
 //!
@@ -82,7 +82,7 @@ mod error;
 ///     db.verify_vid("did:web:did.tsp-test.org:user:bob").await?;
 ///
 ///     // send a message
-///     alice_db.send(
+///     db.send(
 ///         "did:web:did.tsp-test.org:user:alice",
 ///         "did:web:did.tsp-test.org:user:bob",
 ///         Some(b"extra non-confidential data"),
@@ -182,8 +182,7 @@ impl VidDatabase {
         Ok(())
     }
 
-    /// Adds a private VID to the database from a file
-    #[cfg(test)]
+    /// Adds a private VID to the database from a file (JSON encoded)
     pub async fn add_private_vid_from_file(&self, name: &str) -> Result<(), Error> {
         let private_vid = PrivateVid::from_file(format!("../examples/{name}")).await?;
 
