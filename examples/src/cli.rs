@@ -1,3 +1,4 @@
+use base64ct::{Base64UrlUnpadded, Encoding};
 use clap::{Parser, Subcommand};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
@@ -5,6 +6,7 @@ use tokio::io::AsyncReadExt;
 use tracing::{info, trace};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 use tsp::{Error, PrivateVid, ReceivedTspMessage, VerifiedVid, Vid, VidDatabase};
+use tsp_cesr::Part;
 
 #[derive(Debug, Parser)]
 #[command(name = "tsp")]
@@ -19,6 +21,10 @@ struct Cli {
         help = "Database file path"
     )]
     database: String,
+    #[arg(short, long)]
+    verbose: bool,
+    #[arg(short, long, help = "Pretty print CESR messages")]
+    pretty_print: bool,
 }
 
 #[derive(Debug, Subcommand)]
@@ -67,7 +73,7 @@ async fn write_database(database_file: &str, db: &VidDatabase) -> Result<(), Err
         .await
         .expect("Could not write database");
 
-    info!("persisted database to {database_file}");
+    trace!("persisted database to {database_file}");
 
     Ok(())
 }
@@ -84,7 +90,7 @@ async fn read_database(database_file: &str) -> Result<VidDatabase, Error> {
 
         let db = VidDatabase::new();
 
-        info!("opened database {database_file}");
+        trace!("opened database {database_file}");
 
         for private_vid in db_contents.private_vids {
             trace!("loaded {} (private)", private_vid.identifier());
@@ -107,14 +113,52 @@ async fn read_database(database_file: &str) -> Result<VidDatabase, Error> {
     }
 }
 
+fn color_print_part(part: Option<Part>, color: &str) {
+    use colored::*;
+
+    if let Some(Part { prefix, data }) = part {
+        print!(
+            "{}{}",
+            Base64UrlUnpadded::encode_string(&prefix)
+                .color(color)
+                .bold(),
+            Base64UrlUnpadded::encode_string(&data).color(color)
+        );
+    }
+}
+
+fn print_message(message: &[u8]) {
+    let Ok(parts) = tsp_cesr::decode_message_into_parts(message) else {
+        eprintln!("Invalid encoded message");
+        return;
+    };
+
+    println!("CESR encoded message:");
+
+    color_print_part(Some(parts.prefix), "red");
+    color_print_part(Some(parts.sender), "magenta");
+    color_print_part(parts.receiver, "blue");
+    color_print_part(parts.nonconfidential_data, "green");
+    color_print_part(parts.ciphertext, "yellow");
+    color_print_part(Some(parts.signature), "cyan");
+
+    println!();
+}
+
 async fn run() -> Result<(), Error> {
     let args = Cli::parse();
 
     tracing_subscriber::registry()
-        .with(tracing_subscriber::fmt::layer())
+        .with(tracing_subscriber::fmt::layer().compact().without_time())
         .with(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "tsp=trace".into()),
+            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| {
+                if args.verbose {
+                    "tsp=trace"
+                } else {
+                    "tsp=info"
+                }
+                .into()
+            }),
         )
         .init();
 
@@ -158,9 +202,13 @@ async fn run() -> Result<(), Error> {
                 .await
                 .expect("Could not read message from stdin");
 
-            vid_database
+            let cesr_message = vid_database
                 .send(&sender_vid, &receiver_vid, non_confidential_data, &message)
                 .await?;
+
+            if args.pretty_print {
+                print_message(&cesr_message);
+            }
 
             info!(
                 "sent message ({} bytes) from {sender_vid} to {receiver_vid}",
@@ -203,7 +251,7 @@ async fn run() -> Result<(), Error> {
                         sender, next_hop, ..
                     } => {
                         info!(
-                            "messaing forwarding request from {} to {}",
+                            "messaging forwarding request from {} to {}",
                             sender.identifier(),
                             next_hop.identifier()
                         );

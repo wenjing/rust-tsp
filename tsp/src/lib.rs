@@ -262,7 +262,7 @@ impl VidDatabase {
         receiver: &str,
         nonconfidential_data: Option<&[u8]>,
         message: &[u8],
-    ) -> Result<(), Error> {
+    ) -> Result<Vec<u8>, Error> {
         let sender = self.get_private_vid(sender).await?;
         let receiver = self.get_verified_vid(receiver).await?;
 
@@ -272,9 +272,10 @@ impl VidDatabase {
             nonconfidential_data,
             Payload::Content(message),
         )?;
+
         tsp_transport::send_message(receiver.endpoint(), &tsp_message).await?;
 
-        Ok(())
+        Ok(tsp_message)
     }
 
     /// Request a direct relationship with a resolved VID using the TSP

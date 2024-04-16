@@ -60,6 +60,8 @@ cargo doc --no-deps --open
 ```
 Or if you had already followed the build instructions above, simply open `target/doc/tsp_crypto/index.html` in your browser.
 
+The development documentation is published at https://docs.tsp-test.org/tsp/
+
 In the future, documentation will be available at [docs.rs](https://docs.rs).
 
 # Test CLI
