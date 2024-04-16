@@ -13,7 +13,6 @@ tsp-vid = { path = "../tsp-vid" }
 tsp-crypto = { path = "../tsp-crypto" }
 tsp-cesr = { path = "../tsp-cesr" }
 tsp-definitions = { path = "../tsp-definitions" }
-async-stream = { workspace = true }
 axum = { version = "0.7", features = ["ws"] }
 serde = { workspace = true }
 futures = { workspace = true }

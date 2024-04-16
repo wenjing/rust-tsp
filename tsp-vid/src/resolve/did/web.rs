@@ -1,7 +1,7 @@
 use base64ct::{Base64UrlUnpadded, Encoding};
 use serde::Deserialize;
 use serde_json::json;
-use tsp_definitions::{Receiver, Sender, VerifiedVid};
+use tsp_definitions::VerifiedVid;
 use url::Url;
 
 use crate::{error::Error, PrivateVid, Vid};
@@ -188,14 +188,8 @@ pub fn create_did_web(
     transport: &str,
 ) -> (serde_json::Value, serde_json::Value, PrivateVid) {
     let did = format!("did:web:{domain}:user:{name}");
-    let private_vid = PrivateVid::bind(&did, Url::parse(transport).unwrap());
-
-    let private_doc = json!({
-        "vid": did,
-        "decryption-key": Base64UrlUnpadded::encode_string(private_vid.decryption_key()),
-        "signing-key": Base64UrlUnpadded::encode_string(private_vid.signing_key()),
-    });
-
+    let private_vid = PrivateVid::bind(did, Url::parse(transport).unwrap());
+    let private_doc = serde_json::to_value(&private_vid).unwrap();
     let did_doc = vid_to_did_document(private_vid.vid());
 
     (did_doc, private_doc, private_vid)

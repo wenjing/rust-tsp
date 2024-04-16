@@ -1,0 +1,44 @@
+{
+  "@context": [
+    "https://www.w3.org/ns/did/v1",
+    "https://w3id.org/security/suites/jws-2020/v1"
+  ],
+  "authentication": [
+    "did:web:did.tsp-test.org:user:carol#verification-key"
+  ],
+  "id": "did:web:did.tsp-test.org:user:carol",
+  "keyAgreement": [
+    "did:web:did.tsp-test.org:user:carol#encryption-key"
+  ],
+  "service": [
+    {
+      "id": "#tsp-transport",
+      "serviceEndpoint": "tcp://127.0.0.1:1337",
+      "type": "TSPTransport"
+    }
+  ],
+  "verificationMethod": [
+    {
+      "controller": "did:web:did.tsp-test.org:user:carol",
+      "id": "did:web:did.tsp-test.org:user:carol#verification-key",
+      "publicKeyJwk": {
+        "crv": "Ed25519",
+        "kty": "OKP",
+        "use": "sig",
+        "x": "v_QoFe2_OsVLnxlEmPBKVlXhcnOKg1n6UBtExEPkbR8"
+      },
+      "type": "JsonWebKey2020"
+    },
+    {
+      "controller": "did:web:did.tsp-test.org:user:carol",
+      "id": "did:web:did.tsp-test.org:user:carol#encryption-key",
+      "publicKeyJwk": {
+        "crv": "X25519",
+        "kty": "OKP",
+        "use": "enc",
+        "x": "W0KcpY5Sa1jQ2-UIqbzIqyvSp6QaZqsHVq9jeFkR_H0"
+      },
+      "type": "JsonWebKey2020"
+    }
+  ]
+}

@@ -1,5 +1,11 @@
 {
-  "decryption-key": "7wN8l7y9qL229usRRzD-rq9AHCB0wnaBqb5jJpLR51k",
-  "signing-key": "Gi9hvLgiXhDVJckhKJ9PFgkShIzpZG0WoJbXtSIYi1k",
-  "vid": "did:web:did.tsp-test.org:user:alice"
+  "enckey": "leLd8w1nbPoKkSVbq_uzFo-wzxORu9oocrAh7X6ii6s",
+  "id": "did:web:did.tsp-test.org:user:alice",
+  "parentVid": null,
+  "publicEnckey": "y-FbCCEodGckHNDqCVOcIyf9uESpaepAVRewGxmt_QU",
+  "publicSigkey": "7dUAj8TdKRfQwSkUqa3dyCMr8AhggYRAv2RuMZ514sE",
+  "relationVid": null,
+  "sigkey": "3J-rg_PjScxUcft6Vsp3pqN6RnlSbVRS32i2cok8JnA",
+  "transport": "tcp://127.0.0.1:1337",
+  "tunnel": null
 }
