@@ -17,7 +17,6 @@ name = "tsp"
 path = "src/cli.rs"
 
 [dependencies]
-colored = "2"
 tsp = { path = "../tsp" }
 tsp-vid = { path = "../tsp-vid" }
 tsp-cesr = { path = "../tsp-cesr" }

@@ -113,16 +113,12 @@ async fn read_database(database_file: &str) -> Result<VidDatabase, Error> {
     }
 }
 
-fn color_print_part(part: Option<Part>, color: &str) {
-    use colored::*;
-
+fn color_print_part(part: Option<Part>, color: u8) {
     if let Some(Part { prefix, data }) = part {
         print!(
-            "{}{}",
-            Base64UrlUnpadded::encode_string(&prefix)
-                .color(color)
-                .bold(),
-            Base64UrlUnpadded::encode_string(&data).color(color)
+            "\x1b[1;{color}m{}\x1b[0;{color}m{}\x1b[0m",
+            Base64UrlUnpadded::encode_string(&prefix),
+            Base64UrlUnpadded::encode_string(&data)
         );
     }
 }
@@ -135,12 +131,12 @@ fn print_message(message: &[u8]) {
 
     println!("CESR encoded message:");
 
-    color_print_part(Some(parts.prefix), "red");
-    color_print_part(Some(parts.sender), "magenta");
-    color_print_part(parts.receiver, "blue");
-    color_print_part(parts.nonconfidential_data, "green");
-    color_print_part(parts.ciphertext, "yellow");
-    color_print_part(Some(parts.signature), "cyan");
+    color_print_part(Some(parts.prefix), 31);
+    color_print_part(Some(parts.sender), 35);
+    color_print_part(parts.receiver, 34);
+    color_print_part(parts.nonconfidential_data, 32);
+    color_print_part(parts.ciphertext, 33);
+    color_print_part(Some(parts.signature), 36);
 
     println!();
 }
