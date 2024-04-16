@@ -4,7 +4,7 @@ use serde::Deserialize;
 use std::path::Path;
 use tokio::fs;
 
-use crate::{error::Error, resolve::resolve_vid, PrivateVid};
+use crate::{error::Error, resolve::verify_vid, PrivateVid};
 
 #[derive(Deserialize)]
 struct SecretVidData {
@@ -24,7 +24,7 @@ impl PrivateVid {
         let vid_data: SecretVidData = serde_json::from_str(&vid_data)
             .map_err(|_| Error::ResolveVid("private VID contains invalid JSON"))?;
 
-        let resolved = resolve_vid(&vid_data.vid).await?;
+        let resolved = verify_vid(&vid_data.vid).await?;
 
         let sigkey = base64ct::Base64UrlUnpadded::decode_vec(&vid_data.signing_key)
             .map_err(|_| Error::ResolveVid("invalid encoded sign key"))?;

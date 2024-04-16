@@ -122,7 +122,7 @@ async fn run() -> Result<(), Error> {
 
     match args.command {
         Commands::Verify { vid } => {
-            vid_database.resolve_vid(&vid).await?;
+            vid_database.verify_vid(&vid).await?;
             write_database(&args.database, &vid_database).await?;
 
             info!("{vid} is verified and added to the database");
@@ -138,7 +138,7 @@ async fn run() -> Result<(), Error> {
                 .json(&private_vid)
                 .send()
                 .await
-                .expect("Could not publis VID on server");
+                .expect("Could not publish VID on server");
 
             vid_database.add_private_vid(private_vid.clone()).await?;
             write_database(&args.database, &vid_database).await?;

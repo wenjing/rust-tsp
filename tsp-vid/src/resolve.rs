@@ -2,7 +2,7 @@ use crate::{error::Error, Vid};
 
 pub mod did;
 
-pub async fn resolve_vid(id: &str) -> Result<Vid, Error> {
+pub async fn verify_vid(id: &str) -> Result<Vid, Error> {
     let parts = id.split(':').collect::<Vec<&str>>();
 
     match parts.get(0..2) {
@@ -23,7 +23,7 @@ pub async fn resolve_vid(id: &str) -> Result<Vid, Error> {
 
             did::web::resolve_document(did_document, id)
         }
-        Some([did::SCHEME, did::peer::SCHEME]) => did::peer::resolve_did_peer(&parts),
+        Some([did::SCHEME, did::peer::SCHEME]) => did::peer::verify_did_peer(&parts),
         _ => Err(Error::InvalidVid(id.to_string())),
     }
 }

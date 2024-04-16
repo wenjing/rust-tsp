@@ -54,7 +54,7 @@ async fn main() {
         .route("/", get(index))
         .route("/script.js", get(script))
         .route("/create-identity", post(create_identity))
-        .route("/resolve-vid", post(resolve_vid))
+        .route("/verify-vid", post(verify_vid))
         .route("/add-vid", post(add_vid))
         .route("/user/:name/did.json", get(get_did_doc))
         .route("/user/:user", get(websocket_user_handler))
@@ -128,8 +128,8 @@ struct ResolveVidInput {
     vid: String,
 }
 
-/// Resolve a VID to JSON encoded key material
-async fn resolve_vid(
+/// Resolve and verify a VID to JSON encoded key material
+async fn verify_vid(
     State(state): State<Arc<AppState>>,
     Form(form): Form<ResolveVidInput>,
 ) -> Response {
@@ -139,7 +139,7 @@ async fn resolve_vid(
     }
 
     // remote lookup
-    let vid = tsp_vid::resolve_vid(&form.vid).await.ok();
+    let vid = tsp_vid::verify_vid(&form.vid).await.ok();
 
     match vid {
         Some(vid) => Json(&vid).into_response(),
