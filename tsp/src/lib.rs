@@ -409,7 +409,7 @@ impl VidDatabase {
         Ok(())
     }
 
-    /// Send a routed, nested TSP `message` given earlier resolved VID's.
+    /// Send a E2E-routed TSP `message` given earlier resolved VID's.
     /// The message is routed through the route that has been established with `receiver`.
     /// The `intermediary_extra_data` is "non-confidential data" that is not visible to the outside
     /// world, but can be seen by every intermediary node.
@@ -464,6 +464,55 @@ impl VidDatabase {
         )?;
 
         tsp_transport::send_message(first_hop.endpoint(), &tsp_message).await?;
+
+        Ok(())
+    }
+
+    /// Pass along a in-transit routed TSP `opaque_message` that is not meant for us, given earlier resolved VID's.
+    /// The message is routed through the route that has been established with `receiver`.
+    pub async fn forward_routed_message(
+        &self,
+        next_hop: &str,
+        path: Vec<&[u8]>,
+        opaque_message: &[u8],
+    ) -> Result<(), Error> {
+        let (destination, tsp_message) = if path.is_empty() {
+            // we are the final delivery point, we should be the 'next_hop'
+            let sender = self.get_private_vid(next_hop).await?;
+
+            let recipient = match sender.relation_vid() {
+                Some(destination) => self.get_verified_vid(destination).await?,
+                None => return Err(VidError::ResolveVid("no relation for drop-off VID").into()),
+            };
+
+            let tsp_message = tsp_crypto::seal(
+                &sender,
+                &recipient,
+                None,
+                Payload::NestedMessage(opaque_message),
+            )?;
+
+            (recipient, tsp_message)
+        } else {
+            // we are an intermediary, continue sending the message
+            let next_hop = self.get_verified_vid(next_hop).await?;
+
+            let sender = match next_hop.relation_vid() {
+                Some(first_sender) => self.get_private_vid(first_sender).await?,
+                None => return Err(VidError::ResolveVid("missing sender VID for first hop").into()),
+            };
+
+            let tsp_message = tsp_crypto::seal(
+                &sender,
+                &next_hop,
+                None,
+                Payload::RoutedMessage(path, opaque_message),
+            )?;
+
+            (next_hop, tsp_message)
+        };
+
+        tsp_transport::send_message(destination.endpoint(), &tsp_message).await?;
 
         Ok(())
     }
