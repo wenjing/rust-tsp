@@ -17,8 +17,10 @@ name = "tsp"
 path = "src/cli.rs"
 
 [dependencies]
+colored = "2"
 tsp = { path = "../tsp" }
 tsp-vid = { path = "../tsp-vid" }
+tsp-cesr = { path = "../tsp-cesr" }
 tokio = { workspace = true}
 url = { workspace = true}
 clap = { workspace = true}
@@ -27,3 +29,4 @@ serde = { workspace = true}
 serde_json = { workspace = true}
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
+base64ct = { workspace = true }
