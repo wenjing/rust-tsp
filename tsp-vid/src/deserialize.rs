@@ -1,19 +1,8 @@
-use base64ct::Encoding;
 use ed25519_dalek::{self as Ed};
-use serde::Deserialize;
 use std::path::Path;
 use tokio::fs;
 
-use crate::{error::Error, resolve::verify_vid, PrivateVid};
-
-#[derive(Deserialize)]
-struct SecretVidData {
-    #[serde(rename = "decryption-key")]
-    decryption_key: String,
-    #[serde(rename = "signing-key")]
-    signing_key: String,
-    vid: String,
-}
+use crate::{error::Error, PrivateVid};
 
 impl PrivateVid {
     pub async fn from_file(path: impl AsRef<Path>) -> Result<Self, Error> {
@@ -21,30 +10,8 @@ impl PrivateVid {
             .await
             .map_err(|_| Error::ResolveVid("private VID file not found"))?;
 
-        let vid_data: SecretVidData = serde_json::from_str(&vid_data)
-            .map_err(|_| Error::ResolveVid("private VID contains invalid JSON"))?;
-
-        let resolved = verify_vid(&vid_data.vid).await?;
-
-        let sigkey = base64ct::Base64UrlUnpadded::decode_vec(&vid_data.signing_key)
-            .map_err(|_| Error::ResolveVid("invalid encoded sign key"))?;
-
-        let enckey = base64ct::Base64UrlUnpadded::decode_vec(&vid_data.decryption_key)
-            .map_err(|_| Error::ResolveVid("invalid encoded encryption key"))?;
-
-        Ok(Self {
-            vid: resolved,
-            sigkey: Ed::SigningKey::from_bytes(
-                sigkey
-                    .as_slice()
-                    .try_into()
-                    .map_err(|_| Error::ResolveVid("invalid encoded sign key"))?,
-            ),
-            enckey: enckey
-                .as_slice()
-                .try_into()
-                .map_err(|_| Error::ResolveVid("invalid encoded encryption key"))?,
-        })
+        serde_json::from_str(&vid_data)
+            .map_err(|_| Error::ResolveVid("private VID contains invalid JSON"))
     }
 }
 

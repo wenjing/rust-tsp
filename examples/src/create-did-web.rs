@@ -16,6 +16,7 @@ fn main() {
         serde_json::to_string_pretty(&did_doc).unwrap(),
     )
     .unwrap();
+
     fs::write(
         format!("examples/test/{name}.json"),
         serde_json::to_string_pretty(&private_doc).unwrap(),

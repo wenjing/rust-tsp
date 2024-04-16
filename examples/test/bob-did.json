@@ -25,7 +25,7 @@
         "crv": "Ed25519",
         "kty": "OKP",
         "use": "sig",
-        "x": "yvKlTXLdWcZhKjg3vc4_QQeIn_mTOd3GprAc2gnQB0Y"
+        "x": "NBcP690uVtoJChxvBCxZyy2inI-R24G3aNBWOKwU5lI"
       },
       "type": "JsonWebKey2020"
     },
@@ -36,7 +36,7 @@
         "crv": "X25519",
         "kty": "OKP",
         "use": "enc",
-        "x": "_uxJU4qjejwclw3Qs0DWH58kLzNcEAa7nTgkIiVWRW8"
+        "x": "QFn5SXupDgBTtzkGc2W3MvoSCHjd8uUD0dapfEXqET4"
       },
       "type": "JsonWebKey2020"
     }
