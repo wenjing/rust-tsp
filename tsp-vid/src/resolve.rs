@@ -9,12 +9,17 @@ pub async fn resolve_vid(id: &str) -> Result<Vid, Error> {
         Some([did::SCHEME, did::web::SCHEME]) => {
             let url = did::web::resolve_url(&parts)?;
 
-            let did_document = reqwest::get(url.as_ref())
+            let response = reqwest::get(url.as_ref())
                 .await
-                .map_err(|e| Error::Http(url.to_string(), e))?
-                .json::<did::web::DidDocument>()
-                .await
-                .map_err(|e| Error::Json(url.to_string(), e))?;
+                .map_err(|e| Error::Http(url.to_string(), e))?;
+
+            let did_document = match response.error_for_status() {
+                Ok(r) => r
+                    .json::<did::web::DidDocument>()
+                    .await
+                    .map_err(|e| Error::Json(url.to_string(), e))?,
+                Err(e) => Err(Error::Http(url.to_string(), e))?,
+            };
 
             did::web::resolve_document(did_document, id)
         }

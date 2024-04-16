@@ -107,8 +107,7 @@ async fn read_database(database_file: &str) -> Result<VidDatabase, Error> {
     }
 }
 
-#[tokio::main]
-async fn main() -> Result<(), Error> {
+async fn run() -> Result<(), Error> {
     let args = Cli::parse();
 
     tracing_subscriber::registry()
@@ -210,4 +209,12 @@ async fn main() -> Result<(), Error> {
     }
 
     Ok(())
+}
+
+#[tokio::main]
+async fn main() {
+    if let Err(e) = run().await {
+        eprintln!("{e}");
+        std::process::exit(1);
+    }
 }
