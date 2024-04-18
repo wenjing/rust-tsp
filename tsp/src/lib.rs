@@ -480,7 +480,12 @@ impl VidDatabase {
             // we are the final delivery point, we should be the 'next_hop'
             let sender = self.get_private_vid(next_hop).await?;
 
-            let recipient = match sender.relation_vid() {
+            //TODO: we cannot user 'sender.relation_vid()', since the relationship status of this cannot be set
+            let recipient = match self
+                .get_verified_vid(sender.identifier())
+                .await?
+                .relation_vid()
+            {
                 Some(destination) => self.get_verified_vid(destination).await?,
                 None => return Err(VidError::ResolveVid("no relation for drop-off VID").into()),
             };
@@ -924,7 +929,7 @@ mod test {
             .await
             .unwrap();
 
-	// test1: alice doens't know "realbob"
+        // test1: alice doens't know "realbob"
         //TODO: the lifetime vs. Vec thing in 'Payload' vs 'ReceivedTspMessage' bites us here
         bob_db
             .forward_routed_message(
@@ -940,7 +945,7 @@ mod test {
         };
         assert_eq!(hop, "did:web:hidden.web:user:realbob");
 
-	// test2: just use "bob"
+        // test2: just use "bob"
         bob_db
             .forward_routed_message(
                 "did:web:did.tsp-test.org:user:alice",
@@ -961,6 +966,28 @@ mod test {
         assert_eq!(sender.identifier(), "did:web:did.tsp-test.org:user:bob");
         assert_eq!(next_hop.identifier(), "did:web:did.tsp-test.org:user:bob");
         assert!(route.is_empty());
+
+        // test3: alice is the recipient (using "bob" as the 'final hop')
+        bob_db
+            .set_relation_for_vid(
+                "did:web:did.tsp-test.org:user:bob",
+                Some("did:web:did.tsp-test.org:user:alice"),
+            )
+            .await
+            .unwrap();
+        bob_db
+            .forward_routed_message("did:web:did.tsp-test.org:user:bob", vec![], &opaque_payload)
+            .await
+            .unwrap();
+        let tsp_definitions::ReceivedTspMessage::GenericMessage {
+            sender, message, ..
+        } = alice_messages.recv().await.unwrap().unwrap()
+        else {
+            panic!("alice did not receive message");
+        };
+
+        assert_eq!(sender.identifier(), "did:web:did.tsp-test.org:user:alice");
+        assert_eq!(message, b"hello self (via bob)");
     }
 
     async fn faulty_send(
