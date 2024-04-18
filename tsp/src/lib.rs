@@ -843,12 +843,6 @@ mod test {
             .await
             .unwrap();
 
-        // let alice listen
-        let mut _alice_messages = alice_db
-            .receive("did:web:did.tsp-test.org:user:alice")
-            .await
-            .unwrap();
-
         // let bob listen as an intermediary
         let mut bobs_messages = bob_db
             .receive("did:web:did.tsp-test.org:user:bob")
@@ -902,7 +896,7 @@ mod test {
 
         // let bob receive the message
         let tsp_definitions::ReceivedTspMessage::ForwardRequest {
-            opaque_payload: _,
+            opaque_payload,
             sender,
             next_hop,
             route,
@@ -915,8 +909,58 @@ mod test {
         assert_eq!(next_hop.identifier(), "did:web:did.tsp-test.org:user:alice");
         assert_eq!(route, vec![b"did:web:hidden.web:user:realbob"]);
 
-        // bob is going to ignore the routing information and send it to alice
-        //bob_db.send_nested("did:web:did.tsp-test.org:user:alice", None, opaque_payload) ??
+        // let alice listen
+        let mut alice_messages = alice_db
+            .receive("did:web:did.tsp-test.org:user:alice")
+            .await
+            .unwrap();
+
+        // bob is going to forward to alice three times; once using an incorrect intermediary, once with a correct, and once without
+        bob_db
+            .set_relation_for_vid(
+                "did:web:did.tsp-test.org:user:alice",
+                Some("did:web:did.tsp-test.org:user:bob"),
+            )
+            .await
+            .unwrap();
+
+	// test1: alice doens't know "realbob"
+        //TODO: the lifetime vs. Vec thing in 'Payload' vs 'ReceivedTspMessage' bites us here
+        bob_db
+            .forward_routed_message(
+                "did:web:did.tsp-test.org:user:alice",
+                route.iter().map(|x| x.as_ref()).collect(),
+                &opaque_payload,
+            )
+            .await
+            .unwrap();
+        let crate::Error::UnverifiedVid(hop) = alice_messages.recv().await.unwrap().unwrap_err()
+        else {
+            panic!("alice accepted a message which she cannot handle");
+        };
+        assert_eq!(hop, "did:web:hidden.web:user:realbob");
+
+	// test2: just use "bob"
+        bob_db
+            .forward_routed_message(
+                "did:web:did.tsp-test.org:user:alice",
+                vec![b"did:web:did.tsp-test.org:user:bob"],
+                &opaque_payload,
+            )
+            .await
+            .unwrap();
+        let tsp_definitions::ReceivedTspMessage::ForwardRequest {
+            sender,
+            next_hop,
+            route,
+            ..
+        } = alice_messages.recv().await.unwrap().unwrap()
+        else {
+            panic!("alice did not receive message");
+        };
+        assert_eq!(sender.identifier(), "did:web:did.tsp-test.org:user:bob");
+        assert_eq!(next_hop.identifier(), "did:web:did.tsp-test.org:user:bob");
+        assert!(route.is_empty());
     }
 
     async fn faulty_send(
