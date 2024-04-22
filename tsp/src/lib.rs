@@ -503,6 +503,39 @@ impl VidDatabase {
         Ok(())
     }
 
+    // Receive, open and forward a TSP message
+    pub async fn route_message(
+        &self,
+        sender: &str,
+        receiver: &str,
+        message: &mut [u8],
+    ) -> Result<(), Error> {
+        let Ok(receiver) = self.get_private_vid(receiver).await else {
+            return Err(CryptoError::UnexpectedRecipient.into());
+        };
+
+        let Ok(sender) = self.get_verified_vid(sender).await else {
+            return Err(Error::UnverifiedVid(sender.to_string()));
+        };
+
+        let (_, payload, _) = tsp_crypto::open(&receiver, &sender, message)?;
+
+        let Payload::RoutedMessage(hops, inner_message) = payload else {
+            return Err(Error::InvalidRoute("expected a routed message".to_string()));
+        };
+
+        let next_hop = std::str::from_utf8(hops[0])?;
+
+        let Ok(next_hop) = self.get_verified_vid(next_hop).await else {
+            return Err(Error::UnverifiedVid(next_hop.to_string()));
+        };
+
+        let path = hops[1..].to_vec();
+
+        self.forward_routed_message(next_hop.identifier(), path, inner_message)
+            .await
+    }
+
     /// Pass along a in-transit routed TSP `opaque_message` that is not meant for us, given earlier resolved VID's.
     /// The message is routed through the route that has been established with `receiver`.
     pub async fn forward_routed_message(
@@ -555,6 +588,11 @@ impl VidDatabase {
         tsp_transport::send_message(destination.endpoint(), &tsp_message).await?;
 
         Ok(())
+    }
+
+    /// Check whether the [PrivateVid] identified by `vid` exists inthe database
+    pub async fn has_private_vid(&self, vid: &str) -> bool {
+        self.private_vids.read().await.contains_key(vid)
     }
 
     /// Retrieve the [PrivateVid] identified by `vid` from the database, if it exists.

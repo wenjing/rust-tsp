@@ -358,6 +358,24 @@ pub struct VerificationChallenge<'a> {
     pub signature: &'a Signature,
 }
 
+/// Decode the type, sender and receiver of an encrypted TSP message
+pub fn decode_sender_receiver<'a, Vid: TryFrom<&'a [u8]>>(
+    mut stream: &'a [u8],
+) -> Result<(Vid, Option<Vid>, bool), DecodeError> {
+    let (_, has_confidential_part) = detected_tsp_header_size_and_confidentiality(&mut stream)?;
+
+    let sender = decode_variable_data(TSP_DEVELOPMENT_VID, &mut stream)
+        .ok_or(DecodeError::UnexpectedData)?
+        .try_into()
+        .map_err(|_| DecodeError::VidError)?;
+
+    let receiver = decode_variable_data(TSP_DEVELOPMENT_VID, &mut stream)
+        .map(|r| r.try_into().map_err(|_| DecodeError::VidError))
+        .transpose()?;
+
+    Ok((sender, receiver, has_confidential_part))
+}
+
 /// Decode an encrypted TSP message plus Envelope & Signature
 pub fn decode_envelope<'a, Vid: TryFrom<&'a [u8]>>(
     mut stream: &'a [u8],
@@ -369,15 +387,7 @@ pub fn decode_envelope<'a, Vid: TryFrom<&'a [u8]>>(
     DecodeError,
 > {
     let origin = stream;
-    let (_, has_confidential_part) = detected_tsp_header_size_and_confidentiality(&mut stream)?;
-    let sender = decode_variable_data(TSP_DEVELOPMENT_VID, &mut stream)
-        .ok_or(DecodeError::UnexpectedData)?
-        .try_into()
-        .map_err(|_| DecodeError::VidError)?;
-
-    let receiver = decode_variable_data(TSP_DEVELOPMENT_VID, &mut stream)
-        .map(|r| r.try_into().map_err(|_| DecodeError::VidError))
-        .transpose()?;
+    let (sender, receiver, has_confidential_part) = decode_sender_receiver(stream)?;
 
     let nonconfidential_data = decode_variable_data(TSP_PLAINTEXT, &mut stream);
     let raw_header = &origin[..origin.len() - stream.len()];
