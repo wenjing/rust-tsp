@@ -9,6 +9,7 @@ publish.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+tsp = { path = "../tsp" }
 tsp-vid = { path = "../tsp-vid" }
 tsp-crypto = { path = "../tsp-crypto" }
 tsp-cesr = { path = "../tsp-cesr" }

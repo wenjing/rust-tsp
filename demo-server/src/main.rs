@@ -16,8 +16,13 @@ use serde_json::json;
 use std::{collections::HashMap, sync::Arc};
 use tokio::sync::{broadcast, RwLock};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
+use tsp::VidDatabase;
 use tsp_definitions::{Payload, VerifiedVid};
 use tsp_vid::{PrivateVid, Vid};
+
+use crate::intermediary::start_intermediary;
+
+mod intermediary;
 
 const DOMAIN: &str = "tsp-test.org";
 
@@ -65,6 +70,13 @@ async fn main() {
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
     tracing::debug!("listening on {}", listener.local_addr().unwrap());
+
+    tokio::task::spawn(async {
+        if let Err(e) = start_intermediary("hub1.tsp-test.org", 3001, VidDatabase::new()).await {
+            eprintln!("error starting intermediary: {:?}", e);
+        }
+    });
+
     axum::serve(listener, app).await.unwrap();
 }
 
@@ -217,8 +229,8 @@ struct SendMessageForm {
 }
 
 async fn route_message(State(state): State<Arc<AppState>>, body: Bytes) -> Response {
-    let mut message: Vec<u8> = body.to_vec();
-    let Ok((sender, Some(receiver))) = tsp_cesr::get_sender_receiver(&mut message) else {
+    let message: Vec<u8> = body.to_vec();
+    let Ok((sender, Some(receiver))) = tsp_cesr::get_sender_receiver(&message) else {
         return (StatusCode::BAD_REQUEST, "invalid message").into_response();
     };
 
