@@ -93,9 +93,19 @@ mod error;
 /// }
 /// ```
 #[derive(Debug, Default)]
+//TODO: refactor into a single HashMap<String, {vid+status}>, since being a 'PrivateVid' is also in some sense a "status"; also see gh #94
 pub struct VidDatabase {
     private_vids: Arc<RwLock<HashMap<String, PrivateVid>>>,
     verified_vids: Arc<RwLock<HashMap<String, Vid>>>,
+    relation_status: Arc<RwLock<HashMap<String, RelationshipStatus>>>,
+}
+
+#[derive(Clone, Copy, Debug)]
+enum RelationshipStatus {
+    _Controlled,
+    Bidirectional(Digest),
+    Unidirectional(Digest),
+    Unrelated,
 }
 
 /// This database is used to store and resolve VID's
@@ -315,7 +325,12 @@ impl VidDatabase {
         let tsp_message = tsp_crypto::seal(&sender, &receiver, None, Payload::RequestRelationship)?;
         tsp_transport::send_message(receiver.endpoint(), &tsp_message).await?;
 
-        //TODO: record the thread-id of the message we sent
+        let mut status = self.relation_status.write().await;
+        let thread_id = Default::default(); // TODO
+        status.insert(
+            receiver.identifier().to_string(),
+            RelationshipStatus::Unidirectional(thread_id),
+        );
         Ok(())
     }
 
@@ -339,6 +354,12 @@ impl VidDatabase {
         )?;
         tsp_transport::send_message(receiver.endpoint(), &tsp_message).await?;
 
+        let mut status = self.relation_status.write().await;
+        status.insert(
+            receiver.identifier().to_string(),
+            RelationshipStatus::Bidirectional(thread_id),
+        );
+
         Ok(())
     }
 
@@ -351,6 +372,12 @@ impl VidDatabase {
     ) -> Result<(), Error> {
         let sender = self.get_private_vid(sender).await?;
         let receiver = self.get_verified_vid(receiver).await?;
+
+        let mut status = self.relation_status.write().await;
+        status.insert(
+            receiver.identifier().to_string(),
+            RelationshipStatus::Unrelated,
+        );
 
         let tsp_message = tsp_crypto::seal(&sender, &receiver, None, Payload::CancelRelationship)?;
         tsp_transport::send_message(receiver.endpoint(), &tsp_message).await?;
@@ -544,6 +571,7 @@ impl VidDatabase {
     async fn decode_message(
         receivers: Arc<HashMap<String, PrivateVid>>,
         verified_vids: Arc<RwLock<HashMap<String, Vid>>>,
+        relation_status: Arc<RwLock<HashMap<String, RelationshipStatus>>>,
         message: &mut [u8],
     ) -> Result<ReceivedTspMessage<Vid>, Error> {
         let probed_message = tsp_cesr::probe(message)?;
@@ -578,7 +606,13 @@ impl VidDatabase {
                     Payload::NestedMessage(message) => {
                         // TODO: do not allocate
                         let mut inner = message.to_owned();
-                        VidDatabase::decode_message(receivers, verified_vids, &mut inner).await
+                        VidDatabase::decode_message(
+                            receivers,
+                            verified_vids,
+                            relation_status,
+                            &mut inner,
+                        )
+                        .await
                     }
                     Payload::RoutedMessage(hops, message) => {
                         let next_hop = std::str::from_utf8(hops[0])?;
@@ -599,13 +633,37 @@ impl VidDatabase {
                         sender,
                         thread_id: tsp_crypto::sha256(raw_bytes),
                     }),
-                    // TODO: check the digest and record that we have this relationship
-                    Payload::AcceptRelationship { thread_id: _digest } => {
-                        //TODO: if the thread_id is invalid, don't send this response
+                    Payload::AcceptRelationship { thread_id } => {
+                        let mut status = relation_status.write().await;
+                        let Some(relation) = status.get_mut(sender.identifier()) else {
+                            //TODO: should we inform the user of who sent this?
+                            return Err(Error::Relationship(
+                                "received confirmation of a relation with an unknown person".into(),
+                            ));
+                        };
+
+                        let RelationshipStatus::Unidirectional(digest) = relation else {
+                            return Err(Error::Relationship(
+                                "received confirmation of a relation that we did not want".into(),
+                            ));
+                        };
+
+                        if thread_id != *digest {
+                            return Err(Error::Relationship(
+                                "attempt to change the terms of the relationship".into(),
+                            ));
+                        }
+
+                        *relation = RelationshipStatus::Bidirectional(*digest);
+
                         Ok(ReceivedTspMessage::AcceptRelationship { sender })
                     }
-                    // TODO: record that we have to end this relationship
                     Payload::CancelRelationship => {
+                        let mut status = relation_status.write().await;
+                        if let Some(relation) = status.get_mut(sender.identifier()) {
+                            *relation = RelationshipStatus::Unrelated;
+                        }
+
                         Ok(ReceivedTspMessage::CancelRelationship { sender })
                     }
                 }
@@ -663,6 +721,7 @@ impl VidDatabase {
 
         let receivers = Arc::new(receivers);
         let verified_vids = self.verified_vids.clone();
+        let relation_status = self.relation_status.clone();
         let (tx, rx) = mpsc::channel(16);
         let messages = tsp_transport::receive_messages(receiver.endpoint()).await?;
 
@@ -670,8 +729,12 @@ impl VidDatabase {
             let decrypted_messages = messages.then(move |data| {
                 let receivers = receivers.clone();
                 let verified_vids = verified_vids.clone();
+                let relation_status = relation_status.clone();
 
-                async move { Self::decode_message(receivers, verified_vids, &mut data?).await }
+                async move {
+                    Self::decode_message(receivers, verified_vids, relation_status, &mut data?)
+                        .await
+                }
             });
 
             tokio::pin!(decrypted_messages);
