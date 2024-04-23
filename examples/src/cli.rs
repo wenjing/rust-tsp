@@ -59,7 +59,7 @@ struct DatabaseContents {
 async fn write_database(database_file: &str, db: &VidDatabase) -> Result<(), Error> {
     let db_path = Path::new(database_file);
 
-    let (private_vids, verified_vids) = db.export().await?;
+    let (private_vids, verified_vids) = db.export()?;
 
     let db_contents = DatabaseContents {
         private_vids,
@@ -94,12 +94,12 @@ async fn read_database(database_file: &str) -> Result<VidDatabase, Error> {
 
         for private_vid in db_contents.private_vids {
             trace!("loaded {} (private)", private_vid.identifier());
-            db.add_private_vid(private_vid).await?;
+            db.add_private_vid(private_vid)?;
         }
 
         for verified_vid in db_contents.verified_vids {
             trace!("loaded {}", verified_vid.identifier());
-            db.add_verified_vid(verified_vid).await?;
+            db.add_verified_vid(verified_vid)?;
         }
 
         Ok(db)
@@ -180,7 +180,7 @@ async fn run() -> Result<(), Error> {
                 .await
                 .expect("Could not publish VID on server");
 
-            vid_database.add_private_vid(private_vid.clone()).await?;
+            vid_database.add_private_vid(private_vid.clone())?;
             write_database(&args.database, &vid_database).await?;
 
             info!("created identity {}", private_vid.identifier());

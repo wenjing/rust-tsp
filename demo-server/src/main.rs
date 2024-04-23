@@ -75,7 +75,7 @@ async fn main() {
         let mut db = VidDatabase::new();
         let piv: PrivateVid =
             serde_json::from_str(include_str!("../../examples/test/carol.json")).unwrap();
-        db.add_private_vid(piv).await.unwrap();
+        db.add_private_vid(piv).unwrap();
         db.verify_vid("did:web:did.tsp-test.org:user:dave")
             .await
             .unwrap();
@@ -95,7 +95,7 @@ async fn main() {
         let mut db = VidDatabase::new();
         let piv: PrivateVid =
             serde_json::from_str(include_str!("../../examples/test/dave.json")).unwrap();
-        db.add_private_vid(piv).await.unwrap();
+        db.add_private_vid(piv).unwrap();
         db.verify_vid("did:web:did.tsp-test.org:user:carol")
             .await
             .unwrap();

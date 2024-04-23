@@ -48,13 +48,12 @@
 //! }
 //! ```
 
-use async_recursion::async_recursion;
 use futures::StreamExt;
-use std::{collections::HashMap, sync::Arc};
-use tokio::sync::{
-    mpsc::{self, Receiver},
-    RwLock,
+use std::{
+    collections::HashMap,
+    sync::{Arc, RwLock},
 };
+use tokio::sync::mpsc::{self, Receiver};
 use tsp_cesr::EnvelopeType;
 use tsp_crypto::error::Error as CryptoError;
 use tsp_definitions::{Digest, MessageType, Payload};
@@ -92,7 +91,7 @@ mod error;
 ///     Ok(())
 /// }
 /// ```
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 //TODO: refactor into a single HashMap<String, {vid+status}>, since being a 'PrivateVid' is also in some sense a "status"; also see gh #94
 pub struct VidDatabase {
     private_vids: Arc<RwLock<HashMap<String, PrivateVid>>>,
@@ -116,8 +115,8 @@ impl VidDatabase {
     }
 
     /// Adds `private_vid` to the database
-    pub async fn add_private_vid(&self, private_vid: PrivateVid) -> Result<(), Error> {
-        let mut private_vids = self.private_vids.write().await;
+    pub fn add_private_vid(&self, private_vid: PrivateVid) -> Result<(), Error> {
+        let mut private_vids = self.private_vids.write()?;
         private_vids.insert(private_vid.identifier().to_string(), private_vid);
 
         Ok(())
@@ -127,50 +126,45 @@ impl VidDatabase {
     /// is `Some(other_vid)`, this private VID will be associated with that `other_vid`.
     /// Currently only supports one level of nesting. The nested vid must have the did:peer format.
     // TODO: Split this function into a 'create private nested vid' and 'add relationship to vid' ?
-    pub async fn create_private_nested_vid(
+    pub fn create_private_nested_vid(
         &self,
         vid: &str,
         relation_vid: Option<&str>,
     ) -> Result<String, Error> {
-        let nested = match self.private_vids.read().await.get(vid) {
+        let nested = match self.private_vids.read()?.get(vid) {
             Some(resolved) => resolved.create_nested(relation_vid),
             None => return Err(Error::UnverifiedVid(vid.to_string())),
         };
 
         let id = nested.identifier().to_string();
-        self.add_private_vid(nested).await?;
+        self.add_private_vid(nested)?;
 
         Ok(id)
     }
 
     /// Modify a verified-vid by applying an operation to it (internal use only)
-    async fn modify_verified_vid(
+    fn modify_verified_vid(
         &self,
         vid: &str,
         change: impl FnOnce(&mut Vid) -> Result<(), Error>,
     ) -> Result<(), Error> {
-        match self.verified_vids.write().await.get_mut(vid) {
+        match self.verified_vids.write()?.get_mut(vid) {
             Some(resolved) => change(resolved),
             None => Err(Error::UnverifiedVid(vid.to_string())),
         }
     }
 
     /// Adds a relation to an already existing vid, making it a nested Vid
-    pub async fn set_relation_for_vid(
-        &self,
-        vid: &str,
-        relation_vid: Option<&str>,
-    ) -> Result<(), Error> {
+    pub fn set_relation_for_vid(&self, vid: &str, relation_vid: Option<&str>) -> Result<(), Error> {
         self.modify_verified_vid(vid, |resolved| {
             resolved.set_relation_vid(relation_vid);
 
             Ok(())
         })
-        .await
     }
 
     /// Adds a route to an already existing vid, making it a nested Vid
-    pub async fn set_route_for_vid(&self, vid: &str, route: &[&str]) -> Result<(), Error> {
+    pub fn set_route_for_vid(&self, vid: &str, route: &[&str]) -> Result<(), Error> {
         if route.len() == 1 {
             return Err(Error::InvalidRoute(
                 "A route must have at least two VID's".into(),
@@ -181,12 +175,11 @@ impl VidDatabase {
 
             Ok(())
         })
-        .await
     }
 
     /// Add the already resolved `verified_vid` to the database as a relationship
-    pub async fn add_verified_vid(&self, verified_vid: Vid) -> Result<(), Error> {
-        let mut verified_vids = self.verified_vids.write().await;
+    pub fn add_verified_vid(&self, verified_vid: Vid) -> Result<(), Error> {
+        let mut verified_vids = self.verified_vids.write()?;
         verified_vids.insert(verified_vid.identifier().to_string(), verified_vid);
 
         Ok(())
@@ -196,23 +189,24 @@ impl VidDatabase {
     pub async fn add_private_vid_from_file(&self, name: &str) -> Result<(), Error> {
         let private_vid = PrivateVid::from_file(format!("../examples/{name}")).await?;
 
-        self.add_private_vid(private_vid).await
+        self.add_private_vid(private_vid)
     }
 
     /// Export the database as a tuple of private and verified VID's
-    pub async fn export(&self) -> Result<(Vec<PrivateVid>, Vec<Vid>), Error> {
-        let private_vids = self.private_vids.read().await.values().cloned().collect();
-        let verified_vids = self.verified_vids.read().await.values().cloned().collect();
+    pub fn export(&self) -> Result<(Vec<PrivateVid>, Vec<Vid>), Error> {
+        let private_vids = self.private_vids.read()?.values().cloned().collect();
+        let verified_vids = self.verified_vids.read()?.values().cloned().collect();
 
         Ok((private_vids, verified_vids))
     }
 
     /// Resolve and verify public key material for a VID identified by `vid` and add it to the database as a relationship
     pub async fn verify_vid(&mut self, vid: &str) -> Result<(), Error> {
-        let mut verified_vids = self.verified_vids.write().await;
-
         let verified_vid = tsp_vid::verify_vid(vid).await?;
-        verified_vids.insert(vid.to_string(), verified_vid);
+
+        self.verified_vids
+            .write()?
+            .insert(vid.to_string(), verified_vid);
 
         Ok(())
     }
@@ -227,13 +221,14 @@ impl VidDatabase {
         parent_vid: &str,
         relation_vid: Option<&str>,
     ) -> Result<(), Error> {
-        let mut verified_vids = self.verified_vids.write().await;
-
         let mut verified_vid = tsp_vid::verify_vid(vid).await?;
 
         verified_vid.set_parent_vid(parent_vid.to_string());
         verified_vid.set_relation_vid(relation_vid);
-        verified_vids.insert(vid.to_string(), verified_vid);
+
+        self.verified_vids
+            .write()?
+            .insert(vid.to_string(), verified_vid);
 
         Ok(())
     }
@@ -257,7 +252,7 @@ impl VidDatabase {
     /// async fn main() {
     ///     let mut db = VidDatabase::new();
     ///     let private_vid = PrivateVid::from_file(format!("../examples/test/bob.json")).await.unwrap();
-    ///     db.add_private_vid(private_vid).await.unwrap();
+    ///     db.add_private_vid(private_vid).unwrap();
     ///     db.verify_vid("did:web:did.tsp-test.org:user:alice").await.unwrap();
     ///
     ///     let sender = "did:web:did.tsp-test.org:user:bob";
@@ -273,8 +268,8 @@ impl VidDatabase {
         nonconfidential_data: Option<&[u8]>,
         message: &[u8],
     ) -> Result<Vec<u8>, Error> {
-        let sender = self.get_private_vid(sender).await?;
-        let receiver = self.get_verified_vid(receiver).await?;
+        let sender = self.get_private_vid(sender)?;
+        let receiver = self.get_verified_vid(receiver)?;
 
         let tsp_message = tsp_crypto::seal(
             &sender,
@@ -305,7 +300,7 @@ impl VidDatabase {
     /// async fn main() {
     ///     let mut db = VidDatabase::new();
     ///     let private_vid = PrivateVid::from_file(format!("../examples/test/bob.json")).await.unwrap();
-    ///     db.add_private_vid(private_vid).await.unwrap();
+    ///     db.add_private_vid(private_vid).unwrap();
     ///     db.verify_vid("did:web:did.tsp-test.org:user:alice").await.unwrap();
     ///
     ///     let sender = "did:web:did.tsp-test.org:user:bob";
@@ -319,19 +314,21 @@ impl VidDatabase {
         sender: &str,
         receiver: &str,
     ) -> Result<(), Error> {
-        let sender = self.get_private_vid(sender).await?;
-        let receiver = self.get_verified_vid(receiver).await?;
+        let sender = self.get_private_vid(sender)?;
+        let receiver = self.get_verified_vid(receiver)?;
 
         let (tsp_message, thread_id) =
             tsp_crypto::seal_and_hash(&sender, &receiver, None, Payload::RequestRelationship)?;
 
         tsp_transport::send_message(receiver.endpoint(), &tsp_message).await?;
 
-        let mut status = self.relation_status.write().await;
+        let mut status = self.relation_status.write()?;
+
         status.insert(
             receiver.identifier().to_string(),
             RelationshipStatus::Unidirectional(thread_id),
         );
+
         Ok(())
     }
 
@@ -344,8 +341,8 @@ impl VidDatabase {
         receiver: &str,
         thread_id: Digest,
     ) -> Result<(), Error> {
-        let sender = self.get_private_vid(sender).await?;
-        let receiver = self.get_verified_vid(receiver).await?;
+        let sender = self.get_private_vid(sender)?;
+        let receiver = self.get_verified_vid(receiver)?;
 
         let tsp_message = tsp_crypto::seal(
             &sender,
@@ -355,7 +352,8 @@ impl VidDatabase {
         )?;
         tsp_transport::send_message(receiver.endpoint(), &tsp_message).await?;
 
-        let mut status = self.relation_status.write().await;
+        let mut status = self.relation_status.write()?;
+
         status.insert(
             receiver.identifier().to_string(),
             RelationshipStatus::Bidirectional(thread_id),
@@ -371,11 +369,10 @@ impl VidDatabase {
         sender: &str,
         receiver: &str,
     ) -> Result<(), Error> {
-        let sender = self.get_private_vid(sender).await?;
-        let receiver = self.get_verified_vid(receiver).await?;
+        let sender = self.get_private_vid(sender)?;
+        let receiver = self.get_verified_vid(receiver)?;
 
-        let mut status = self.relation_status.write().await;
-        status.insert(
+        self.relation_status.write()?.insert(
             receiver.identifier().to_string(),
             RelationshipStatus::Unrelated,
         );
@@ -403,19 +400,19 @@ impl VidDatabase {
         nonconfidential_data: Option<&[u8]>,
         message: &[u8],
     ) -> Result<(), Error> {
-        let inner_receiver = self.get_verified_vid(receiver).await?;
+        let inner_receiver = self.get_verified_vid(receiver)?;
 
         let (sender, receiver, inner_message) =
             match (inner_receiver.parent_vid(), inner_receiver.relation_vid()) {
                 (Some(parent_receiver), Some(inner_sender)) => {
-                    let inner_sender = self.get_private_vid(inner_sender).await?;
+                    let inner_sender = self.get_private_vid(inner_sender)?;
                     let tsp_message =
                         tsp_crypto::sign(&inner_sender, Some(&inner_receiver), message)?;
 
                     match inner_sender.parent_vid() {
                         Some(parent_sender) => {
-                            let parent_sender = self.get_private_vid(parent_sender).await?;
-                            let parent_receiver = self.get_verified_vid(parent_receiver).await?;
+                            let parent_sender = self.get_private_vid(parent_sender)?;
+                            let parent_receiver = self.get_verified_vid(parent_receiver)?;
 
                             (parent_sender, parent_receiver, tsp_message)
                         }
@@ -454,18 +451,18 @@ impl VidDatabase {
         intermediary_extra_data: Option<&[u8]>,
         message: &[u8],
     ) -> Result<(), Error> {
-        let inner_receiver = self.get_verified_vid(receiver).await?;
+        let inner_receiver = self.get_verified_vid(receiver)?;
 
         let Some(intermediaries) = inner_receiver.get_route() else {
             return Err(VidError::ResolveVid("no route established for VID").into());
         };
 
-        let first_hop = self.get_verified_vid(&intermediaries[0]).await?;
+        let first_hop = self.get_verified_vid(&intermediaries[0])?;
 
         let (sender, inner_message) =
             match (first_hop.relation_vid(), inner_receiver.relation_vid()) {
                 (Some(first_sender), Some(inner_sender)) => {
-                    let inner_sender = self.get_private_vid(inner_sender).await?;
+                    let inner_sender = self.get_private_vid(inner_sender)?;
                     let tsp_message = tsp_crypto::seal(
                         &inner_sender,
                         &inner_receiver,
@@ -473,7 +470,7 @@ impl VidDatabase {
                         Payload::Content(message),
                     )?;
 
-                    let first_sender = self.get_private_vid(first_sender).await?;
+                    let first_sender = self.get_private_vid(first_sender)?;
 
                     (first_sender, tsp_message)
                 }
@@ -510,11 +507,11 @@ impl VidDatabase {
         receiver: &str,
         message: &mut [u8],
     ) -> Result<(), Error> {
-        let Ok(receiver) = self.get_private_vid(receiver).await else {
+        let Ok(receiver) = self.get_private_vid(receiver) else {
             return Err(CryptoError::UnexpectedRecipient.into());
         };
 
-        let Ok(sender) = self.get_verified_vid(sender).await else {
+        let Ok(sender) = self.get_verified_vid(sender) else {
             return Err(Error::UnverifiedVid(sender.to_string()));
         };
 
@@ -526,7 +523,7 @@ impl VidDatabase {
 
         let next_hop = std::str::from_utf8(hops[0])?;
 
-        let Ok(next_hop) = self.get_verified_vid(next_hop).await else {
+        let Ok(next_hop) = self.get_verified_vid(next_hop) else {
             return Err(Error::UnverifiedVid(next_hop.to_string()));
         };
 
@@ -546,15 +543,11 @@ impl VidDatabase {
     ) -> Result<(), Error> {
         let (destination, tsp_message) = if path.is_empty() {
             // we are the final delivery point, we should be the 'next_hop'
-            let sender = self.get_private_vid(next_hop).await?;
+            let sender = self.get_private_vid(next_hop)?;
 
             //TODO: we cannot user 'sender.relation_vid()', since the relationship status of this cannot be set
-            let recipient = match self
-                .get_verified_vid(sender.identifier())
-                .await?
-                .relation_vid()
-            {
-                Some(destination) => self.get_verified_vid(destination).await?,
+            let recipient = match self.get_verified_vid(sender.identifier())?.relation_vid() {
+                Some(destination) => self.get_verified_vid(destination)?,
                 None => return Err(VidError::ResolveVid("no relation for drop-off VID").into()),
             };
 
@@ -568,10 +561,10 @@ impl VidDatabase {
             (recipient, tsp_message)
         } else {
             // we are an intermediary, continue sending the message
-            let next_hop = self.get_verified_vid(next_hop).await?;
+            let next_hop = self.get_verified_vid(next_hop)?;
 
             let sender = match next_hop.relation_vid() {
-                Some(first_sender) => self.get_private_vid(first_sender).await?,
+                Some(first_sender) => self.get_private_vid(first_sender)?,
                 None => return Err(VidError::ResolveVid("missing sender VID for first hop").into()),
             };
 
@@ -591,21 +584,21 @@ impl VidDatabase {
     }
 
     /// Check whether the [PrivateVid] identified by `vid` exists inthe database
-    pub async fn has_private_vid(&self, vid: &str) -> bool {
-        self.private_vids.read().await.contains_key(vid)
+    pub fn has_private_vid(&self, vid: &str) -> Result<bool, Error> {
+        Ok(self.private_vids.read()?.contains_key(vid))
     }
 
     /// Retrieve the [PrivateVid] identified by `vid` from the database, if it exists.
-    async fn get_private_vid(&self, vid: &str) -> Result<PrivateVid, Error> {
-        match self.private_vids.read().await.get(vid) {
+    fn get_private_vid(&self, vid: &str) -> Result<PrivateVid, Error> {
+        match self.private_vids.read()?.get(vid) {
             Some(resolved) => Ok(resolved.clone()),
             None => Err(Error::UnverifiedVid(vid.to_string())),
         }
     }
 
     /// Retrieve the [Vid] identified by `vid` from the database, if it exists.
-    async fn get_verified_vid(&self, vid: &str) -> Result<Vid, Error> {
-        match self.verified_vids.read().await.get(vid) {
+    fn get_verified_vid(&self, vid: &str) -> Result<Vid, Error> {
+        match self.verified_vids.read()?.get(vid) {
             Some(resolved) => Ok(resolved.clone()),
             None => Err(Error::UnverifiedVid(vid.to_string())),
         }
@@ -613,13 +606,7 @@ impl VidDatabase {
 
     /// Decode an encrypted `message``, which has to be addressed to one of the VID's in `receivers`, and has to have
     /// `verified_vids` as one of the senders.
-    #[async_recursion]
-    async fn decode_message(
-        receivers: Arc<HashMap<String, PrivateVid>>,
-        verified_vids: Arc<RwLock<HashMap<String, Vid>>>,
-        relation_status: Arc<RwLock<HashMap<String, RelationshipStatus>>>,
-        message: &mut [u8],
-    ) -> Result<ReceivedTspMessage<Vid>, Error> {
+    fn decode_message(self, message: &mut [u8]) -> Result<ReceivedTspMessage<Vid>, Error> {
         let probed_message = tsp_cesr::probe(message)?;
 
         match probed_message {
@@ -629,18 +616,18 @@ impl VidDatabase {
             } => {
                 let intended_receiver = std::str::from_utf8(intended_receiver)?;
 
-                let Some(intended_receiver) = receivers.get(intended_receiver) else {
+                let Ok(intended_receiver) = self.get_private_vid(intended_receiver) else {
                     return Err(CryptoError::UnexpectedRecipient.into());
                 };
 
                 let sender = std::str::from_utf8(sender)?;
 
-                let Some(sender) = verified_vids.read().await.get(sender).cloned() else {
+                let Ok(sender) = self.get_verified_vid(sender) else {
                     return Err(Error::UnverifiedVid(sender.to_string()));
                 };
 
                 let (nonconfidential_data, payload, raw_bytes) =
-                    tsp_crypto::open(intended_receiver, &sender, message)?;
+                    tsp_crypto::open(&intended_receiver, &sender, message)?;
 
                 match payload {
                     Payload::Content(message) => Ok(ReceivedTspMessage::<Vid>::GenericMessage {
@@ -652,19 +639,12 @@ impl VidDatabase {
                     Payload::NestedMessage(message) => {
                         // TODO: do not allocate
                         let mut inner = message.to_owned();
-                        VidDatabase::decode_message(
-                            receivers,
-                            verified_vids,
-                            relation_status,
-                            &mut inner,
-                        )
-                        .await
+                        self.decode_message(&mut inner)
                     }
                     Payload::RoutedMessage(hops, message) => {
                         let next_hop = std::str::from_utf8(hops[0])?;
 
-                        let Some(next_hop) = verified_vids.read().await.get(next_hop).cloned()
-                        else {
+                        let Ok(next_hop) = self.get_verified_vid(next_hop) else {
                             return Err(Error::UnverifiedVid(next_hop.to_string()));
                         };
 
@@ -680,7 +660,7 @@ impl VidDatabase {
                         thread_id: tsp_crypto::sha256(raw_bytes),
                     }),
                     Payload::AcceptRelationship { thread_id } => {
-                        let mut status = relation_status.write().await;
+                        let mut status = self.relation_status.write()?;
                         let Some(relation) = status.get_mut(sender.identifier()) else {
                             //TODO: should we inform the user of who sent this?
                             return Err(Error::Relationship(
@@ -705,7 +685,7 @@ impl VidDatabase {
                         Ok(ReceivedTspMessage::AcceptRelationship { sender })
                     }
                     Payload::CancelRelationship { thread_id } => {
-                        let mut status = relation_status.write().await;
+                        let mut status = self.relation_status.write()?;
                         if let Some(relation) = status.get_mut(sender.identifier()) {
                             match relation {
                                 RelationshipStatus::Bidirectional(digest)
@@ -732,14 +712,14 @@ impl VidDatabase {
                 if let Some(intended_receiver) = intended_receiver {
                     let intended_receiver = std::str::from_utf8(intended_receiver)?;
 
-                    if !receivers.contains_key(intended_receiver) {
+                    if !self.has_private_vid(intended_receiver)? {
                         return Err(CryptoError::UnexpectedRecipient.into());
                     }
                 };
 
                 let sender = std::str::from_utf8(sender)?;
 
-                let Some(sender) = verified_vids.read().await.get(sender).cloned() else {
+                let Ok(sender) = self.get_verified_vid(sender) else {
                     return Err(Error::UnverifiedVid(sender.to_string()));
                 };
 
@@ -762,7 +742,7 @@ impl VidDatabase {
         &self,
         vid: &str,
     ) -> Result<Receiver<Result<ReceivedTspMessage<Vid>, Error>>, Error> {
-        let mut receiver = self.get_private_vid(vid).await?;
+        let mut receiver = self.get_private_vid(vid)?;
         let mut receivers = HashMap::new();
 
         loop {
@@ -770,34 +750,24 @@ impl VidDatabase {
 
             match receiver.parent_vid() {
                 Some(parent_vid) => {
-                    receiver = self.get_private_vid(parent_vid).await?;
+                    receiver = self.get_private_vid(parent_vid)?;
                 }
                 _ => break,
             }
         }
 
-        let receivers = Arc::new(receivers);
-        let verified_vids = self.verified_vids.clone();
-        let relation_status = self.relation_status.clone();
         let (tx, rx) = mpsc::channel(16);
-        let messages = tsp_transport::receive_messages(receiver.endpoint()).await?;
+        let mut messages = tsp_transport::receive_messages(receiver.endpoint()).await?;
 
+        let db = self.clone();
         tokio::task::spawn(async move {
-            let decrypted_messages = messages.then(move |data| {
-                let receivers = receivers.clone();
-                let verified_vids = verified_vids.clone();
-                let relation_status = relation_status.clone();
+            while let Some(message) = messages.next().await {
+                let result = match message {
+                    Ok(mut m) => db.clone().decode_message(&mut m),
+                    Err(e) => Err(e.into()),
+                };
 
-                async move {
-                    Self::decode_message(receivers, verified_vids, relation_status, &mut data?)
-                        .await
-                }
-            });
-
-            tokio::pin!(decrypted_messages);
-
-            while let Some(m) = decrypted_messages.next().await {
-                let _ = tx.send(m).await;
+                let _ = tx.send(result).await;
             }
         });
 
@@ -896,7 +866,6 @@ mod test {
         // create nested id's
         let nested_bob_vid = bob_db
             .create_private_nested_vid("did:web:did.tsp-test.org:user:bob", None)
-            .await
             .unwrap();
 
         // receive a messages on inner vid
@@ -904,7 +873,6 @@ mod test {
 
         let nested_alice_vid = alice_db
             .create_private_nested_vid("did:web:did.tsp-test.org:user:alice", Some(&nested_bob_vid))
-            .await
             .unwrap();
 
         alice_db
@@ -992,21 +960,18 @@ mod test {
                     "did:web:hidden.web:user:realbob",
                 ],
             )
-            .await
             .unwrap();
         alice_db
             .set_relation_for_vid(
                 "did:web:did.tsp-test.org:user:bob",
                 Some("did:web:did.tsp-test.org:user:alice"),
             )
-            .await
             .unwrap();
         alice_db
             .set_relation_for_vid(
                 "did:web:did.tsp-test.org:user:alice",
                 Some("did:web:did.tsp-test.org:user:alice"),
             )
-            .await
             .unwrap();
 
         // let alice send a message via bob to herself
@@ -1046,7 +1011,6 @@ mod test {
                 "did:web:did.tsp-test.org:user:alice",
                 Some("did:web:did.tsp-test.org:user:bob"),
             )
-            .await
             .unwrap();
 
         // test1: alice doens't know "realbob"
@@ -1093,7 +1057,6 @@ mod test {
                 "did:web:did.tsp-test.org:user:bob",
                 Some("did:web:did.tsp-test.org:user:alice"),
             )
-            .await
             .unwrap();
         bob_db
             .forward_routed_message("did:web:did.tsp-test.org:user:bob", vec![], &opaque_payload)
