@@ -3,7 +3,7 @@ use crate::AsyncStore;
 #[tokio::test]
 #[serial_test::serial(tcp)]
 async fn test_direct_mode() {
-    tsp_transport::tcp::start_broadcast_server("127.0.0.1:1337")
+    crate::transport::tcp::start_broadcast_server("127.0.0.1:1337")
         .await
         .unwrap();
 
@@ -46,7 +46,7 @@ async fn test_direct_mode() {
         .unwrap();
 
     // receive a message
-    let tsp_definitions::ReceivedTspMessage::GenericMessage { message, .. } =
+    let crate::definitions::ReceivedTspMessage::GenericMessage { message, .. } =
         bobs_messages.recv().await.unwrap().unwrap()
     else {
         panic!("bob did not receive a generic message")
@@ -58,7 +58,7 @@ async fn test_direct_mode() {
 #[tokio::test]
 #[serial_test::serial(tcp)]
 async fn test_nested_mode() {
-    tsp_transport::tcp::start_broadcast_server("127.0.0.1:1337")
+    crate::transport::tcp::start_broadcast_server("127.0.0.1:1337")
         .await
         .unwrap();
 
@@ -118,7 +118,7 @@ async fn test_nested_mode() {
         .unwrap();
 
     // receive message using inner vid
-    let tsp_definitions::ReceivedTspMessage::GenericMessage { message, .. } =
+    let crate::definitions::ReceivedTspMessage::GenericMessage { message, .. } =
         bobs_inner_messages.recv().await.unwrap().unwrap()
     else {
         panic!("bob did not receive a generic message inner")
@@ -130,8 +130,8 @@ async fn test_nested_mode() {
 #[tokio::test]
 #[serial_test::serial(tcp)]
 async fn test_routed_mode() {
-    use tsp_definitions::VerifiedVid;
-    tsp_transport::tcp::start_broadcast_server("127.0.0.1:1337")
+    use crate::definitions::VerifiedVid;
+    crate::transport::tcp::start_broadcast_server("127.0.0.1:1337")
         .await
         .unwrap();
 
@@ -206,7 +206,7 @@ async fn test_routed_mode() {
         .unwrap();
 
     // let bob receive the message
-    let tsp_definitions::ReceivedTspMessage::ForwardRequest {
+    let crate::definitions::ReceivedTspMessage::ForwardRequest {
         opaque_payload,
         sender,
         next_hop,
@@ -259,7 +259,7 @@ async fn test_routed_mode() {
         )
         .await
         .unwrap();
-    let tsp_definitions::ReceivedTspMessage::ForwardRequest {
+    let crate::definitions::ReceivedTspMessage::ForwardRequest {
         sender,
         next_hop,
         route,
@@ -283,7 +283,7 @@ async fn test_routed_mode() {
         .forward_routed_message("did:web:did.tsp-test.org:user:bob", vec![], &opaque_payload)
         .await
         .unwrap();
-    let tsp_definitions::ReceivedTspMessage::GenericMessage {
+    let crate::definitions::ReceivedTspMessage::GenericMessage {
         sender, message, ..
     } = alice_messages.recv().await.unwrap().unwrap()
     else {
@@ -295,20 +295,20 @@ async fn test_routed_mode() {
 }
 
 async fn faulty_send(
-    sender: &impl tsp_definitions::Sender,
-    receiver: &impl tsp_definitions::VerifiedVid,
+    sender: &impl crate::definitions::Sender,
+    receiver: &impl crate::definitions::VerifiedVid,
     nonconfidential_data: Option<&[u8]>,
     message: &[u8],
     corrupt: impl FnOnce(&mut [u8]),
 ) -> Result<(), super::Error> {
-    let mut tsp_message = tsp_crypto::seal(
+    let mut tsp_message = crate::crypto::seal(
         sender,
         receiver,
         nonconfidential_data,
         super::Payload::Content(message),
     )?;
     corrupt(&mut tsp_message);
-    tsp_transport::send_message(receiver.endpoint(), &tsp_message).await?;
+    crate::transport::send_message(receiver.endpoint(), &tsp_message).await?;
 
     Ok(())
 }
@@ -316,7 +316,7 @@ async fn faulty_send(
 #[tokio::test]
 #[serial_test::serial(tcp)]
 async fn attack_failures() {
-    tsp_transport::tcp::start_broadcast_server("127.0.0.1:1337")
+    crate::transport::tcp::start_broadcast_server("127.0.0.1:1337")
         .await
         .unwrap();
 
@@ -336,11 +336,11 @@ async fn attack_failures() {
         .await
         .unwrap();
 
-    let alice = tsp_vid::PrivateVid::from_file("../examples/test/alice.json")
+    let alice = crate::vid::PrivateVid::from_file("../examples/test/alice.json")
         .await
         .unwrap();
 
-    let bob = tsp_vid::verify_vid("did:web:did.tsp-test.org:user:bob")
+    let bob = crate::vid::verify_vid("did:web:did.tsp-test.org:user:bob")
         .await
         .unwrap();
 
@@ -369,7 +369,7 @@ async fn attack_failures() {
 #[tokio::test]
 #[serial_test::serial(tcp)]
 async fn test_relation_forming() {
-    tsp_transport::tcp::start_broadcast_server("127.0.0.1:1337")
+    crate::transport::tcp::start_broadcast_server("127.0.0.1:1337")
         .await
         .unwrap();
 
@@ -410,7 +410,7 @@ async fn test_relation_forming() {
         .unwrap();
 
     // receive a message
-    let tsp_definitions::ReceivedTspMessage::RequestRelationship { sender, thread_id } =
+    let crate::definitions::ReceivedTspMessage::RequestRelationship { sender, thread_id } =
         bobs_messages.recv().await.unwrap().unwrap()
     else {
         panic!("bob did not receive a relation request")
@@ -422,7 +422,7 @@ async fn test_relation_forming() {
         .await
         .unwrap();
 
-    use tsp_definitions::VerifiedVid;
+    use crate::definitions::VerifiedVid;
     assert_eq!(sender.identifier(), "did:web:did.tsp-test.org:user:alice");
 
     // send the reply
@@ -435,7 +435,7 @@ async fn test_relation_forming() {
         .await
         .unwrap();
 
-    let tsp_definitions::ReceivedTspMessage::AcceptRelationship { sender } =
+    let crate::definitions::ReceivedTspMessage::AcceptRelationship { sender } =
         alice_messages.recv().await.unwrap().unwrap()
     else {
         panic!("alice did not receive a relation accept")

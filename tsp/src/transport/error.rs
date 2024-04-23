@@ -1,5 +1,5 @@
 #[derive(thiserror::Error, Debug)]
-pub enum Error {
+pub enum TransportError {
     #[error("fetching '{0}' failed: {1}")]
     Http(String, reqwest::Error),
     #[error("connection to '{0}' failed: {1}")]

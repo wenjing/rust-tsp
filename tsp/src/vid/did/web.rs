@@ -1,10 +1,10 @@
+use crate::definitions::VerifiedVid;
 use base64ct::{Base64UrlUnpadded, Encoding};
 use serde::Deserialize;
 use serde_json::json;
-use tsp_definitions::VerifiedVid;
 use url::Url;
 
-use crate::{error::Error, PrivateVid, Vid};
+use crate::vid::{error::VidError, PrivateVid, Vid};
 
 pub(crate) const SCHEME: &str = "web";
 
@@ -53,16 +53,16 @@ pub struct PublicKeyJwk {
     pub x: String,
 }
 
-pub fn resolve_url(parts: &[&str]) -> Result<Url, Error> {
+pub fn resolve_url(parts: &[&str]) -> Result<Url, VidError> {
     match parts {
         ["did", "web", domain] => format!("{PROTOCOL}{domain}/{DEFAULT_PATH}/{DOCUMENT}"),
         ["did", "web", domain, "user", username] => {
             format!("{PROTOCOL}{domain}/user/{username}/{DOCUMENT}")
         }
-        _ => return Err(Error::InvalidVid(parts.join(":"))),
+        _ => return Err(VidError::InvalidVid(parts.join(":"))),
     }
     .parse()
-    .map_err(|_| Error::InvalidVid(parts.join(":")))
+    .map_err(|_| VidError::InvalidVid(parts.join(":")))
 }
 
 pub fn find_first_key(
@@ -90,9 +90,9 @@ pub fn find_first_key(
         .and_then(|key| <[u8; 32]>::try_from(key).ok())
 }
 
-pub fn resolve_document(did_document: DidDocument, target_id: &str) -> Result<Vid, Error> {
+pub fn resolve_document(did_document: DidDocument, target_id: &str) -> Result<Vid, VidError> {
     if did_document.id != target_id {
-        return Err(Error::ResolveVid("Invalid id specified in DID document"));
+        return Err(VidError::ResolveVid("Invalid id specified in DID document"));
     }
 
     let Some(public_sigkey) = find_first_key(
@@ -102,13 +102,15 @@ pub fn resolve_document(did_document: DidDocument, target_id: &str) -> Result<Vi
         "sig",
     )
     .and_then(|key| ed25519_dalek::VerifyingKey::from_bytes(&key).ok()) else {
-        return Err(Error::ResolveVid("No valid sign key found in DID document"));
+        return Err(VidError::ResolveVid(
+            "No valid sign key found in DID document",
+        ));
     };
 
     let Some(public_enckey) =
         find_first_key(&did_document, &did_document.key_agreement, "X25519", "enc")
     else {
-        return Err(Error::ResolveVid(
+        return Err(VidError::ResolveVid(
             "No valid encryption key found in DID document",
         ));
     };
@@ -121,7 +123,11 @@ pub fn resolve_document(did_document: DidDocument, target_id: &str) -> Result<Vi
         }
     }) {
         Some(service) => service.service_endpoint,
-        None => return Err(Error::ResolveVid("No transport found in the DID document")),
+        None => {
+            return Err(VidError::ResolveVid(
+                "No transport found in the DID document",
+            ))
+        }
     };
 
     Ok(Vid {
@@ -197,18 +203,18 @@ pub fn create_did_web(
 
 #[cfg(test)]
 mod tests {
+    use super::resolve_url;
+    use crate::{
+        definitions::VerifiedVid,
+        vid::{
+            did::web::{resolve_document, DidDocument},
+            error::VidError,
+        },
+    };
     use std::fs;
-    use tsp_definitions::VerifiedVid;
     use url::Url;
 
-    use crate::{
-        error::Error,
-        resolve::did::web::{resolve_document, DidDocument},
-    };
-
-    use super::resolve_url;
-
-    fn resolve_did_string(did: &str) -> Result<Url, Error> {
+    fn resolve_did_string(did: &str) -> Result<Url, VidError> {
         let parts = did.split(':').collect::<Vec<&str>>();
 
         resolve_url(&parts)

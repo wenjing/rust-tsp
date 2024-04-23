@@ -30,7 +30,7 @@ mod msgtype {
     pub(super) const REL_CANCEL: [u8; 2] = [1, 255];
 }
 
-use crate::{
+use super::{
     decode::{decode_count, decode_fixed_data, decode_variable_data, decode_variable_data_index},
     encode::{encode_count, encode_fixed_data},
     error::{DecodeError, EncodeError},
@@ -130,7 +130,7 @@ fn checked_encode_variable_data(
         return Err(EncodeError::PayloadTooLarge);
     }
 
-    crate::encode::encode_variable_data(identifier, payload, stream);
+    super::encode::encode_variable_data(identifier, payload, stream);
 
     Ok(())
 }

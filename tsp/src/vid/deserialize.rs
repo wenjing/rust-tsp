@@ -2,23 +2,23 @@ use ed25519_dalek::{self as Ed};
 use std::path::Path;
 use tokio::fs;
 
-use crate::{error::Error, PrivateVid};
+use super::{error::VidError, PrivateVid};
 
 impl PrivateVid {
-    pub async fn from_file(path: impl AsRef<Path>) -> Result<Self, Error> {
+    pub async fn from_file(path: impl AsRef<Path>) -> Result<Self, VidError> {
         let vid_data = fs::read_to_string(path)
             .await
-            .map_err(|_| Error::ResolveVid("private VID file not found"))?;
+            .map_err(|_| VidError::ResolveVid("private VID file not found"))?;
 
         serde_json::from_str(&vid_data)
-            .map_err(|_| Error::ResolveVid("private VID contains invalid JSON"))
+            .map_err(|_| VidError::ResolveVid("private VID contains invalid JSON"))
     }
 }
 
 pub(crate) mod serde_key_data {
+    use crate::definitions::KeyData;
     use base64ct::{Base64UrlUnpadded, Encoding};
     use serde::{Deserialize, Deserializer, Serializer};
-    use tsp_definitions::KeyData;
 
     pub fn serialize<S>(key: &KeyData, serializer: S) -> Result<S::Ok, S::Error>
     where

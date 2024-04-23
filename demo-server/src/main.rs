@@ -16,9 +16,11 @@ use serde_json::json;
 use std::{collections::HashMap, sync::Arc};
 use tokio::sync::{broadcast, RwLock};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
-use tsp::AsyncStore;
-use tsp_definitions::{Payload, VerifiedVid};
-use tsp_vid::{PrivateVid, Vid};
+use tsp::{
+    definitions::{Payload, VerifiedVid},
+    vid::{PrivateVid, Vid},
+    AsyncStore,
+};
 
 use crate::intermediary::start_intermediary;
 
@@ -150,7 +152,7 @@ async fn create_identity(
     State(state): State<Arc<AppState>>,
     Form(form): Form<CreateIdentityInput>,
 ) -> impl IntoResponse {
-    let (did_doc, _, private_vid) = tsp_vid::create_did_web(
+    let (did_doc, _, private_vid) = tsp::vid::create_did_web(
         &form.name,
         DOMAIN,
         &format!("https://{DOMAIN}/user/{}", form.name),
@@ -185,7 +187,7 @@ async fn verify_vid(
     }
 
     // remote lookup
-    let vid = tsp_vid::verify_vid(&form.vid).await.ok();
+    let vid = tsp::vid::verify_vid(&form.vid).await.ok();
 
     match vid {
         Some(vid) => Json(&vid).into_response(),
@@ -195,7 +197,7 @@ async fn verify_vid(
 
 /// Add did document to the local state
 async fn add_vid(State(state): State<Arc<AppState>>, Json(vid): Json<Vid>) -> Response {
-    let did_doc = tsp_vid::vid_to_did_document(&vid);
+    let did_doc = tsp::vid::vid_to_did_document(&vid);
 
     state.db.write().await.insert(
         vid.identifier().to_string(),
@@ -225,7 +227,7 @@ async fn get_did_doc(State(state): State<Arc<AppState>>, Path(name): Path<String
 }
 
 /// Format CESR encoded message parts to descriptive JSON
-fn format_part(title: &str, part: &tsp_cesr::Part, plain: Option<&[u8]>) -> serde_json::Value {
+fn format_part(title: &str, part: &tsp::cesr::Part, plain: Option<&[u8]>) -> serde_json::Value {
     let full = [&part.prefix[..], &part.data[..]].concat();
 
     json!({
@@ -240,7 +242,7 @@ fn format_part(title: &str, part: &tsp_cesr::Part, plain: Option<&[u8]>) -> serd
 
 /// Decode a CESR encoded message into descriptive JSON
 fn decode_message(message: &[u8], payload: Option<&[u8]>) -> Option<serde_json::Value> {
-    let parts = tsp_cesr::decode_message_into_parts(message).ok()?;
+    let parts = tsp::cesr::decode_message_into_parts(message).ok()?;
 
     Some(json!({
         "original": Base64UrlUnpadded::encode_string(message),
@@ -264,7 +266,7 @@ struct SendMessageForm {
 
 async fn route_message(State(state): State<Arc<AppState>>, body: Bytes) -> Response {
     let message: Vec<u8> = body.to_vec();
-    let Ok((sender, Some(receiver))) = tsp_cesr::get_sender_receiver(&message) else {
+    let Ok((sender, Some(receiver))) = tsp::cesr::get_sender_receiver(&message) else {
         return (StatusCode::BAD_REQUEST, "invalid message").into_response();
     };
 
@@ -290,7 +292,7 @@ async fn send_message(
     State(state): State<Arc<AppState>>,
     Json(form): Json<SendMessageForm>,
 ) -> Response {
-    let result = tsp_crypto::seal(
+    let result = tsp::crypto::seal(
         &form.sender,
         &form.receiver,
         form.nonconfidential_data.as_deref().and_then(|d| {
@@ -376,7 +378,7 @@ async fn websocket(stream: WebSocket, state: Arc<AppState>) {
             // if the sender is verified, decrypt the message
             let result = if let Some(sender_vid) = incoming_senders_read.get(&sender_id) {
                 let Ok((_, payload, _)) =
-                    tsp_crypto::open(receiver_vid, sender_vid, &mut encrypted_message)
+                    tsp::crypto::open(receiver_vid, sender_vid, &mut encrypted_message)
                 else {
                     continue;
                 };

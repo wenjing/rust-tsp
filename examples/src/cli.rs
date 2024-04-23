@@ -5,8 +5,7 @@ use std::path::Path;
 use tokio::io::AsyncReadExt;
 use tracing::{info, trace};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
-use tsp::{AsyncStore, Error, PrivateVid, ReceivedTspMessage, VerifiedVid, Vid};
-use tsp_cesr::Part;
+use tsp::{cesr::Part, AsyncStore, Error, PrivateVid, ReceivedTspMessage, VerifiedVid, Vid};
 
 #[derive(Debug, Parser)]
 #[command(name = "tsp")]
@@ -124,7 +123,7 @@ fn color_print_part(part: Option<Part>, color: u8) {
 }
 
 fn print_message(message: &[u8]) {
-    let Ok(parts) = tsp_cesr::decode_message_into_parts(message) else {
+    let Ok(parts) = tsp::cesr::decode_message_into_parts(message) else {
         eprintln!("Invalid encoded message");
         return;
     };

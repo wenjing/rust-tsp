@@ -1,18 +1,18 @@
+use crate::definitions::{KeyData, VerifiedVid};
 use deserialize::{serde_key_data, serde_public_sigkey, serde_sigkey};
 use ed25519_dalek::{self as Ed};
 use hpke::{kem::X25519HkdfSha256 as KemType, Kem, Serializable};
 use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
-use tsp_definitions::{KeyData, VerifiedVid};
 
 pub mod deserialize;
+pub mod did;
 pub mod error;
 pub mod resolve;
 
-pub use resolve::{
-    did::web::{create_did_web, vid_to_did_document},
-    verify_vid,
-};
+pub use did::web::{create_did_web, vid_to_did_document};
+pub use error::VidError;
+pub use resolve::verify_vid;
 
 /// A Vid represents a *verified* Identifier
 /// (so it doesn't carry any information that allows to verify it)
@@ -75,7 +75,7 @@ impl std::fmt::Debug for PrivateVid {
     }
 }
 
-impl tsp_definitions::VerifiedVid for Vid {
+impl crate::definitions::VerifiedVid for Vid {
     fn identifier(&self) -> &str {
         self.id.as_ref()
     }
@@ -101,7 +101,7 @@ impl tsp_definitions::VerifiedVid for Vid {
     }
 }
 
-impl tsp_definitions::VerifiedVid for PrivateVid {
+impl crate::definitions::VerifiedVid for PrivateVid {
     fn identifier(&self) -> &str {
         self.vid.identifier()
     }
@@ -127,13 +127,13 @@ impl tsp_definitions::VerifiedVid for PrivateVid {
     }
 }
 
-impl tsp_definitions::Sender for PrivateVid {
+impl crate::definitions::Sender for PrivateVid {
     fn signing_key(&self) -> &KeyData {
         self.sigkey.as_bytes()
     }
 }
 
-impl tsp_definitions::Receiver for PrivateVid {
+impl crate::definitions::Receiver for PrivateVid {
     fn decryption_key(&self) -> &KeyData {
         &self.enckey
     }
@@ -179,7 +179,7 @@ impl PrivateVid {
             tunnel: None,
         };
 
-        vid.id = crate::resolve::did::peer::encode_did_peer(&vid);
+        vid.id = crate::vid::did::peer::encode_did_peer(&vid);
 
         Self {
             vid,
