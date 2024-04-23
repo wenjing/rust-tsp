@@ -1,5 +1,7 @@
 use crate::error::Error;
-use tsp_definitions::{NonConfidentialData, Payload, Receiver, Sender, TSPMessage, VerifiedVid};
+use tsp_definitions::{
+    Digest, NonConfidentialData, Payload, Receiver, Sender, TSPMessage, VerifiedVid,
+};
 
 mod digest;
 pub mod error;
@@ -10,6 +12,8 @@ pub type Aead = hpke::aead::ChaCha20Poly1305;
 pub type Kdf = hpke::kdf::HkdfSha256;
 pub type Kem = hpke::kem::X25519HkdfSha256;
 
+type ObservingClosure<'a> = &'a mut dyn FnMut(&[u8]);
+
 /// Encrypt, authenticate and sign and CESR encode a TSP message
 pub fn seal(
     sender: &dyn Sender,
@@ -17,7 +21,26 @@ pub fn seal(
     nonconfidential_data: Option<NonConfidentialData>,
     payload: Payload<&[u8]>,
 ) -> Result<TSPMessage, Error> {
-    tsp_hpke::seal::<Aead, Kdf, Kem>(sender, receiver, nonconfidential_data, payload)
+    tsp_hpke::seal::<Aead, Kdf, Kem>(sender, receiver, nonconfidential_data, payload, None)
+}
+
+/// Encrypt, authenticate and sign and CESR encode a TSP message; also returns the hash value of the plaintext parts before encryption
+pub fn seal_and_hash(
+    sender: &dyn Sender,
+    receiver: &dyn VerifiedVid,
+    nonconfidential_data: Option<NonConfidentialData>,
+    payload: Payload<&[u8]>,
+) -> Result<(TSPMessage, Digest), Error> {
+    let digest = &mut Default::default();
+    let msg = tsp_hpke::seal::<Aead, Kdf, Kem>(
+        sender,
+        receiver,
+        nonconfidential_data,
+        payload,
+        Some(&mut |bytes| *digest = sha256(bytes)),
+    )?;
+
+    Ok((msg, *digest))
 }
 
 pub type MessageContents<'a> = (

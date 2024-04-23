@@ -322,11 +322,12 @@ impl VidDatabase {
         let sender = self.get_private_vid(sender).await?;
         let receiver = self.get_verified_vid(receiver).await?;
 
-        let tsp_message = tsp_crypto::seal(&sender, &receiver, None, Payload::RequestRelationship)?;
+        let (tsp_message, thread_id) =
+            tsp_crypto::seal_and_hash(&sender, &receiver, None, Payload::RequestRelationship)?;
+
         tsp_transport::send_message(receiver.endpoint(), &tsp_message).await?;
 
         let mut status = self.relation_status.write().await;
-        let thread_id = Default::default(); // TODO
         status.insert(
             receiver.identifier().to_string(),
             RelationshipStatus::Unidirectional(thread_id),
