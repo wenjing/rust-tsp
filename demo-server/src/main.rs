@@ -16,7 +16,7 @@ use serde_json::json;
 use std::{collections::HashMap, sync::Arc};
 use tokio::sync::{broadcast, RwLock};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
-use tsp::VidDatabase;
+use tsp::AsyncStore;
 use tsp_definitions::{Payload, VerifiedVid};
 use tsp_vid::{PrivateVid, Vid};
 
@@ -72,7 +72,7 @@ async fn main() {
     tracing::debug!("listening on {}", listener.local_addr().unwrap());
 
     tokio::task::spawn(async {
-        let mut db = VidDatabase::new();
+        let mut db = AsyncStore::new();
         let piv: PrivateVid =
             serde_json::from_str(include_str!("../../examples/test/carol.json")).unwrap();
         db.add_private_vid(piv).unwrap();
@@ -92,7 +92,7 @@ async fn main() {
     });
 
     tokio::task::spawn(async {
-        let mut db = VidDatabase::new();
+        let mut db = AsyncStore::new();
         let piv: PrivateVid =
             serde_json::from_str(include_str!("../../examples/test/dave.json")).unwrap();
         db.add_private_vid(piv).unwrap();
@@ -106,7 +106,7 @@ async fn main() {
             .await
             .unwrap();
 
-        if let Err(e) = start_intermediary("dave.tsp-test.org", 3002, VidDatabase::new()).await {
+        if let Err(e) = start_intermediary("dave.tsp-test.org", 3002, AsyncStore::new()).await {
             eprintln!("error starting intermediary: {:?}", e);
         }
     });

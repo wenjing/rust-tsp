@@ -9,18 +9,18 @@ use axum::{
 use futures::{sink::SinkExt, stream::StreamExt};
 use std::{error::Error, sync::Arc};
 use tokio::sync::broadcast;
-use tsp::VidDatabase;
+use tsp::AsyncStore;
 
 struct IntermediaryState {
     domain: String,
-    db: VidDatabase,
+    db: AsyncStore,
     tx: broadcast::Sender<(String, Vec<u8>)>,
 }
 
 pub(crate) async fn start_intermediary(
     domain: &str,
     port: u16,
-    db: VidDatabase,
+    db: AsyncStore,
 ) -> Result<(), Box<dyn Error>> {
     let state = Arc::new(IntermediaryState {
         domain: domain.to_owned(),
