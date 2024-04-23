@@ -5,7 +5,7 @@ use std::path::Path;
 use tokio::io::AsyncReadExt;
 use tracing::{info, trace};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
-use tsp::{Error, PrivateVid, ReceivedTspMessage, VerifiedVid, Vid, VidDatabase};
+use tsp::{AsyncStore, Error, PrivateVid, ReceivedTspMessage, VerifiedVid, Vid};
 use tsp_cesr::Part;
 
 #[derive(Debug, Parser)]
@@ -56,7 +56,7 @@ struct DatabaseContents {
     verified_vids: Vec<Vid>,
 }
 
-async fn write_database(database_file: &str, db: &VidDatabase) -> Result<(), Error> {
+async fn write_database(database_file: &str, db: &AsyncStore) -> Result<(), Error> {
     let db_path = Path::new(database_file);
 
     let (private_vids, verified_vids) = db.export()?;
@@ -78,7 +78,7 @@ async fn write_database(database_file: &str, db: &VidDatabase) -> Result<(), Err
     Ok(())
 }
 
-async fn read_database(database_file: &str) -> Result<VidDatabase, Error> {
+async fn read_database(database_file: &str) -> Result<AsyncStore, Error> {
     let db_path = Path::new(database_file);
     if db_path.exists() {
         let contents = tokio::fs::read_to_string(db_path)
@@ -88,7 +88,7 @@ async fn read_database(database_file: &str) -> Result<VidDatabase, Error> {
         let db_contents: DatabaseContents =
             serde_json::from_str(&contents).expect("Could not deserialize database");
 
-        let db = VidDatabase::new();
+        let db = AsyncStore::new();
 
         trace!("opened database {database_file}");
 
@@ -104,7 +104,7 @@ async fn read_database(database_file: &str) -> Result<VidDatabase, Error> {
 
         Ok(db)
     } else {
-        let db = VidDatabase::new();
+        let db = AsyncStore::new();
         write_database(database_file, &db).await?;
 
         info!("created new database");
