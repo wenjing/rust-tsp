@@ -1125,4 +1125,82 @@ mod test {
             }
         }
     }
+
+    #[tokio::test]
+    #[serial_test::serial(tcp)]
+    async fn test_relation_forming() {
+        tsp_transport::tcp::start_broadcast_server("127.0.0.1:1337")
+            .await
+            .unwrap();
+
+        // bob database
+        let mut bob_db = VidDatabase::new();
+        bob_db
+            .add_private_vid_from_file("test/bob.json")
+            .await
+            .unwrap();
+        bob_db
+            .verify_vid("did:web:did.tsp-test.org:user:alice")
+            .await
+            .unwrap();
+
+        let mut bobs_messages = bob_db
+            .receive("did:web:did.tsp-test.org:user:bob")
+            .await
+            .unwrap();
+
+        // alice database
+        let mut alice_db = VidDatabase::new();
+        alice_db
+            .add_private_vid_from_file("test/alice.json")
+            .await
+            .unwrap();
+        alice_db
+            .verify_vid("did:web:did.tsp-test.org:user:bob")
+            .await
+            .unwrap();
+
+        // send a message
+        alice_db
+            .send_relationship_request(
+                "did:web:did.tsp-test.org:user:alice",
+                "did:web:did.tsp-test.org:user:bob",
+            )
+            .await
+            .unwrap();
+
+        // let alice listen
+        let mut alice_messages = alice_db
+            .receive("did:web:did.tsp-test.org:user:alice")
+            .await
+            .unwrap();
+
+        // receive a message
+        let tsp_definitions::ReceivedTspMessage::RequestRelationship { sender, thread_id } =
+            bobs_messages.recv().await.unwrap().unwrap()
+        else {
+            panic!("bob did not receive a relation request")
+        };
+
+        use tsp_definitions::VerifiedVid;
+        assert_eq!(sender.identifier(), "did:web:did.tsp-test.org:user:alice");
+
+        // send the reply
+        bob_db
+            .send_relationship_accept(
+                "did:web:did.tsp-test.org:user:bob",
+                "did:web:did.tsp-test.org:user:alice",
+                thread_id,
+            )
+            .await
+            .unwrap();
+
+        let tsp_definitions::ReceivedTspMessage::AcceptRelationship { sender } =
+            alice_messages.recv().await.unwrap().unwrap()
+        else {
+            panic!("alice did not receive a relation accept")
+        };
+
+        assert_eq!(sender.identifier(), "did:web:did.tsp-test.org:user:bob");
+    }
 }
