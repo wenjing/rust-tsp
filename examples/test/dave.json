@@ -6,6 +6,6 @@
   "publicSigkey": "NAb5ZQxhudPMxnrmGahdqj9y8-eLVEk2oyxQ9DWdWO0",
   "relationVid": null,
   "sigkey": "OlCZ13OhzUNRdZQi7Iqj5q2Ilk0ky6wIPdJXDb-JOP8",
-  "transport": "tcp://127.0.0.1:1337",
+  "transport": "https://dave.tsp-test.org/transport/dave",
   "tunnel": null
 }
