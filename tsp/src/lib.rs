@@ -1187,18 +1187,18 @@ mod test {
             .await
             .unwrap();
 
-        // let alice listen
-        let mut alice_messages = alice_db
-            .receive("did:web:did.tsp-test.org:user:alice")
-            .await
-            .unwrap();
-
         // receive a message
         let tsp_definitions::ReceivedTspMessage::RequestRelationship { sender, thread_id } =
             bobs_messages.recv().await.unwrap().unwrap()
         else {
             panic!("bob did not receive a relation request")
         };
+
+        // let alice listen
+        let mut alice_messages = alice_db
+            .receive("did:web:did.tsp-test.org:user:alice")
+            .await
+            .unwrap();
 
         use tsp_definitions::VerifiedVid;
         assert_eq!(sender.identifier(), "did:web:did.tsp-test.org:user:alice");
