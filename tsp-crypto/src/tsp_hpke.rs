@@ -38,7 +38,10 @@ where
         Payload::AcceptRelationship { ref thread_id } => {
             tsp_cesr::Payload::DirectRelationAffirm { reply: thread_id }
         }
-        Payload::CancelRelationship => tsp_cesr::Payload::RelationshipCancel,
+        Payload::CancelRelationship { ref thread_id } => tsp_cesr::Payload::RelationshipCancel {
+            nonce: fresh_nonce(&mut csprng),
+            reply: thread_id,
+        },
         Payload::NestedMessage(data) => tsp_cesr::Payload::NestedMessage(data),
         Payload::RoutedMessage(hops, data) => tsp_cesr::Payload::RoutedMessage(hops, data),
     };
@@ -157,7 +160,9 @@ where
         }
         tsp_cesr::Payload::NestedRelationProposal { .. } => todo!(),
         tsp_cesr::Payload::NestedRelationAffirm { .. } => todo!(),
-        tsp_cesr::Payload::RelationshipCancel => Payload::CancelRelationship,
+        tsp_cesr::Payload::RelationshipCancel {
+            reply: &thread_id, ..
+        } => Payload::CancelRelationship { thread_id },
         tsp_cesr::Payload::NestedMessage(data) => Payload::NestedMessage(data),
         tsp_cesr::Payload::RoutedMessage(hops, data) => Payload::RoutedMessage(hops.to_vec(), data),
     };

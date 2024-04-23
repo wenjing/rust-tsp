@@ -89,7 +89,10 @@ pub enum Payload<'a, Bytes: AsRef<[u8]>, Vid> {
         public_keys: PairedKeys<'a>,
     },
     /// A TSP cancellation message
-    RelationshipCancel,
+    RelationshipCancel {
+        nonce: Nonce,
+        reply: &'a Sha256Digest,
+    },
 }
 
 impl<'a, Bytes: AsRef<[u8]>, Vid> Payload<'a, Bytes, Vid> {
@@ -175,8 +178,10 @@ pub fn encode_payload(
             encode_fixed_data(ED25519_PUBLICKEY, public_keys.signing, output);
             encode_fixed_data(HPKE_PUBLICKEY, public_keys.encrypting, output);
         }
-        Payload::RelationshipCancel => {
-            encode_fixed_data(TSP_TYPECODE, &msgtype::REL_CANCEL, output)
+        Payload::RelationshipCancel { nonce, reply } => {
+            encode_fixed_data(TSP_TYPECODE, &msgtype::REL_CANCEL, output);
+            encode_fixed_data(TSP_NONCE, &nonce.0, output);
+            encode_fixed_data(TSP_SHA256, reply, output);
         }
     }
 
@@ -191,66 +196,72 @@ pub fn decode_payload<'a, Vid: TryFrom<&'a [u8]>>(
         return Err(DecodeError::VersionMismatch);
     };
 
-    let payload =
-        match *decode_fixed_data(TSP_TYPECODE, &mut stream).ok_or(DecodeError::UnexpectedData)? {
-            msgtype::GEN_MSG => {
-                decode_variable_data(TSP_PLAINTEXT, &mut stream).map(Payload::GenericMessage)
+    let payload = match *decode_fixed_data(TSP_TYPECODE, &mut stream)
+        .ok_or(DecodeError::UnexpectedData)?
+    {
+        msgtype::GEN_MSG => {
+            decode_variable_data(TSP_PLAINTEXT, &mut stream).map(Payload::GenericMessage)
+        }
+        msgtype::NEW_REL => {
+            decode_fixed_data(TSP_NONCE, &mut stream).map(|nonce| Payload::DirectRelationProposal {
+                nonce: Nonce(*nonce),
+            })
+        }
+        msgtype::NEST_MSG => {
+            decode_variable_data(TSP_PLAINTEXT, &mut stream).map(Payload::NestedMessage)
+        }
+        msgtype::ROUTE_MSG => {
+            let hops =
+                decode_count(TSP_HOP_LIST, &mut stream).ok_or(DecodeError::UnexpectedData)?;
+            if !(1..=63).contains(&hops) {
+                return Err(DecodeError::HopLength(hops));
             }
-            msgtype::NEW_REL => decode_fixed_data(TSP_NONCE, &mut stream).map(|nonce| {
-                Payload::DirectRelationProposal {
-                    nonce: Nonce(*nonce),
-                }
-            }),
-            msgtype::NEST_MSG => {
-                decode_variable_data(TSP_PLAINTEXT, &mut stream).map(Payload::NestedMessage)
+            let mut hop_list = Vec::with_capacity(hops as usize);
+            for _ in 0..hops {
+                hop_list.push(
+                    decode_variable_data(TSP_DEVELOPMENT_VID, &mut stream)
+                        .ok_or(DecodeError::UnexpectedData)?
+                        .try_into()
+                        .map_err(|_| DecodeError::VidError)?,
+                );
             }
-            msgtype::ROUTE_MSG => {
-                let hops =
-                    decode_count(TSP_HOP_LIST, &mut stream).ok_or(DecodeError::UnexpectedData)?;
-                if !(1..=63).contains(&hops) {
-                    return Err(DecodeError::HopLength(hops));
-                }
-                let mut hop_list = Vec::with_capacity(hops as usize);
-                for _ in 0..hops {
-                    hop_list.push(
-                        decode_variable_data(TSP_DEVELOPMENT_VID, &mut stream)
-                            .ok_or(DecodeError::UnexpectedData)?
-                            .try_into()
-                            .map_err(|_| DecodeError::VidError)?,
-                    );
-                }
-                decode_variable_data(TSP_PLAINTEXT, &mut stream)
-                    .map(|msg| Payload::RoutedMessage(hop_list, msg))
-            }
-            msgtype::NEW_REL_REPLY => decode_fixed_data(TSP_SHA256, &mut stream)
-                .map(|reply| Payload::DirectRelationAffirm { reply }),
-            msgtype::NEW_NEST_REL => {
+            decode_variable_data(TSP_PLAINTEXT, &mut stream)
+                .map(|msg| Payload::RoutedMessage(hop_list, msg))
+        }
+        msgtype::NEW_REL_REPLY => decode_fixed_data(TSP_SHA256, &mut stream)
+            .map(|reply| Payload::DirectRelationAffirm { reply }),
+        msgtype::NEW_NEST_REL => {
+            decode_fixed_data(ED25519_PUBLICKEY, &mut stream).and_then(|signing| {
+                decode_fixed_data(HPKE_PUBLICKEY, &mut stream).map(|encrypting| {
+                    let public_keys = PairedKeys {
+                        signing,
+                        encrypting,
+                    };
+                    Payload::NestedRelationProposal { public_keys }
+                })
+            })
+        }
+        msgtype::NEW_NEST_REL_REPLY => {
+            decode_fixed_data(TSP_SHA256, &mut stream).and_then(|reply| {
                 decode_fixed_data(ED25519_PUBLICKEY, &mut stream).and_then(|signing| {
                     decode_fixed_data(HPKE_PUBLICKEY, &mut stream).map(|encrypting| {
                         let public_keys = PairedKeys {
                             signing,
                             encrypting,
                         };
-                        Payload::NestedRelationProposal { public_keys }
+                        Payload::NestedRelationAffirm { reply, public_keys }
                     })
                 })
-            }
-            msgtype::NEW_NEST_REL_REPLY => {
-                decode_fixed_data(TSP_SHA256, &mut stream).and_then(|reply| {
-                    decode_fixed_data(ED25519_PUBLICKEY, &mut stream).and_then(|signing| {
-                        decode_fixed_data(HPKE_PUBLICKEY, &mut stream).map(|encrypting| {
-                            let public_keys = PairedKeys {
-                                signing,
-                                encrypting,
-                            };
-                            Payload::NestedRelationAffirm { reply, public_keys }
-                        })
-                    })
-                })
-            }
-            msgtype::REL_CANCEL => Some(Payload::RelationshipCancel),
-            _ => return Err(DecodeError::UnexpectedMsgType),
-        };
+            })
+        }
+        msgtype::REL_CANCEL => decode_fixed_data(TSP_NONCE, &mut stream).and_then(|nonce| {
+            decode_fixed_data(TSP_SHA256, &mut stream).map(|reply| Payload::RelationshipCancel {
+                nonce: Nonce(*nonce),
+                reply,
+            })
+        }),
+        _ => return Err(DecodeError::UnexpectedMsgType),
+    };
 
     if !stream.is_empty() {
         Err(DecodeError::TrailingGarbage)
@@ -1000,7 +1011,10 @@ mod test {
             public_keys,
         });
 
-        test_turn_around(Payload::RelationshipCancel);
+        test_turn_around(Payload::RelationshipCancel {
+            reply: nonce,
+            nonce: Nonce(*nonce),
+        });
     }
 
     #[test]

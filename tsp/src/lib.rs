@@ -380,7 +380,14 @@ impl VidDatabase {
             RelationshipStatus::Unrelated,
         );
 
-        let tsp_message = tsp_crypto::seal(&sender, &receiver, None, Payload::CancelRelationship)?;
+        let thread_id = Default::default(); // FNORD
+
+        let tsp_message = tsp_crypto::seal(
+            &sender,
+            &receiver,
+            None,
+            Payload::CancelRelationship { thread_id },
+        )?;
         tsp_transport::send_message(receiver.endpoint(), &tsp_message).await?;
 
         Ok(())
@@ -639,7 +646,7 @@ impl VidDatabase {
                         let Some(relation) = status.get_mut(sender.identifier()) else {
                             //TODO: should we inform the user of who sent this?
                             return Err(Error::Relationship(
-                                "received confirmation of a relation with an unknown person".into(),
+                                "received confirmation of a relation with an unknown entity".into(),
                             ));
                         };
 
@@ -659,10 +666,21 @@ impl VidDatabase {
 
                         Ok(ReceivedTspMessage::AcceptRelationship { sender })
                     }
-                    Payload::CancelRelationship => {
+                    Payload::CancelRelationship { thread_id } => {
                         let mut status = relation_status.write().await;
                         if let Some(relation) = status.get_mut(sender.identifier()) {
-                            *relation = RelationshipStatus::Unrelated;
+                            match relation {
+                                RelationshipStatus::Bidirectional(digest)
+                                | RelationshipStatus::Unidirectional(digest) => {
+                                    if thread_id != *digest {
+                                        return Err(Error::Relationship(
+                                            "invalid attempt to end the relationship".into(),
+                                        ));
+                                    }
+                                    *relation = RelationshipStatus::Unrelated;
+                                }
+                                _ => todo!(),
+                            }
                         }
 
                         Ok(ReceivedTspMessage::CancelRelationship { sender })
