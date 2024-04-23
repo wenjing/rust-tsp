@@ -56,8 +56,8 @@ mod selector {
 
 /// (Temporary) interface to get Sender/Receiver VID's information from a CESR-encoded message
 pub fn get_sender_receiver(message: &[u8]) -> Result<(&[u8], Option<&[u8]>), error::DecodeError> {
-    let stream = message;
-    let (sender, receiver, _) = decode_sender_receiver(stream)?;
+    let mut stream = message;
+    let (sender, receiver, _) = decode_sender_receiver(&mut stream)?;
 
     Ok((sender, receiver))
 }

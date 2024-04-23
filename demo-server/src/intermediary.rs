@@ -2,7 +2,7 @@ use axum::{
     body::Bytes,
     extract::{ws::Message, Path, State, WebSocketUpgrade},
     http::StatusCode,
-    response::{IntoResponse, Response},
+    response::{Html, IntoResponse, Response},
     routing::{get, post},
     Router,
 };
@@ -30,6 +30,7 @@ pub(crate) async fn start_intermediary(
 
     // Compose the routes
     let app = Router::new()
+        .route("/", get(index))
         .route("/new-message", post(new_message))
         .route("/receive-messages", get(websocket_handler))
         .with_state(state);
@@ -40,6 +41,10 @@ pub(crate) async fn start_intermediary(
     axum::serve(listener, app).await?;
 
     Ok(())
+}
+
+async fn index(State(state): State<Arc<IntermediaryState>>) -> Html<String> {
+    Html(format!("<h1>{}</h1>", state.domain))
 }
 
 async fn new_message(State(state): State<Arc<IntermediaryState>>, body: Bytes) -> Response {
