@@ -18,8 +18,6 @@ path = "src/cli.rs"
 
 [dependencies]
 tsp = { path = "../tsp" }
-tsp-vid = { path = "../tsp-vid" }
-tsp-cesr = { path = "../tsp-cesr" }
 tokio = { workspace = true}
 url = { workspace = true}
 clap = { workspace = true}

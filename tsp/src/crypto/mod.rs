@@ -1,5 +1,4 @@
-use crate::error::Error;
-use tsp_definitions::{
+use crate::definitions::{
     Digest, NonConfidentialData, Payload, Receiver, Sender, TSPMessage, VerifiedVid,
 };
 
@@ -7,6 +6,8 @@ mod digest;
 pub mod error;
 mod nonconfidential;
 mod tsp_hpke;
+
+pub use error::CryptoError;
 
 pub type Aead = hpke::aead::ChaCha20Poly1305;
 pub type Kdf = hpke::kdf::HkdfSha256;
@@ -20,7 +21,7 @@ pub fn seal(
     receiver: &dyn VerifiedVid,
     nonconfidential_data: Option<NonConfidentialData>,
     payload: Payload<&[u8]>,
-) -> Result<TSPMessage, Error> {
+) -> Result<TSPMessage, CryptoError> {
     tsp_hpke::seal::<Aead, Kdf, Kem>(sender, receiver, nonconfidential_data, payload, None)
 }
 
@@ -30,7 +31,7 @@ pub fn seal_and_hash(
     receiver: &dyn VerifiedVid,
     nonconfidential_data: Option<NonConfidentialData>,
     payload: Payload<&[u8]>,
-) -> Result<(TSPMessage, Digest), Error> {
+) -> Result<(TSPMessage, Digest), CryptoError> {
     let digest = &mut Default::default();
     let msg = tsp_hpke::seal::<Aead, Kdf, Kem>(
         sender,
@@ -54,7 +55,7 @@ pub fn open<'a>(
     receiver: &dyn Receiver,
     sender: &dyn VerifiedVid,
     tsp_message: &'a mut [u8],
-) -> Result<MessageContents<'a>, Error> {
+) -> Result<MessageContents<'a>, CryptoError> {
     tsp_hpke::open::<Aead, Kdf, Kem>(receiver, sender, tsp_message)
 }
 
@@ -63,12 +64,15 @@ pub fn sign(
     sender: &dyn Sender,
     receiver: Option<&dyn VerifiedVid>,
     payload: &[u8],
-) -> Result<TSPMessage, Error> {
+) -> Result<TSPMessage, CryptoError> {
     nonconfidential::sign(sender, receiver, payload)
 }
 
 /// Decode a CESR Authentic Non-Confidential Message, verify the signature and return its contents
-pub fn verify<'a>(sender: &dyn VerifiedVid, tsp_message: &'a mut [u8]) -> Result<&'a [u8], Error> {
+pub fn verify<'a>(
+    sender: &dyn VerifiedVid,
+    tsp_message: &'a mut [u8],
+) -> Result<&'a [u8], CryptoError> {
     nonconfidential::verify(sender, tsp_message)
 }
 
@@ -76,11 +80,10 @@ pub use digest::sha256;
 
 #[cfg(test)]
 mod tests {
-    use tsp_definitions::Payload;
-    use tsp_vid::PrivateVid;
+    use crate::{definitions::Payload, vid::PrivateVid};
     use url::Url;
 
-    use crate::{open, seal};
+    use super::{open, seal};
 
     #[test]
     fn seal_open_message() {

@@ -1,15 +1,19 @@
+use crate::{
+    cesr::EnvelopeType,
+    crypto::CryptoError,
+    definitions::{MessageType, Payload},
+};
 use std::{
     collections::HashMap,
     sync::{Arc, RwLock},
 };
-use tsp_cesr::EnvelopeType;
-use tsp_crypto::error::Error as CryptoError;
-use tsp_definitions::{MessageType, Payload};
 
-pub use crate::error::Error;
 use crate::RelationshipStatus;
-pub use tsp_definitions::{ReceivedTspMessage, VerifiedVid};
-pub use tsp_vid::{PrivateVid, Vid};
+pub use crate::{
+    definitions::{ReceivedTspMessage, VerifiedVid},
+    error::Error,
+    vid::{PrivateVid, Vid},
+};
 
 /// Holds private ands verified VID's
 /// A Store contains verified vid's, our relationship status to them,
@@ -135,7 +139,7 @@ impl Store {
         self,
         message: &mut [u8],
     ) -> Result<ReceivedTspMessage<Vid>, Error> {
-        let probed_message = tsp_cesr::probe(message)?;
+        let probed_message = crate::cesr::probe(message)?;
 
         match probed_message {
             EnvelopeType::EncryptedMessage {
@@ -155,7 +159,7 @@ impl Store {
                 };
 
                 let (nonconfidential_data, payload, raw_bytes) =
-                    tsp_crypto::open(&intended_receiver, &sender, message)?;
+                    crate::crypto::open(&intended_receiver, &sender, message)?;
 
                 match payload {
                     Payload::Content(message) => Ok(ReceivedTspMessage::<Vid>::GenericMessage {
@@ -185,7 +189,7 @@ impl Store {
                     }
                     Payload::RequestRelationship => Ok(ReceivedTspMessage::RequestRelationship {
                         sender,
-                        thread_id: tsp_crypto::sha256(raw_bytes),
+                        thread_id: crate::crypto::sha256(raw_bytes),
                     }),
                     Payload::AcceptRelationship { thread_id } => {
                         let mut status = self.relation_status.write()?;
@@ -251,7 +255,7 @@ impl Store {
                     return Err(Error::UnverifiedVid(sender.to_string()));
                 };
 
-                let payload = tsp_crypto::verify(&sender, message)?;
+                let payload = crate::crypto::verify(&sender, message)?;
 
                 Ok(ReceivedTspMessage::<Vid>::GenericMessage {
                     sender,

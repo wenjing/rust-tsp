@@ -15,56 +15,58 @@ use tokio_util::{
 use tracing_subscriber::EnvFilter;
 use url::Url;
 
-use crate::{Error, TSPStream};
+use super::{TSPStream, TransportError};
 
 pub(crate) const SCHEME: &str = "tcp";
 
-pub(crate) async fn send_message(tsp_message: &[u8], url: &Url) -> Result<(), Error> {
+pub(crate) async fn send_message(tsp_message: &[u8], url: &Url) -> Result<(), TransportError> {
     let addresses = url
         .socket_addrs(|| None)
-        .map_err(|_| Error::InvalidTransportAddress(url.to_string()))?;
+        .map_err(|_| TransportError::InvalidTransportAddress(url.to_string()))?;
 
     let Some(address) = addresses.first() else {
-        return Err(Error::InvalidTransportAddress(url.to_string()));
+        return Err(TransportError::InvalidTransportAddress(url.to_string()));
     };
 
     let mut stream = tokio::net::TcpStream::connect(address)
         .await
-        .map_err(|e| Error::Connection(address.to_string(), e))?;
+        .map_err(|e| TransportError::Connection(address.to_string(), e))?;
 
     stream
         .write_all(tsp_message)
         .await
-        .map_err(|e| Error::Connection(address.to_string(), e))?;
+        .map_err(|e| TransportError::Connection(address.to_string(), e))?;
 
     Ok(())
 }
 
-pub(crate) async fn receive_messages(address: &Url) -> Result<TSPStream<Error>, Error> {
+pub(crate) async fn receive_messages(
+    address: &Url,
+) -> Result<TSPStream<TransportError>, TransportError> {
     let addresses = address
         .socket_addrs(|| None)
-        .map_err(|_| Error::InvalidTransportAddress(address.to_string()))?;
+        .map_err(|_| TransportError::InvalidTransportAddress(address.to_string()))?;
 
     let Some(address) = addresses.into_iter().next() else {
-        return Err(Error::InvalidTransportAddress(address.to_string()));
+        return Err(TransportError::InvalidTransportAddress(address.to_string()));
     };
 
     let stream = tokio::net::TcpStream::connect(address)
         .await
-        .map_err(|e| Error::Connection(address.to_string(), e))?;
+        .map_err(|e| TransportError::Connection(address.to_string(), e))?;
     let mut messages = Framed::new(stream, BytesCodec::new());
 
     Ok(Box::pin(stream! {
         while let Some(m) = messages.next().await {
-            yield m.map_err(|e| Error::Connection(address.to_string(), e));
+            yield m.map_err(|e| TransportError::Connection(address.to_string(), e));
         }
     }))
 }
 
-pub async fn start_broadcast_server(addr: &str) -> Result<JoinHandle<()>, Error> {
+pub async fn start_broadcast_server(addr: &str) -> Result<JoinHandle<()>, TransportError> {
     let addr: SocketAddr = addr
         .parse()
-        .map_err(|_| Error::InvalidTransportAddress(addr.to_string()))?;
+        .map_err(|_| TransportError::InvalidTransportAddress(addr.to_string()))?;
 
     // start broadcast server
     let handle = tokio::spawn(async move {
@@ -77,7 +79,7 @@ pub async fn start_broadcast_server(addr: &str) -> Result<JoinHandle<()>, Error>
 }
 
 /// Start a broadcast server, that will forward all messages to all open tcp connections
-pub async fn broadcast_server<A: ToSocketAddrs + Display>(addr: A) -> Result<(), Error> {
+pub async fn broadcast_server<A: ToSocketAddrs + Display>(addr: A) -> Result<(), TransportError> {
     let _ = tracing_subscriber::fmt()
         .with_env_filter(EnvFilter::from_default_env().add_directive("warn".parse().unwrap()))
         .try_init();
@@ -85,7 +87,7 @@ pub async fn broadcast_server<A: ToSocketAddrs + Display>(addr: A) -> Result<(),
     let state = Arc::new(Mutex::new(Shared::new()));
     let listener = TcpListener::bind(&addr)
         .await
-        .map_err(|e| Error::Connection(addr.to_string(), e))?;
+        .map_err(|e| TransportError::Connection(addr.to_string(), e))?;
 
     tracing::info!("server running on {}", addr);
 
@@ -149,7 +151,7 @@ async fn process(
     state: Arc<Mutex<Shared>>,
     stream: TcpStream,
     addr: SocketAddr,
-) -> Result<(), Error> {
+) -> Result<(), TransportError> {
     let peer_id = addr.to_string();
 
     tracing::info!("{} connected", peer_id);
@@ -157,14 +159,14 @@ async fn process(
     let messages = Framed::new(stream, BytesCodec::new());
     let mut peer = Peer::new(state.clone(), messages)
         .await
-        .map_err(|e| Error::Connection(addr.to_string(), e))?;
+        .map_err(|e| TransportError::Connection(addr.to_string(), e))?;
 
     loop {
         tokio::select! {
             Some(msg) = peer.rx.recv() => {
                 tracing::info!("{} send a message ({} bytes)", peer_id, msg.len());
                 peer.messages.send(msg).await
-                    .map_err(|e| Error::Connection(addr.to_string(), e))?;
+                    .map_err(|e| TransportError::Connection(addr.to_string(), e))?;
             }
             result = peer.messages.next() => match result {
                 Some(Ok(msg)) => {

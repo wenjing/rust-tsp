@@ -1,9 +1,7 @@
+use crate::{definitions::VerifiedVid, vid::error::VidError, Vid};
 use base64ct::{Base64UrlUnpadded, Encoding};
 use serde_json::json;
-use tsp_definitions::VerifiedVid;
 use url::Url;
-
-use crate::{error::Error, Vid};
 
 pub(crate) const SCHEME: &str = "peer";
 
@@ -47,12 +45,12 @@ pub(crate) fn encode_did_peer(vid: &Vid) -> String {
     format!("did:peer:2.Vz{verification_key}.Ez{encryption_key}.S{service}")
 }
 
-pub(crate) fn verify_did_peer(parts: &[&str]) -> Result<Vid, Error> {
+pub(crate) fn verify_did_peer(parts: &[&str]) -> Result<Vid, VidError> {
     let peer_parts = parts[2].split('.').collect::<Vec<&str>>();
 
     // only numalgo 2 is supported
     if peer_parts[0] != "2" {
-        return Err(Error::ResolveVid(
+        return Err(VidError::ResolveVid(
             "only numalgo 2 is supported for did:peer",
         ));
     }
@@ -68,11 +66,15 @@ pub(crate) fn verify_did_peer(parts: &[&str]) -> Result<Vid, Error> {
                 let enckey_bytes = bs58::decode(&part[2..])
                     .with_alphabet(bs58::Alphabet::BITCOIN)
                     .into_vec()
-                    .map_err(|_| Error::ResolveVid("invalid encoded encryption key in did:peer"))?;
+                    .map_err(|_| {
+                        VidError::ResolveVid("invalid encoded encryption key in did:peer")
+                    })?;
 
                 // multicodec for x25519-pub + length 32 bytes
                 if enckey_bytes[0] != 0xec || enckey_bytes[1] != 0x20 {
-                    return Err(Error::ResolveVid("invalid encryption key type in did:peer"));
+                    return Err(VidError::ResolveVid(
+                        "invalid encryption key type in did:peer",
+                    ));
                 }
 
                 public_enckey = enckey_bytes[2..].try_into().ok();
@@ -83,12 +85,12 @@ pub(crate) fn verify_did_peer(parts: &[&str]) -> Result<Vid, Error> {
                     .with_alphabet(bs58::Alphabet::BITCOIN)
                     .into_vec()
                     .map_err(|_| {
-                        Error::ResolveVid("invalid encoded verification key in did:peer")
+                        VidError::ResolveVid("invalid encoded verification key in did:peer")
                     })?;
 
                 // multicodec for ed25519-pub + length 32 bytes
                 if sigkey_bytes[0] != 0xed || sigkey_bytes[1] != 0x20 {
-                    return Err(Error::ResolveVid(
+                    return Err(VidError::ResolveVid(
                         "invalid verification key type in did:peer",
                     ));
                 }
@@ -100,13 +102,13 @@ pub(crate) fn verify_did_peer(parts: &[&str]) -> Result<Vid, Error> {
             // start of base64url encoded service definition
             "Se" => {
                 let transport_bytes = Base64UrlUnpadded::decode_vec(&part[1..])
-                    .map_err(|_| Error::ResolveVid("invalid encoded transport in did:peer"))?;
+                    .map_err(|_| VidError::ResolveVid("invalid encoded transport in did:peer"))?;
 
                 let transport_json: serde_json::Value = serde_json::from_slice(&transport_bytes)
-                    .map_err(|_| Error::ResolveVid("invalid encoded transport in did:peer"))?;
+                    .map_err(|_| VidError::ResolveVid("invalid encoded transport in did:peer"))?;
 
                 if transport_json["t"] != "tsp" {
-                    return Err(Error::ResolveVid("invalid transport type in did:peer"));
+                    return Err(VidError::ResolveVid("invalid transport type in did:peer"));
                 }
 
                 if let Some(transport_bytes) = &transport_json["s"]["uri"].as_str() {
@@ -114,7 +116,7 @@ pub(crate) fn verify_did_peer(parts: &[&str]) -> Result<Vid, Error> {
                 }
             }
             _ => {
-                return Err(Error::ResolveVid("invalid part in did:peer"));
+                return Err(VidError::ResolveVid("invalid part in did:peer"));
             }
         }
     }
@@ -129,18 +131,18 @@ pub(crate) fn verify_did_peer(parts: &[&str]) -> Result<Vid, Error> {
             parent_vid: None,
             tunnel: None,
         }),
-        (None, _, _) => Err(Error::ResolveVid("missing verification key in did:peer")),
-        (_, None, _) => Err(Error::ResolveVid("missing encryption key in did:peer")),
-        (_, _, None) => Err(Error::ResolveVid("missing transport in did:peer")),
+        (None, _, _) => Err(VidError::ResolveVid("missing verification key in did:peer")),
+        (_, None, _) => Err(VidError::ResolveVid("missing encryption key in did:peer")),
+        (_, _, None) => Err(VidError::ResolveVid("missing transport in did:peer")),
     }
 }
 
 #[cfg(test)]
 mod test {
+    use crate::definitions::VerifiedVid;
     use ed25519_dalek::{self as Ed};
     use hpke::{kem::X25519HkdfSha256 as KemType, Kem, Serializable};
     use rand::rngs::OsRng;
-    use tsp_definitions::VerifiedVid;
     use url::Url;
 
     use crate::Vid;

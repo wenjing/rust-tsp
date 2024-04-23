@@ -1,10 +1,10 @@
+use crate::definitions::TSPStream;
 use async_stream::stream;
 use futures_util::StreamExt;
 use tokio_util::bytes::BytesMut;
-use tsp_definitions::TSPStream;
 use url::Url;
 
-use crate::Error;
+use super::TransportError;
 
 pub(crate) const SCHEME_HTTP: &str = "http";
 pub(crate) const SCHEME_HTTPS: &str = "https";
@@ -12,7 +12,7 @@ pub(crate) const SCHEME_HTTPS: &str = "https";
 pub(crate) const SCHEME_WS: &str = "ws";
 pub(crate) const SCHEME_WSS: &str = "wss";
 
-pub(crate) async fn send_message(tsp_message: &[u8], url: &Url) -> Result<(), Error> {
+pub(crate) async fn send_message(tsp_message: &[u8], url: &Url) -> Result<(), TransportError> {
     let client = reqwest::Client::new();
 
     client
@@ -20,12 +20,14 @@ pub(crate) async fn send_message(tsp_message: &[u8], url: &Url) -> Result<(), Er
         .body(tsp_message.to_vec())
         .send()
         .await
-        .map_err(|e| Error::Http(url.to_string(), e))?;
+        .map_err(|e| TransportError::Http(url.to_string(), e))?;
 
     Ok(())
 }
 
-pub(crate) async fn receive_messages(address: &Url) -> Result<TSPStream<Error>, Error> {
+pub(crate) async fn receive_messages(
+    address: &Url,
+) -> Result<TSPStream<TransportError>, TransportError> {
     let mut ws_address = address.clone();
 
     match address.scheme() {
@@ -33,11 +35,11 @@ pub(crate) async fn receive_messages(address: &Url) -> Result<TSPStream<Error>, 
         SCHEME_HTTPS => ws_address.set_scheme(SCHEME_WSS),
         _ => Err(()),
     }
-    .map_err(|_| Error::InvalidTransportScheme(address.scheme().to_owned()))?;
+    .map_err(|_| TransportError::InvalidTransportScheme(address.scheme().to_owned()))?;
 
     let ws_stream = match tokio_tungstenite::connect_async(&ws_address).await {
         Ok((stream, _)) => stream,
-        Err(e) => return Err(Error::Websocket(ws_address.to_string(), e)),
+        Err(e) => return Err(TransportError::Websocket(ws_address.to_string(), e)),
     };
 
     let (_, mut receiver) = ws_stream.split();
@@ -49,10 +51,10 @@ pub(crate) async fn receive_messages(address: &Url) -> Result<TSPStream<Error>, 
                     yield Ok(BytesMut::from(&b[..]));
                 }
                 m => {
-                    yield Err(Error::InvalidMessageReceived(
+                    yield Err(TransportError::InvalidMessageReceived(
                         m
                             .into_text()
-                            .map_err(|_| Error::InvalidMessageReceived("invalid UTF8 character encountered".to_string()))?
+                            .map_err(|_| TransportError::InvalidMessageReceived("invalid UTF8 character encountered".to_string()))?
                     ));
                 }
             };

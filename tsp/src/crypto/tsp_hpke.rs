@@ -1,10 +1,12 @@
+use crate::{
+    cesr::DecodedEnvelope,
+    definitions::{NonConfidentialData, Payload, Receiver, Sender, TSPMessage, VerifiedVid},
+};
 use ed25519_dalek::Signer;
 use hpke::{aead::AeadTag, Deserializable, OpModeR, OpModeS, Serializable};
 use rand::{rngs::StdRng, SeedableRng};
-use tsp_cesr::DecodedEnvelope;
-use tsp_definitions::{NonConfidentialData, Payload, Receiver, Sender, TSPMessage, VerifiedVid};
 
-use crate::{error::Error, MessageContents};
+use super::{CryptoError, MessageContents};
 
 pub(crate) fn seal<A, Kdf, Kem>(
     sender: &dyn Sender,
@@ -12,7 +14,7 @@ pub(crate) fn seal<A, Kdf, Kem>(
     nonconfidential_data: Option<NonConfidentialData>,
     secret_payload: Payload<&[u8]>,
     plaintext_observer: Option<super::ObservingClosure>,
-) -> Result<TSPMessage, Error>
+) -> Result<TSPMessage, CryptoError>
 where
     A: hpke::aead::Aead,
     Kdf: hpke::kdf::Kdf,
@@ -21,8 +23,8 @@ where
     let mut csprng = StdRng::from_entropy();
 
     let mut data = Vec::with_capacity(64);
-    tsp_cesr::encode_ets_envelope(
-        tsp_cesr::Envelope {
+    crate::cesr::encode_ets_envelope(
+        crate::cesr::Envelope {
             sender: sender.identifier(),
             receiver: Some(receiver.identifier()),
             nonconfidential_data,
@@ -31,19 +33,19 @@ where
     )?;
 
     let secret_payload = match secret_payload {
-        Payload::Content(data) => tsp_cesr::Payload::GenericMessage(data),
-        Payload::RequestRelationship => tsp_cesr::Payload::DirectRelationProposal {
+        Payload::Content(data) => crate::cesr::Payload::GenericMessage(data),
+        Payload::RequestRelationship => crate::cesr::Payload::DirectRelationProposal {
             nonce: fresh_nonce(&mut csprng),
         },
         Payload::AcceptRelationship { ref thread_id } => {
-            tsp_cesr::Payload::DirectRelationAffirm { reply: thread_id }
+            crate::cesr::Payload::DirectRelationAffirm { reply: thread_id }
         }
-        Payload::CancelRelationship { ref thread_id } => tsp_cesr::Payload::RelationshipCancel {
+        Payload::CancelRelationship { ref thread_id } => crate::cesr::Payload::RelationshipCancel {
             nonce: fresh_nonce(&mut csprng),
             reply: thread_id,
         },
-        Payload::NestedMessage(data) => tsp_cesr::Payload::NestedMessage(data),
-        Payload::RoutedMessage(hops, data) => tsp_cesr::Payload::RoutedMessage(hops, data),
+        Payload::NestedMessage(data) => crate::cesr::Payload::NestedMessage(data),
+        Payload::RoutedMessage(hops, data) => crate::cesr::Payload::RoutedMessage(hops, data),
     };
 
     // prepare CESR encoded ciphertext
@@ -55,7 +57,7 @@ where
         // encapsulated key length
         + Kem::EncappedKey::size(),
     );
-    tsp_cesr::encode_payload(secret_payload, &mut cesr_message)?;
+    crate::cesr::encode_payload(secret_payload, &mut cesr_message)?;
 
     // HPKE sender mode: "Auth"
     let sender_decryption_key = Kem::PrivateKey::from_bytes(sender.decryption_key())?;
@@ -85,12 +87,12 @@ where
     cesr_message.extend(encapped_key.to_bytes());
 
     // encode and append the ciphertext to the envelope data
-    tsp_cesr::encode_ciphertext(&cesr_message, &mut data)?;
+    crate::cesr::encode_ciphertext(&cesr_message, &mut data)?;
 
     // create and append outer signature
     let sign_key = ed25519_dalek::SigningKey::from_bytes(sender.signing_key());
     let signature = sign_key.sign(&data).to_bytes();
-    tsp_cesr::encode_signature(&signature, &mut data);
+    crate::cesr::encode_signature(&signature, &mut data);
 
     Ok(data)
 }
@@ -99,13 +101,13 @@ pub(crate) fn open<'a, A, Kdf, Kem>(
     receiver: &dyn Receiver,
     sender: &dyn VerifiedVid,
     tsp_message: &'a mut [u8],
-) -> Result<MessageContents<'a>, Error>
+) -> Result<MessageContents<'a>, CryptoError>
 where
     A: hpke::aead::Aead,
     Kdf: hpke::kdf::Kdf,
     Kem: hpke::kem::Kem,
 {
-    let view = tsp_cesr::decode_envelope_mut(tsp_message)?;
+    let view = crate::cesr::decode_envelope_mut(tsp_message)?;
 
     // verify outer signature
     let verification_challange = view.as_challenge();
@@ -120,14 +122,14 @@ where
         ciphertext: Some(ciphertext),
     } = view
         .into_opened::<&[u8]>()
-        .map_err(|_| tsp_cesr::error::DecodeError::VidError)?
+        .map_err(|_| crate::cesr::error::DecodeError::VidError)?
     else {
-        return Err(Error::MissingCiphertext);
+        return Err(CryptoError::MissingCiphertext);
     };
 
     // verify the message was intended for the specified receiver
     if envelope.receiver != Some(receiver.identifier().as_bytes()) {
-        return Err(Error::UnexpectedRecipient);
+        return Err(CryptoError::UnexpectedRecipient);
     }
 
     // split encapsulated key and authenticated encryption tag length
@@ -152,25 +154,27 @@ where
         &tag,
     )?;
 
-    let secret_payload = match tsp_cesr::decode_payload(ciphertext)? {
-        tsp_cesr::Payload::GenericMessage(data) => Payload::Content(data),
-        tsp_cesr::Payload::DirectRelationProposal { .. } => Payload::RequestRelationship,
-        tsp_cesr::Payload::DirectRelationAffirm { reply: &thread_id } => {
+    let secret_payload = match crate::cesr::decode_payload(ciphertext)? {
+        crate::cesr::Payload::GenericMessage(data) => Payload::Content(data),
+        crate::cesr::Payload::DirectRelationProposal { .. } => Payload::RequestRelationship,
+        crate::cesr::Payload::DirectRelationAffirm { reply: &thread_id } => {
             Payload::AcceptRelationship { thread_id }
         }
-        tsp_cesr::Payload::NestedRelationProposal { .. } => todo!(),
-        tsp_cesr::Payload::NestedRelationAffirm { .. } => todo!(),
-        tsp_cesr::Payload::RelationshipCancel {
+        crate::cesr::Payload::NestedRelationProposal { .. } => todo!(),
+        crate::cesr::Payload::NestedRelationAffirm { .. } => todo!(),
+        crate::cesr::Payload::RelationshipCancel {
             reply: &thread_id, ..
         } => Payload::CancelRelationship { thread_id },
-        tsp_cesr::Payload::NestedMessage(data) => Payload::NestedMessage(data),
-        tsp_cesr::Payload::RoutedMessage(hops, data) => Payload::RoutedMessage(hops.to_vec(), data),
+        crate::cesr::Payload::NestedMessage(data) => Payload::NestedMessage(data),
+        crate::cesr::Payload::RoutedMessage(hops, data) => {
+            Payload::RoutedMessage(hops.to_vec(), data)
+        }
     };
 
     Ok((envelope.nonconfidential_data, secret_payload, ciphertext))
 }
 
 /// Generate N random bytes using the provided RNG
-fn fresh_nonce(csprng: &mut (impl rand::RngCore + rand::CryptoRng)) -> tsp_cesr::Nonce {
-    tsp_cesr::Nonce::generate(|dst| csprng.fill_bytes(dst))
+fn fresh_nonce(csprng: &mut (impl rand::RngCore + rand::CryptoRng)) -> crate::cesr::Nonce {
+    crate::cesr::Nonce::generate(|dst| csprng.fill_bytes(dst))
 }

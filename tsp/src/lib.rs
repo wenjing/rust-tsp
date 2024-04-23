@@ -48,7 +48,13 @@
 //! }
 //! ```
 //!
-use tsp_definitions::Digest;
+use definitions::Digest;
+
+pub mod cesr;
+pub mod crypto;
+pub mod definitions;
+pub mod transport;
+pub mod vid;
 
 mod async_store;
 mod error;
@@ -57,11 +63,13 @@ mod store;
 #[cfg(test)]
 mod test;
 
+pub use crate::{
+    definitions::{Payload, ReceivedTspMessage, VerifiedVid},
+    vid::{PrivateVid, Vid},
+};
 pub use async_store::AsyncStore;
 pub use error::Error;
 pub use store::Store;
-pub use tsp_definitions::{Payload, ReceivedTspMessage, VerifiedVid};
-pub use tsp_vid::{PrivateVid, Vid};
 
 #[derive(Clone, Copy, Debug)]
 pub(crate) enum RelationshipStatus {

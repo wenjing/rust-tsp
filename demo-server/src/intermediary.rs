@@ -53,7 +53,7 @@ async fn new_message(
 ) -> Response {
     let message: Vec<u8> = body.to_vec();
 
-    let Ok((sender, Some(receiver))) = tsp_cesr::get_sender_receiver(&message) else {
+    let Ok((sender, Some(receiver))) = tsp::cesr::get_sender_receiver(&message) else {
         return (StatusCode::BAD_REQUEST, "invalid message, receiver missing").into_response();
     };
 

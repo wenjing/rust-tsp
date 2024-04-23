@@ -1,10 +1,14 @@
-use crate::{error::Error, store::Store, RelationshipStatus};
+use crate::{
+    crypto::CryptoError,
+    definitions::{Digest, Payload, ReceivedTspMessage, VerifiedVid},
+    error::Error,
+    store::Store,
+    vid::{PrivateVid, Vid, VidError},
+    RelationshipStatus,
+};
 use futures::StreamExt;
 use std::collections::HashMap;
 use tokio::sync::mpsc::{self, Receiver};
-use tsp_crypto::error::Error as CryptoError;
-use tsp_definitions::{Digest, Payload, ReceivedTspMessage, VerifiedVid};
-use tsp_vid::{error::Error as VidError, PrivateVid, Vid};
 
 /// Holds private ands verified VID's
 /// A Store contains verified vid's, our relationship status to them,
@@ -93,7 +97,7 @@ impl AsyncStore {
 
     /// Resolve and verify public key material for a VID identified by `vid` and add it to the database as a relationship
     pub async fn verify_vid(&mut self, vid: &str) -> Result<(), Error> {
-        let verified_vid = tsp_vid::verify_vid(vid).await?;
+        let verified_vid = crate::vid::verify_vid(vid).await?;
 
         self.inner
             .verified_vids
@@ -113,7 +117,7 @@ impl AsyncStore {
         parent_vid: &str,
         relation_vid: Option<&str>,
     ) -> Result<(), Error> {
-        let mut verified_vid = tsp_vid::verify_vid(vid).await?;
+        let mut verified_vid = crate::vid::verify_vid(vid).await?;
 
         verified_vid.set_parent_vid(parent_vid.to_string());
         verified_vid.set_relation_vid(relation_vid);
@@ -164,14 +168,14 @@ impl AsyncStore {
         let sender = self.inner.get_private_vid(sender)?;
         let receiver = self.inner.get_verified_vid(receiver)?;
 
-        let tsp_message = tsp_crypto::seal(
+        let tsp_message = crate::crypto::seal(
             &sender,
             &receiver,
             nonconfidential_data,
             Payload::Content(message),
         )?;
 
-        tsp_transport::send_message(receiver.endpoint(), &tsp_message).await?;
+        crate::transport::send_message(receiver.endpoint(), &tsp_message).await?;
 
         Ok(tsp_message)
     }
@@ -211,9 +215,9 @@ impl AsyncStore {
         let receiver = self.inner.get_verified_vid(receiver)?;
 
         let (tsp_message, thread_id) =
-            tsp_crypto::seal_and_hash(&sender, &receiver, None, Payload::RequestRelationship)?;
+            crate::crypto::seal_and_hash(&sender, &receiver, None, Payload::RequestRelationship)?;
 
-        tsp_transport::send_message(receiver.endpoint(), &tsp_message).await?;
+        crate::transport::send_message(receiver.endpoint(), &tsp_message).await?;
 
         self.inner.relation_status.write()?.insert(
             receiver.identifier().to_string(),
@@ -235,13 +239,13 @@ impl AsyncStore {
         let sender = self.inner.get_private_vid(sender)?;
         let receiver = self.inner.get_verified_vid(receiver)?;
 
-        let tsp_message = tsp_crypto::seal(
+        let tsp_message = crate::crypto::seal(
             &sender,
             &receiver,
             None,
             Payload::AcceptRelationship { thread_id },
         )?;
-        tsp_transport::send_message(receiver.endpoint(), &tsp_message).await?;
+        crate::transport::send_message(receiver.endpoint(), &tsp_message).await?;
 
         self.inner.relation_status.write()?.insert(
             receiver.identifier().to_string(),
@@ -268,13 +272,13 @@ impl AsyncStore {
 
         let thread_id = Default::default(); // FNORD
 
-        let tsp_message = tsp_crypto::seal(
+        let tsp_message = crate::crypto::seal(
             &sender,
             &receiver,
             None,
             Payload::CancelRelationship { thread_id },
         )?;
-        tsp_transport::send_message(receiver.endpoint(), &tsp_message).await?;
+        crate::transport::send_message(receiver.endpoint(), &tsp_message).await?;
 
         Ok(())
     }
@@ -296,7 +300,7 @@ impl AsyncStore {
                 (Some(parent_receiver), Some(inner_sender)) => {
                     let inner_sender = self.inner.get_private_vid(inner_sender)?;
                     let tsp_message =
-                        tsp_crypto::sign(&inner_sender, Some(&inner_receiver), message)?;
+                        crate::crypto::sign(&inner_sender, Some(&inner_receiver), message)?;
 
                     match inner_sender.parent_vid() {
                         Some(parent_sender) => {
@@ -318,14 +322,14 @@ impl AsyncStore {
                 }
             };
 
-        let tsp_message = tsp_crypto::seal(
+        let tsp_message = crate::crypto::seal(
             &sender,
             &receiver,
             nonconfidential_data,
             Payload::NestedMessage(&inner_message),
         )?;
 
-        tsp_transport::send_message(receiver.endpoint(), &tsp_message).await?;
+        crate::transport::send_message(receiver.endpoint(), &tsp_message).await?;
 
         Ok(())
     }
@@ -352,7 +356,7 @@ impl AsyncStore {
             match (first_hop.relation_vid(), inner_receiver.relation_vid()) {
                 (Some(first_sender), Some(inner_sender)) => {
                     let inner_sender = self.inner.get_private_vid(inner_sender)?;
-                    let tsp_message = tsp_crypto::seal(
+                    let tsp_message = crate::crypto::seal(
                         &inner_sender,
                         &inner_receiver,
                         intermediary_extra_data,
@@ -377,14 +381,14 @@ impl AsyncStore {
             .map(|x| x.as_ref())
             .collect::<Vec<_>>();
 
-        let tsp_message = tsp_crypto::seal(
+        let tsp_message = crate::crypto::seal(
             &sender,
             &first_hop,
             None,
             Payload::RoutedMessage(hops, &inner_message),
         )?;
 
-        tsp_transport::send_message(first_hop.endpoint(), &tsp_message).await?;
+        crate::transport::send_message(first_hop.endpoint(), &tsp_message).await?;
 
         Ok(())
     }
@@ -404,7 +408,7 @@ impl AsyncStore {
             return Err(Error::UnverifiedVid(sender.to_string()));
         };
 
-        let (_, payload, _) = tsp_crypto::open(&receiver, &sender, message)?;
+        let (_, payload, _) = crate::crypto::open(&receiver, &sender, message)?;
 
         let Payload::RoutedMessage(hops, inner_message) = payload else {
             return Err(Error::InvalidRoute("expected a routed message".to_string()));
@@ -444,7 +448,7 @@ impl AsyncStore {
                 None => return Err(VidError::ResolveVid("no relation for drop-off VID").into()),
             };
 
-            let tsp_message = tsp_crypto::seal(
+            let tsp_message = crate::crypto::seal(
                 &sender,
                 &recipient,
                 None,
@@ -461,7 +465,7 @@ impl AsyncStore {
                 None => return Err(VidError::ResolveVid("missing sender VID for first hop").into()),
             };
 
-            let tsp_message = tsp_crypto::seal(
+            let tsp_message = crate::crypto::seal(
                 &sender,
                 &next_hop,
                 None,
@@ -471,7 +475,7 @@ impl AsyncStore {
             (next_hop, tsp_message)
         };
 
-        tsp_transport::send_message(destination.endpoint(), &tsp_message).await?;
+        crate::transport::send_message(destination.endpoint(), &tsp_message).await?;
 
         Ok(())
     }
@@ -498,7 +502,7 @@ impl AsyncStore {
         }
 
         let (tx, rx) = mpsc::channel(16);
-        let mut messages = tsp_transport::receive_messages(receiver.endpoint()).await?;
+        let mut messages = crate::transport::receive_messages(receiver.endpoint()).await?;
 
         let db = self.inner.clone();
         tokio::task::spawn(async move {

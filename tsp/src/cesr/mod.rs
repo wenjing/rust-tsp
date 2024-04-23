@@ -98,8 +98,7 @@ pub fn probe(stream: &mut [u8]) -> Result<EnvelopeType, error::DecodeError> {
 
 #[cfg(test)]
 mod test {
-    use super::*;
-    use crate::{decode::*, encode::*};
+    use super::{decode::*, encode::*, *};
 
     #[test]
     fn test_primitives() {
