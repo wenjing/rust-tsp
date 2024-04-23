@@ -67,7 +67,7 @@ async fn new_message(
 
     let mut message: Vec<u8> = body.to_vec();
 
-    if state.db.has_private_vid(receiver).await {
+    if let Ok(true) = state.db.has_private_vid(receiver) {
         let Ok(()) = state.db.route_message(sender, receiver, &mut message).await else {
             return (StatusCode::BAD_REQUEST, "error routing message").into_response();
         };

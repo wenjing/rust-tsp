@@ -1,3 +1,5 @@
+use std::sync::PoisonError;
+
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
     #[error("Error: {0}")]
@@ -18,4 +20,12 @@ pub enum Error {
     Relationship(String),
     #[error("Error: unresolved vid {0}")]
     UnverifiedVid(String),
+    #[error("Internal error")]
+    Internal,
+}
+
+impl<T> From<PoisonError<T>> for Error {
+    fn from(_: PoisonError<T>) -> Self {
+        Self::Internal
+    }
 }
