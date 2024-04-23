@@ -76,9 +76,15 @@ async fn main() {
         let piv: PrivateVid =
             serde_json::from_str(include_str!("../../examples/test/carol.json")).unwrap();
         db.add_private_vid(piv).await.unwrap();
-        db.verify_vid("did:web:did.tsp-test.org:user:dave").await.unwrap();
-        db.verify_vid("did:web:did.tsp-test.org:user:eve").await.unwrap();
-        db.verify_vid("did:web:did.tsp-test.org:user:frank").await.unwrap();
+        db.verify_vid("did:web:did.tsp-test.org:user:dave")
+            .await
+            .unwrap();
+        db.verify_vid("did:web:did.tsp-test.org:user:eve")
+            .await
+            .unwrap();
+        db.verify_vid("did:web:did.tsp-test.org:user:frank")
+            .await
+            .unwrap();
 
         if let Err(e) = start_intermediary("carol.tsp-test.org", 3001, db).await {
             eprintln!("error starting intermediary: {:?}", e);
@@ -90,9 +96,15 @@ async fn main() {
         let piv: PrivateVid =
             serde_json::from_str(include_str!("../../examples/test/dave.json")).unwrap();
         db.add_private_vid(piv).await.unwrap();
-        db.verify_vid("did:web:did.tsp-test.org:user:carol").await.unwrap();
-        db.verify_vid("did:web:did.tsp-test.org:user:eve").await.unwrap();
-        db.verify_vid("did:web:did.tsp-test.org:user:frank").await.unwrap();
+        db.verify_vid("did:web:did.tsp-test.org:user:carol")
+            .await
+            .unwrap();
+        db.verify_vid("did:web:did.tsp-test.org:user:eve")
+            .await
+            .unwrap();
+        db.verify_vid("did:web:did.tsp-test.org:user:frank")
+            .await
+            .unwrap();
 
         if let Err(e) = start_intermediary("dave.tsp-test.org", 3002, VidDatabase::new()).await {
             eprintln!("error starting intermediary: {:?}", e);
