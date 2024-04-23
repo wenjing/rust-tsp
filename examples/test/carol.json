@@ -6,6 +6,6 @@
   "publicSigkey": "v_QoFe2_OsVLnxlEmPBKVlXhcnOKg1n6UBtExEPkbR8",
   "relationVid": null,
   "sigkey": "IJwK3g1Ue6sk33TqYt6SVsCIP906cnuIX1wbfpZsGOA",
-  "transport": "tcp://127.0.0.1:1337",
+  "transport": "https://carol.tsp-test.org/transport/carol",
   "tunnel": null
 }

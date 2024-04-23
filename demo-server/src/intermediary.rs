@@ -31,8 +31,7 @@ pub(crate) async fn start_intermediary(
     // Compose the routes
     let app = Router::new()
         .route("/", get(index))
-        .route("/new-message", post(new_message))
-        .route("/receive-messages", get(websocket_handler))
+        .route("/transport/:name", post(new_message).get(websocket_handler))
         .with_state(state);
 
     let listener = tokio::net::TcpListener::bind(("0.0.0.0", port)).await?;
@@ -47,7 +46,11 @@ async fn index(State(state): State<Arc<IntermediaryState>>) -> Html<String> {
     Html(format!("<h1>{}</h1>", state.domain))
 }
 
-async fn new_message(State(state): State<Arc<IntermediaryState>>, body: Bytes) -> Response {
+async fn new_message(
+    State(state): State<Arc<IntermediaryState>>,
+    Path(_name): Path<String>,
+    body: Bytes
+) -> Response {
     let message: Vec<u8> = body.to_vec();
 
     let Ok((sender, Some(receiver))) = tsp_cesr::get_sender_receiver(&message) else {
@@ -83,14 +86,14 @@ async fn websocket_handler(
     Path(name): Path<String>,
 ) -> impl IntoResponse {
     let mut messages_rx = state.tx.subscribe();
-    let current = format!("did:web:{}:user:{name}", state.domain);
+    let vid = format!("did:web:did.tsp-test.org:user:{name}");
 
     ws.on_upgrade(|socket| {
         let (mut ws_send, _) = socket.split();
 
         async move {
             while let Ok((receiver, message)) = messages_rx.recv().await {
-                if receiver == current {
+                if receiver == vid {
                     let _ = ws_send.send(Message::Binary(message)).await;
                 }
             }
