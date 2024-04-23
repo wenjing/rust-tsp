@@ -11,6 +11,7 @@ pub(crate) fn seal<A, Kdf, Kem>(
     receiver: &dyn VerifiedVid,
     nonconfidential_data: Option<NonConfidentialData>,
     secret_payload: Payload<&[u8]>,
+    plaintext_observer: Option<super::ObservingClosure>,
 ) -> Result<TSPMessage, Error>
 where
     A: hpke::aead::Aead,
@@ -60,6 +61,11 @@ where
 
     // recipient public key
     let message_receiver = Kem::PublicKey::from_bytes(receiver.encryption_key())?;
+
+    // this callback allows "observing" the raw bytes of the plaintext before encryption, for hash computations
+    if let Some(func) = plaintext_observer {
+        func(&cesr_message);
+    }
 
     // perform encryption
     let (encapped_key, tag) = hpke::single_shot_seal_in_place_detached::<A, Kdf, Kem, StdRng>(
