@@ -72,7 +72,21 @@ async fn main() {
     tracing::debug!("listening on {}", listener.local_addr().unwrap());
 
     tokio::task::spawn(async {
-        if let Err(e) = start_intermediary("hub1.tsp-test.org", 3001, VidDatabase::new()).await {
+        let db = VidDatabase::new();
+        let piv: PrivateVid =
+            serde_json::from_str(include_str!("../../examples/test/carol.json")).unwrap();
+        db.add_private_vid(piv).await.unwrap();
+        if let Err(e) = start_intermediary("carol.tsp-test.org", 3001, db).await {
+            eprintln!("error starting intermediary: {:?}", e);
+        }
+    });
+
+    tokio::task::spawn(async {
+        let db = VidDatabase::new();
+        let piv: PrivateVid =
+            serde_json::from_str(include_str!("../../examples/test/dave.json")).unwrap();
+        db.add_private_vid(piv).await.unwrap();
+        if let Err(e) = start_intermediary("dave.tsp-test.org", 3002, VidDatabase::new()).await {
             eprintln!("error starting intermediary: {:?}", e);
         }
     });
