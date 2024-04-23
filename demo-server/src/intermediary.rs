@@ -49,7 +49,7 @@ async fn index(State(state): State<Arc<IntermediaryState>>) -> Html<String> {
 async fn new_message(
     State(state): State<Arc<IntermediaryState>>,
     Path(_name): Path<String>,
-    body: Bytes
+    body: Bytes,
 ) -> Response {
     let message: Vec<u8> = body.to_vec();
 
