@@ -1,6 +1,6 @@
 use crate::{
     cesr::{DecodedEnvelope, Envelope},
-    definitions::{Sender, TSPMessage, VerifiedVid},
+    definitions::{PrivateVid, TSPMessage, VerifiedVid},
 };
 use ed25519_dalek::ed25519::signature::Signer;
 
@@ -8,7 +8,7 @@ use super::CryptoError;
 
 /// Construct and sign a non-confidential TSP message
 pub fn sign(
-    sender: &dyn Sender,
+    sender: &dyn PrivateVid,
     receiver: Option<&dyn VerifiedVid>,
     payload: &[u8],
 ) -> Result<TSPMessage, CryptoError> {

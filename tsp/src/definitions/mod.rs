@@ -1,6 +1,6 @@
 use core::fmt;
 use futures::Stream;
-use std::pin::Pin;
+use std::{fmt::Debug, pin::Pin};
 use tokio_util::bytes::BytesMut;
 
 pub type KeyData = [u8; 32];
@@ -20,26 +20,26 @@ pub enum MessageType {
 }
 
 #[derive(Debug)]
-pub enum ReceivedTspMessage<V: VerifiedVid> {
+pub enum ReceivedTspMessage {
     GenericMessage {
-        sender: V,
+        sender: String,
         nonconfidential_data: Option<Vec<u8>>,
         message: Vec<u8>,
         message_type: MessageType,
     },
     RequestRelationship {
-        sender: V,
+        sender: String,
         thread_id: Digest,
     },
     AcceptRelationship {
-        sender: V,
+        sender: String,
     },
     CancelRelationship {
-        sender: V,
+        sender: String,
     },
     ForwardRequest {
-        sender: V,
-        next_hop: V,
+        sender: String,
+        next_hop: String,
         route: Vec<Vec<u8>>,
         opaque_payload: Vec<u8>,
     },
@@ -97,7 +97,7 @@ impl<'a, Bytes: AsRef<[u8]>> fmt::Display for Payload<'a, Bytes> {
     }
 }
 
-pub trait VerifiedVid {
+pub trait VerifiedVid: Send + Sync {
     /// A identifier of the Vid as bytes (for inclusion in TSP packets)
     fn identifier(&self) -> &str;
 
@@ -109,20 +109,12 @@ pub trait VerifiedVid {
 
     /// The encryption key associated with this Vid
     fn encryption_key(&self) -> PublicKeyData;
-
-    /// The parent VID of this inner VID
-    fn parent_vid(&self) -> Option<&str>;
-
-    /// The related relation inner VID for this VID
-    fn relation_vid(&self) -> Option<&str>;
 }
 
-pub trait Receiver: VerifiedVid {
+pub trait PrivateVid: VerifiedVid + Send + Sync {
     /// The PRIVATE key used to decrypt data
     fn decryption_key(&self) -> PrivateKeyData;
-}
 
-pub trait Sender: Receiver {
     /// The PRIVATE key used to sign data
     fn signing_key(&self) -> PrivateKeyData;
 }

@@ -2,9 +2,9 @@ use ed25519_dalek::{self as Ed};
 use std::path::Path;
 use tokio::fs;
 
-use super::{error::VidError, PrivateVid};
+use super::{error::VidError, OwnedVid};
 
-impl PrivateVid {
+impl OwnedVid {
     pub async fn from_file(path: impl AsRef<Path>) -> Result<Self, VidError> {
         let vid_data = fs::read_to_string(path)
             .await
@@ -100,11 +100,11 @@ pub(crate) mod serde_public_sigkey {
 
 #[cfg(test)]
 mod test {
-    use crate::PrivateVid;
+    use super::OwnedVid;
 
     #[tokio::test]
     async fn deserialize() {
-        let alice = PrivateVid::from_file("../examples/test/alice.json")
+        let alice = OwnedVid::from_file("../examples/test/alice.json")
             .await
             .unwrap();
 

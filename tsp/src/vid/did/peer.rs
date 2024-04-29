@@ -127,9 +127,6 @@ pub(crate) fn verify_did_peer(parts: &[&str]) -> Result<Vid, VidError> {
             transport,
             public_sigkey,
             public_enckey,
-            relation_vid: None,
-            parent_vid: None,
-            tunnel: None,
         }),
         (None, _, _) => Err(VidError::ResolveVid("missing verification key in did:peer")),
         (_, None, _) => Err(VidError::ResolveVid("missing encryption key in did:peer")),
@@ -159,9 +156,6 @@ mod test {
             transport: Url::parse("tcp://127.0.0.1:1337").unwrap(),
             public_sigkey: sigkey.verifying_key(),
             public_enckey: public_enckey.to_bytes().into(),
-            relation_vid: None,
-            parent_vid: None,
-            tunnel: None,
         };
 
         vid.id = encode_did_peer(&vid);

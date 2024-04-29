@@ -12,20 +12,22 @@
 //! The following example demonstrates how to send a message from Alice to Bob
 //!
 //! ```no_run
-//! use tsp::{AsyncStore, PrivateVid, Error, ReceivedTspMessage};
+//! use tsp::{AsyncStore, OwnedVid, Error, ReceivedTspMessage};
 //!
 //! #[tokio::main]
 //! async fn main() -> Result<(), Error> {
 //!     // bob database
 //!     let mut bob_db = AsyncStore::new();
-//!     bob_db.add_private_vid_from_file("test/bob.json").await?;
+//!     let bob_vid = OwnedVid::from_file("../examples/test/bob.json").await?;
+//!     bob_db.add_private_vid(bob_vid)?;
 //!     bob_db.verify_vid("did:web:did.tsp-test.org:user:alice").await?;
 //!
 //!     let mut bobs_messages = bob_db.receive("did:web:did.tsp-test.org:user:bob").await?;
 //!
 //!     // alice database
 //!     let mut alice_db = AsyncStore::new();
-//!     alice_db.add_private_vid_from_file("test/alice.json").await?;
+//!     let alice_vid = OwnedVid::from_file("../examples/test/bob.json").await?;
+//!     alice_db.add_private_vid(alice_vid)?;
 //!     alice_db.verify_vid("did:web:did.tsp-test.org:user:bob").await?;
 //!
 //!     // send a message
@@ -48,8 +50,6 @@
 //! }
 //! ```
 //!
-use definitions::Digest;
-
 pub mod cesr;
 pub mod crypto;
 pub mod definitions;
@@ -64,17 +64,9 @@ mod store;
 mod test;
 
 pub use crate::{
-    definitions::{Payload, ReceivedTspMessage, VerifiedVid},
-    vid::{PrivateVid, Vid},
+    definitions::{Payload, PrivateVid, ReceivedTspMessage, VerifiedVid},
+    vid::{OwnedVid, Vid},
 };
 pub use async_store::AsyncStore;
 pub use error::Error;
 pub use store::Store;
-
-#[derive(Clone, Copy, Debug)]
-pub(crate) enum RelationshipStatus {
-    _Controlled,
-    Bidirectional(Digest),
-    Unidirectional(Digest),
-    Unrelated,
-}

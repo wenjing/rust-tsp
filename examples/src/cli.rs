@@ -5,7 +5,7 @@ use std::path::Path;
 use tokio::io::AsyncReadExt;
 use tracing::{info, trace};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
-use tsp::{cesr::Part, AsyncStore, Error, PrivateVid, ReceivedTspMessage, VerifiedVid, Vid};
+use tsp::{cesr::Part, AsyncStore, Error, OwnedVid, ReceivedTspMessage, VerifiedVid, Vid};
 
 #[derive(Debug, Parser)]
 #[command(name = "tsp")]
@@ -51,26 +51,27 @@ enum Commands {
 
 #[derive(Debug, Serialize, Deserialize)]
 struct DatabaseContents {
-    private_vids: Vec<PrivateVid>,
+    private_vids: Vec<OwnedVid>,
     verified_vids: Vec<Vid>,
 }
 
-async fn write_database(database_file: &str, db: &AsyncStore) -> Result<(), Error> {
-    let db_path = Path::new(database_file);
+// TODO
+async fn write_database(database_file: &str, _db: &AsyncStore) -> Result<(), Error> {
+    // let db_path = Path::new(database_file);
 
-    let (private_vids, verified_vids) = db.export()?;
+    // let (private_vids, verified_vids) = db.export()?;
 
-    let db_contents = DatabaseContents {
-        private_vids,
-        verified_vids,
-    };
+    // let db_contents = DatabaseContents {
+    //     private_vids,
+    //     verified_vids,
+    // };
 
-    let db_contents_json =
-        serde_json::to_string_pretty(&db_contents).expect("Could not serialize database");
+    // let db_contents_json =
+    //     serde_json::to_string_pretty(&db_contents).expect("Could not serialize database");
 
-    tokio::fs::write(db_path, db_contents_json)
-        .await
-        .expect("Could not write database");
+    // tokio::fs::write(db_path, db_contents_json)
+    //     .await
+    //     .expect("Could not write database");
 
     trace!("persisted database to {database_file}");
 
@@ -123,7 +124,7 @@ fn color_print_part(part: Option<Part>, color: u8) {
 }
 
 fn print_message(message: &[u8]) {
-    let Ok(parts) = tsp::cesr::decode_message_into_parts(message) else {
+    let Ok(parts) = tsp::cesr::open_message_into_parts(message) else {
         eprintln!("Invalid encoded message");
         return;
     };
@@ -170,7 +171,7 @@ async fn run() -> Result<(), Error> {
             let did = format!("did:web:tsp-test.org:user:{username}");
             let transport =
                 url::Url::parse(&format!("https://tsp-test.org/user/{username}")).unwrap();
-            let private_vid = PrivateVid::bind(&did, transport);
+            let private_vid = OwnedVid::bind(&did, transport);
 
             reqwest::Client::new()
                 .post("https://tsp-test.org/add-vid")
@@ -223,32 +224,27 @@ async fn run() -> Result<(), Error> {
                         message,
                         message_type: _,
                     } => {
-                        info!(
-                            "received message ({} bytes) from {}",
-                            message.len(),
-                            sender.identifier(),
-                        );
+                        info!("received message ({} bytes) from {}", message.len(), sender,);
                         println!("{}", String::from_utf8_lossy(&message),);
                     }
                     ReceivedTspMessage::RequestRelationship {
                         sender,
                         thread_id: _,
                     } => {
-                        info!("received relationship request from {}", sender.identifier(),);
+                        info!("received relationship request from {}", sender);
                     }
                     ReceivedTspMessage::AcceptRelationship { sender } => {
-                        info!("received accept relationship from {}", sender.identifier(),);
+                        info!("received accept relationship from {}", sender);
                     }
                     ReceivedTspMessage::CancelRelationship { sender } => {
-                        info!("received cancel relationship from {}", sender.identifier(),);
+                        info!("received cancel relationship from {}", sender);
                     }
                     ReceivedTspMessage::ForwardRequest {
                         sender, next_hop, ..
                     } => {
                         info!(
                             "messaging forwarding request from {} to {}",
-                            sender.identifier(),
-                            next_hop.identifier()
+                            sender, next_hop
                         );
                     }
                 }

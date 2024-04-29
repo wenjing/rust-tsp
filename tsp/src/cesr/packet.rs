@@ -618,7 +618,7 @@ pub struct MessageParts {
 }
 
 /// Decode a CESR encoded message into its CESR encoded parts
-pub fn decode_message_into_parts(data: &[u8]) -> Result<MessageParts, DecodeError> {
+pub fn open_message_into_parts(data: &[u8]) -> Result<MessageParts, DecodeError> {
     let (mut pos, _) = detected_tsp_header_size_and_confidentiality(&mut (data as &[u8]))?;
 
     let prefix = Part {
@@ -1032,7 +1032,7 @@ mod test {
         use base64ct::{Base64UrlUnpadded, Encoding};
 
         let message = Base64UrlUnpadded::decode_vec("-EABXAAA7VIDAAAEZGlkOnRlc3Q6Ym9i8VIDAAAFAGRpZDp0ZXN0OmFsaWNl6BAEAABleHRyYSBkYXRh4CAXScvzIiBCgfOu9jHtGwd1qN-KlMB7uhFbE9YOSyTmnp9yziA1LVPdQmST27yjuDRTlxeRo7H7gfuaGFY4iyf2EsfiqvEg0BBNDbKoW0DDczGxj7rNWKH_suyj18HCUxMZ6-mDymZdNhHZIS8zIstC9Kxv5Q-GxmI-1v4SNbeCemuCMBzMPogK").unwrap();
-        let parts = decode_message_into_parts(&message).unwrap();
+        let parts = open_message_into_parts(&message).unwrap();
 
         dbg!(&parts);
 

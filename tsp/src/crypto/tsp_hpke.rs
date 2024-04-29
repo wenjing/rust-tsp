@@ -1,6 +1,6 @@
 use crate::{
     cesr::DecodedEnvelope,
-    definitions::{NonConfidentialData, Payload, Receiver, Sender, TSPMessage, VerifiedVid},
+    definitions::{NonConfidentialData, Payload, PrivateVid, TSPMessage, VerifiedVid},
 };
 use ed25519_dalek::Signer;
 use hpke::{aead::AeadTag, Deserializable, OpModeR, OpModeS, Serializable};
@@ -9,7 +9,7 @@ use rand::{rngs::StdRng, SeedableRng};
 use super::{CryptoError, MessageContents};
 
 pub(crate) fn seal<A, Kdf, Kem>(
-    sender: &dyn Sender,
+    sender: &dyn PrivateVid,
     receiver: &dyn VerifiedVid,
     nonconfidential_data: Option<NonConfidentialData>,
     secret_payload: Payload<&[u8]>,
@@ -98,7 +98,7 @@ where
 }
 
 pub(crate) fn open<'a, A, Kdf, Kem>(
-    receiver: &dyn Receiver,
+    receiver: &dyn PrivateVid,
     sender: &dyn VerifiedVid,
     tsp_message: &'a mut [u8],
 ) -> Result<MessageContents<'a>, CryptoError>

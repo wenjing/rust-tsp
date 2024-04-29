@@ -18,7 +18,7 @@ use tokio::sync::{broadcast, RwLock};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 use tsp::{
     definitions::{Payload, VerifiedVid},
-    vid::{PrivateVid, Vid},
+    vid::{OwnedVid, Vid},
     AsyncStore,
 };
 
@@ -75,7 +75,7 @@ async fn main() {
 
     tokio::task::spawn(async {
         let mut db = AsyncStore::new();
-        let piv: PrivateVid =
+        let piv: OwnedVid =
             serde_json::from_str(include_str!("../../examples/test/carol.json")).unwrap();
         db.add_private_vid(piv).unwrap();
         db.verify_vid("did:web:did.tsp-test.org:user:dave")
@@ -95,7 +95,7 @@ async fn main() {
 
     tokio::task::spawn(async {
         let mut db = AsyncStore::new();
-        let piv: PrivateVid =
+        let piv: OwnedVid =
             serde_json::from_str(include_str!("../../examples/test/dave.json")).unwrap();
         db.add_private_vid(piv).unwrap();
         db.verify_vid("did:web:did.tsp-test.org:user:carol")
@@ -241,8 +241,8 @@ fn format_part(title: &str, part: &tsp::cesr::Part, plain: Option<&[u8]>) -> ser
 }
 
 /// Decode a CESR encoded message into descriptive JSON
-fn decode_message(message: &[u8], payload: Option<&[u8]>) -> Option<serde_json::Value> {
-    let parts = tsp::cesr::decode_message_into_parts(message).ok()?;
+fn open_message(message: &[u8], payload: Option<&[u8]>) -> Option<serde_json::Value> {
+    let parts = tsp::cesr::open_message_into_parts(message).ok()?;
 
     Some(json!({
         "original": Base64UrlUnpadded::encode_string(message),
@@ -260,7 +260,7 @@ fn decode_message(message: &[u8], payload: Option<&[u8]>) -> Option<serde_json::
 struct SendMessageForm {
     message: String,
     nonconfidential_data: Option<String>,
-    sender: PrivateVid,
+    sender: OwnedVid,
     receiver: Vid,
 }
 
@@ -314,7 +314,7 @@ async fn send_message(
                 message.clone(),
             ));
 
-            let decoded = decode_message(&message, Some(form.message.as_bytes())).unwrap();
+            let decoded = open_message(&message, Some(form.message.as_bytes())).unwrap();
 
             Json(decoded).into_response()
         }
@@ -357,7 +357,7 @@ async fn websocket(stream: WebSocket, state: Arc<AppState>) {
     let (mut sender, mut receiver) = stream.split();
     let mut rx = state.tx.subscribe();
     let senders = Arc::new(RwLock::new(HashMap::<String, Vid>::new()));
-    let receivers = Arc::new(RwLock::new(HashMap::<String, PrivateVid>::new()));
+    let receivers = Arc::new(RwLock::new(HashMap::<String, OwnedVid>::new()));
 
     // Forward messages from the broadcast channel to the websocket
     let incoming_senders = senders.clone();
@@ -383,9 +383,9 @@ async fn websocket(stream: WebSocket, state: Arc<AppState>) {
                     continue;
                 };
 
-                decode_message(&message, Some(payload.as_bytes()))
+                open_message(&message, Some(payload.as_bytes()))
             } else {
-                decode_message(&message, None)
+                open_message(&message, None)
             };
 
             let Some(decoded) = result else {
@@ -405,7 +405,7 @@ async fn websocket(stream: WebSocket, state: Arc<AppState>) {
     // Receive encoded VID's from the websocket and store them in the local state
     let mut recv_task = tokio::spawn(async move {
         while let Some(Ok(Message::Text(incoming_message))) = receiver.next().await {
-            if let Ok(identity) = serde_json::from_str::<PrivateVid>(&incoming_message) {
+            if let Ok(identity) = serde_json::from_str::<OwnedVid>(&incoming_message) {
                 receivers
                     .write()
                     .await
