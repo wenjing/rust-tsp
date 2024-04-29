@@ -1,5 +1,5 @@
 use crate::definitions::{
-    Digest, NonConfidentialData, Payload, Receiver, Sender, TSPMessage, VerifiedVid,
+    Digest, NonConfidentialData, Payload, PrivateVid, TSPMessage, VerifiedVid,
 };
 
 mod digest;
@@ -17,7 +17,7 @@ type ObservingClosure<'a> = &'a mut dyn FnMut(&[u8]);
 
 /// Encrypt, authenticate and sign and CESR encode a TSP message
 pub fn seal(
-    sender: &dyn Sender,
+    sender: &dyn PrivateVid,
     receiver: &dyn VerifiedVid,
     nonconfidential_data: Option<NonConfidentialData>,
     payload: Payload<&[u8]>,
@@ -27,7 +27,7 @@ pub fn seal(
 
 /// Encrypt, authenticate and sign and CESR encode a TSP message; also returns the hash value of the plaintext parts before encryption
 pub fn seal_and_hash(
-    sender: &dyn Sender,
+    sender: &dyn PrivateVid,
     receiver: &dyn VerifiedVid,
     nonconfidential_data: Option<NonConfidentialData>,
     payload: Payload<&[u8]>,
@@ -52,7 +52,7 @@ pub type MessageContents<'a> = (
 
 /// Decode a CESR Authentic Confidential Message, verify the signature and decrypt its contents
 pub fn open<'a>(
-    receiver: &dyn Receiver,
+    receiver: &dyn PrivateVid,
     sender: &dyn VerifiedVid,
     tsp_message: &'a mut [u8],
 ) -> Result<MessageContents<'a>, CryptoError> {
@@ -61,7 +61,7 @@ pub fn open<'a>(
 
 /// Construct and sign a non-confidential TSP message
 pub fn sign(
-    sender: &dyn Sender,
+    sender: &dyn PrivateVid,
     receiver: Option<&dyn VerifiedVid>,
     payload: &[u8],
 ) -> Result<TSPMessage, CryptoError> {
@@ -80,15 +80,15 @@ pub use digest::sha256;
 
 #[cfg(test)]
 mod tests {
-    use crate::{definitions::Payload, vid::PrivateVid};
+    use crate::{definitions::Payload, vid::OwnedVid};
     use url::Url;
 
     use super::{open, seal};
 
     #[test]
     fn seal_open_message() {
-        let bob = PrivateVid::bind("did:test:bob", Url::parse("tcp:://127.0.0.1:1337").unwrap());
-        let alice = PrivateVid::bind(
+        let bob = OwnedVid::bind("did:test:bob", Url::parse("tcp:://127.0.0.1:1337").unwrap());
+        let alice = OwnedVid::bind(
             "did:test:alice",
             Url::parse("tcp:://127.0.0.1:1337").unwrap(),
         );

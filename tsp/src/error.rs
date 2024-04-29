@@ -1,5 +1,3 @@
-use std::sync::PoisonError;
-
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
     #[error("Error: {0}")]
@@ -15,17 +13,23 @@ pub enum Error {
     #[error("Error: {0}")]
     Utf8(#[from] std::str::Utf8Error),
     #[error("Error: {0}")]
+    FromUtf8(#[from] std::string::FromUtf8Error),
+    #[error("Error: {0}")]
     InvalidRoute(String),
     #[error("Error: {0}")]
     Relationship(String),
+    #[error("Error: missing private vid {0}")]
+    MissingPrivateVid(String),
+    #[error("Error: missing vid {0}")]
+    MissingVid(String),
     #[error("Error: unresolved vid {0}")]
     UnverifiedVid(String),
     #[error("Internal error")]
     Internal,
 }
 
-impl<T> From<PoisonError<T>> for Error {
-    fn from(_: PoisonError<T>) -> Self {
+impl<T> From<std::sync::PoisonError<T>> for Error {
+    fn from(_: std::sync::PoisonError<T>) -> Self {
         Self::Internal
     }
 }

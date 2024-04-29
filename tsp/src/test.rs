@@ -1,4 +1,4 @@
-use crate::AsyncStore;
+use crate::{AsyncStore, OwnedVid, VerifiedVid};
 
 #[tokio::test]
 #[serial_test::serial(tcp)]
@@ -9,10 +9,10 @@ async fn test_direct_mode() {
 
     // bob database
     let mut bob_db = AsyncStore::new();
-    bob_db
-        .add_private_vid_from_file("test/bob.json")
+    let bob_vid = OwnedVid::from_file("../examples/test/bob.json")
         .await
         .unwrap();
+    bob_db.add_private_vid(bob_vid.clone()).unwrap();
     bob_db
         .verify_vid("did:web:did.tsp-test.org:user:alice")
         .await
@@ -25,10 +25,10 @@ async fn test_direct_mode() {
 
     // alice database
     let mut alice_db = AsyncStore::new();
-    alice_db
-        .add_private_vid_from_file("test/alice.json")
+    let alice_vid = OwnedVid::from_file("../examples/test/alice.json")
         .await
         .unwrap();
+    alice_db.add_private_vid(alice_vid.clone()).unwrap();
     alice_db
         .verify_vid("did:web:did.tsp-test.org:user:bob")
         .await
@@ -64,10 +64,10 @@ async fn test_nested_mode() {
 
     // bob database
     let mut bob_db = AsyncStore::new();
-    bob_db
-        .add_private_vid_from_file("test/bob.json")
+    let bob_vid = OwnedVid::from_file("../examples/test/bob.json")
         .await
         .unwrap();
+    bob_db.add_private_vid(bob_vid.clone()).unwrap();
     bob_db
         .verify_vid("did:web:did.tsp-test.org:user:alice")
         .await
@@ -75,42 +75,54 @@ async fn test_nested_mode() {
 
     // alice database
     let mut alice_db = AsyncStore::new();
-    alice_db
-        .add_private_vid_from_file("test/alice.json")
+    let alice_vid = OwnedVid::from_file("../examples/test/alice.json")
         .await
         .unwrap();
+    alice_db.add_private_vid(alice_vid.clone()).unwrap();
     alice_db
         .verify_vid("did:web:did.tsp-test.org:user:bob")
         .await
         .unwrap();
 
     // create nested id's
-    let nested_bob_vid = bob_db
-        .create_private_nested_vid("did:web:did.tsp-test.org:user:bob", None)
+    let nested_bob_vid = OwnedVid::new_did_peer(bob_vid.endpoint().clone());
+    bob_db.add_private_vid(nested_bob_vid.clone()).unwrap();
+    bob_db
+        .set_parent_for_vid(nested_bob_vid.identifier(), Some(bob_vid.identifier()))
         .unwrap();
 
     // receive a messages on inner vid
-    let mut bobs_inner_messages = bob_db.receive(&nested_bob_vid).await.unwrap();
+    let mut bobs_inner_messages = bob_db.receive(nested_bob_vid.identifier()).await.unwrap();
 
-    let nested_alice_vid = alice_db
-        .create_private_nested_vid("did:web:did.tsp-test.org:user:alice", Some(&nested_bob_vid))
+    let nested_alice_vid = OwnedVid::new_did_peer(alice_vid.endpoint().clone());
+    alice_db.add_private_vid(nested_alice_vid.clone()).unwrap();
+    alice_db
+        .set_parent_for_vid(nested_alice_vid.identifier(), Some(alice_vid.identifier()))
+        .unwrap();
+    alice_db
+        .verify_vid(nested_bob_vid.identifier())
+        .await
+        .unwrap();
+    alice_db
+        .set_parent_for_vid(nested_bob_vid.identifier(), Some(bob_vid.identifier()))
+        .unwrap();
+    alice_db
+        .set_relation_for_vid(
+            nested_bob_vid.identifier(),
+            Some(nested_alice_vid.identifier()),
+        )
         .unwrap();
 
-    alice_db
-        .verify_vid_with_parent(
-            &nested_bob_vid,
-            "did:web:did.tsp-test.org:user:bob",
-            Some(&nested_alice_vid),
-        )
+    bob_db
+        .verify_vid(nested_alice_vid.identifier())
         .await
         .unwrap();
 
-    bob_db.verify_vid(&nested_alice_vid).await.unwrap();
-
     // send a message using inner vid
     alice_db
-        .send_nested(
-            &nested_bob_vid,
+        .send(
+            nested_alice_vid.identifier(),
+            nested_bob_vid.identifier(),
             Some(b"extra non-confidential data"),
             b"hello nested world",
         )
@@ -130,30 +142,25 @@ async fn test_nested_mode() {
 #[tokio::test]
 #[serial_test::serial(tcp)]
 async fn test_routed_mode() {
-    use crate::definitions::VerifiedVid;
     crate::transport::tcp::start_broadcast_server("127.0.0.1:1337")
         .await
         .unwrap();
 
     let mut bob_db = AsyncStore::new();
-    bob_db
-        .add_private_vid_from_file("test/bob.json")
+    let bob_vid = OwnedVid::from_file("../examples/test/bob.json")
         .await
         .unwrap();
+    bob_db.add_private_vid(bob_vid.clone()).unwrap();
 
     let mut alice_db = AsyncStore::new();
-    alice_db
-        .add_private_vid_from_file("test/alice.json")
+    let alice_vid = OwnedVid::from_file("../examples/test/alice.json")
         .await
         .unwrap();
+    alice_db.add_private_vid(alice_vid.clone()).unwrap();
 
     // inform bob about alice
     bob_db
         .verify_vid("did:web:did.tsp-test.org:user:alice")
-        .await
-        .unwrap();
-    bob_db
-        .verify_vid("did:web:did.tsp-test.org:user:bob")
         .await
         .unwrap();
 
@@ -164,10 +171,6 @@ async fn test_routed_mode() {
         .unwrap();
 
     // inform alice about the nodes
-    alice_db
-        .verify_vid("did:web:did.tsp-test.org:user:alice")
-        .await
-        .unwrap();
     alice_db
         .verify_vid("did:web:did.tsp-test.org:user:bob")
         .await
@@ -197,7 +200,8 @@ async fn test_routed_mode() {
 
     // let alice send a message via bob to herself
     alice_db
-        .send_routed(
+        .send(
+            "did:web:did.tsp-test.org:user:alice",
             "did:web:did.tsp-test.org:user:alice",
             None,
             b"hello self (via bob)",
@@ -216,8 +220,8 @@ async fn test_routed_mode() {
         panic!("bob did not receive a forward request")
     };
 
-    assert_eq!(sender.identifier(), "did:web:did.tsp-test.org:user:alice");
-    assert_eq!(next_hop.identifier(), "did:web:did.tsp-test.org:user:alice");
+    assert_eq!(sender, "did:web:did.tsp-test.org:user:alice");
+    assert_eq!(next_hop, "did:web:did.tsp-test.org:user:alice");
     assert_eq!(route, vec![b"did:web:hidden.web:user:realbob"]);
 
     // let alice listen
@@ -268,8 +272,8 @@ async fn test_routed_mode() {
     else {
         panic!("alice did not receive message");
     };
-    assert_eq!(sender.identifier(), "did:web:did.tsp-test.org:user:bob");
-    assert_eq!(next_hop.identifier(), "did:web:did.tsp-test.org:user:bob");
+    assert_eq!(sender, "did:web:did.tsp-test.org:user:bob");
+    assert_eq!(next_hop, "did:web:did.tsp-test.org:user:bob");
     assert!(route.is_empty());
 
     // test3: alice is the recipient (using "bob" as the 'final hop')
@@ -290,12 +294,12 @@ async fn test_routed_mode() {
         panic!("alice did not receive message");
     };
 
-    assert_eq!(sender.identifier(), "did:web:did.tsp-test.org:user:alice");
+    assert_eq!(sender, "did:web:did.tsp-test.org:user:alice");
     assert_eq!(message, b"hello self (via bob)");
 }
 
 async fn faulty_send(
-    sender: &impl crate::definitions::Sender,
+    sender: &impl crate::definitions::PrivateVid,
     receiver: &impl crate::definitions::VerifiedVid,
     nonconfidential_data: Option<&[u8]>,
     message: &[u8],
@@ -322,10 +326,11 @@ async fn attack_failures() {
 
     // bob database
     let mut bob_db = AsyncStore::new();
-    bob_db
-        .add_private_vid_from_file("test/bob.json")
+    let bob_vid = OwnedVid::from_file("../examples/test/bob.json")
         .await
         .unwrap();
+    bob_db.add_private_vid(bob_vid.clone()).unwrap();
+
     bob_db
         .verify_vid("did:web:did.tsp-test.org:user:alice")
         .await
@@ -336,7 +341,7 @@ async fn attack_failures() {
         .await
         .unwrap();
 
-    let alice = crate::vid::PrivateVid::from_file("../examples/test/alice.json")
+    let alice = crate::vid::OwnedVid::from_file("../examples/test/alice.json")
         .await
         .unwrap();
 
@@ -375,10 +380,10 @@ async fn test_relation_forming() {
 
     // bob database
     let mut bob_db = AsyncStore::new();
-    bob_db
-        .add_private_vid_from_file("test/bob.json")
+    let bob_vid = OwnedVid::from_file("../examples/test/bob.json")
         .await
         .unwrap();
+    bob_db.add_private_vid(bob_vid.clone()).unwrap();
     bob_db
         .verify_vid("did:web:did.tsp-test.org:user:alice")
         .await
@@ -391,10 +396,10 @@ async fn test_relation_forming() {
 
     // alice database
     let mut alice_db = AsyncStore::new();
-    alice_db
-        .add_private_vid_from_file("test/alice.json")
+    let alice_vid = OwnedVid::from_file("../examples/test/alice.json")
         .await
         .unwrap();
+    alice_db.add_private_vid(alice_vid.clone()).unwrap();
     alice_db
         .verify_vid("did:web:did.tsp-test.org:user:bob")
         .await
@@ -422,8 +427,7 @@ async fn test_relation_forming() {
         .await
         .unwrap();
 
-    use crate::definitions::VerifiedVid;
-    assert_eq!(sender.identifier(), "did:web:did.tsp-test.org:user:alice");
+    assert_eq!(sender, "did:web:did.tsp-test.org:user:alice");
 
     // send the reply
     bob_db
@@ -441,5 +445,5 @@ async fn test_relation_forming() {
         panic!("alice did not receive a relation accept")
     };
 
-    assert_eq!(sender.identifier(), "did:web:did.tsp-test.org:user:bob");
+    assert_eq!(sender, "did:web:did.tsp-test.org:user:bob");
 }

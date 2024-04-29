@@ -4,7 +4,7 @@ use serde::Deserialize;
 use serde_json::json;
 use url::Url;
 
-use crate::vid::{error::VidError, PrivateVid, Vid};
+use crate::vid::{error::VidError, OwnedVid, Vid};
 
 pub(crate) const SCHEME: &str = "web";
 
@@ -135,9 +135,6 @@ pub fn resolve_document(did_document: DidDocument, target_id: &str) -> Result<Vi
         transport,
         public_sigkey,
         public_enckey,
-        relation_vid: None,
-        parent_vid: None,
-        tunnel: None,
     })
 }
 
@@ -192,9 +189,9 @@ pub fn create_did_web(
     name: &str,
     domain: &str,
     transport: &str,
-) -> (serde_json::Value, serde_json::Value, PrivateVid) {
+) -> (serde_json::Value, serde_json::Value, OwnedVid) {
     let did = format!("did:web:{domain}:user:{name}");
-    let private_vid = PrivateVid::bind(did, Url::parse(transport).unwrap());
+    let private_vid = OwnedVid::bind(did, Url::parse(transport).unwrap());
     let private_doc = serde_json::to_value(&private_vid).unwrap();
     let did_doc = vid_to_did_document(private_vid.vid());
 
