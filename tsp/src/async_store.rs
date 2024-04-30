@@ -343,4 +343,22 @@ impl AsyncStore {
 
         Ok(rx)
     }
+
+    /// Send TSP broadcast message to the specified VID's
+    pub async fn send_anycast(
+        &self,
+        sender: &str,
+        receivers: &[&str],
+        nonconfidential_message: &[u8],
+    ) -> Result<(), Error> {
+        let message = self.inner.sign_anycast(sender, nonconfidential_message)?;
+
+        for vid in receivers {
+            let receiver = self.inner.get_verified_vid(vid)?;
+
+            crate::transport::send_message(receiver.endpoint(), &message).await?;
+        }
+
+        Ok(())
+    }
 }
