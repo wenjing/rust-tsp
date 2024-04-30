@@ -156,10 +156,7 @@ pub fn encode_payload(
         }
         Payload::RoutedMessage(hops, data) => {
             encode_fixed_data(TSP_TYPECODE, &msgtype::ROUTE_MSG, output);
-            encode_count(TSP_HOP_LIST, hops.len() as u16, output);
-            for hop in hops {
-                checked_encode_variable_data(TSP_DEVELOPMENT_VID, hop.as_ref(), output)?;
-            }
+            encode_hops(hops, output)?;
             checked_encode_variable_data(TSP_PLAINTEXT, data.as_ref(), output)?;
         }
         Payload::DirectRelationProposal { nonce, hops } => {
@@ -191,6 +188,40 @@ pub fn encode_payload(
     Ok(())
 }
 
+/// Encode a hops list
+pub fn encode_hops(
+    hops: Vec<impl AsRef<[u8]>>,
+    output: &mut impl for<'a> Extend<&'a u8>,
+) -> Result<(), EncodeError> {
+    if !hops.is_empty() {
+        encode_count(TSP_HOP_LIST, hops.len() as u16, output);
+        for hop in hops {
+            checked_encode_variable_data(TSP_DEVELOPMENT_VID, hop.as_ref(), output)?;
+        }
+    }
+
+    Ok(())
+}
+
+/// Decode a hops list
+fn decode_hops<'a, Vid: TryFrom<&'a [u8]>>(stream: &mut &'a [u8]) -> Result<Vec<Vid>, DecodeError> {
+    let Some(hop_length) = decode_count(TSP_HOP_LIST, stream) else {
+        return Ok(Vec::new());
+    };
+
+    let mut hop_list = Vec::with_capacity(hop_length as usize);
+    for _ in 0..hop_length {
+        hop_list.push(
+            decode_variable_data(TSP_DEVELOPMENT_VID, stream)
+                .ok_or(DecodeError::UnexpectedData)?
+                .try_into()
+                .map_err(|_| DecodeError::VidError)?,
+        );
+    }
+
+    Ok(hop_list)
+}
+
 /// Decode a TSP Payload
 pub fn decode_payload<'a, Vid: TryFrom<&'a [u8]>>(
     mut stream: &'a [u8],
@@ -215,20 +246,11 @@ pub fn decode_payload<'a, Vid: TryFrom<&'a [u8]>>(
             decode_variable_data(TSP_PLAINTEXT, &mut stream).map(Payload::NestedMessage)
         }
         msgtype::ROUTE_MSG => {
-            let hops =
-                decode_count(TSP_HOP_LIST, &mut stream).ok_or(DecodeError::UnexpectedData)?;
-            if !(1..=63).contains(&hops) {
-                return Err(DecodeError::HopLength(hops));
+            let hop_list = decode_hops(&mut stream)?;
+            if hop_list.is_empty() {
+                return Err(DecodeError::MissingHops);
             }
-            let mut hop_list = Vec::with_capacity(hops as usize);
-            for _ in 0..hops {
-                hop_list.push(
-                    decode_variable_data(TSP_DEVELOPMENT_VID, &mut stream)
-                        .ok_or(DecodeError::UnexpectedData)?
-                        .try_into()
-                        .map_err(|_| DecodeError::VidError)?,
-                );
-            }
+
             decode_variable_data(TSP_PLAINTEXT, &mut stream)
                 .map(|msg| Payload::RoutedMessage(hop_list, msg))
         }
