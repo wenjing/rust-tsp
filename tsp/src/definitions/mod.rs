@@ -63,7 +63,7 @@ impl<'a, Bytes: AsRef<[u8]>> Payload<'a, Bytes> {
             Payload::RoutedMessage(_, bytes) => bytes.as_ref(),
             Payload::CancelRelationship { .. } => &[],
             Payload::RequestRelationship => &[],
-            Payload::AcceptRelationship { thread_id } => thread_id,
+            Payload::AcceptRelationship { .. } => &[],
         }
     }
 }
