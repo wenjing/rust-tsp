@@ -14,6 +14,9 @@ pub(crate) const SCHEME_WSS: &str = "wss";
 
 pub(crate) async fn send_message(tsp_message: &[u8], url: &Url) -> Result<(), TransportError> {
     let client = reqwest::Client::new();
+    let url = url.clone();
+
+    tracing::info!("sending message to {url}");
 
     client
         .post(url.clone())

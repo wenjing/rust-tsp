@@ -47,7 +47,7 @@ async fn main() {
         .with(tracing_subscriber::fmt::layer())
         .with(
             tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "demo_server=trace".into()),
+                .unwrap_or_else(|_| "demo_server=trace,tsp=trace".into()),
         )
         .init();
 
@@ -76,19 +76,22 @@ async fn main() {
     tokio::task::spawn(async {
         let mut db = AsyncStore::new();
         let piv: OwnedVid =
-            serde_json::from_str(include_str!("../../examples/test/carol.json")).unwrap();
+            serde_json::from_str(include_str!("../../examples/test/p.json")).unwrap();
         db.add_private_vid(piv).unwrap();
-        db.verify_vid("did:web:did.tsp-test.org:user:dave")
+        db.verify_vid("did:web:did.tsp-test.org:user:q")
             .await
             .unwrap();
-        db.verify_vid("did:web:did.tsp-test.org:user:eve")
-            .await
-            .unwrap();
-        db.verify_vid("did:web:did.tsp-test.org:user:frank")
+        db.verify_vid("did:web:did.tsp-test.org:user:a")
             .await
             .unwrap();
 
-        if let Err(e) = start_intermediary("carol.tsp-test.org", 3001, db).await {
+        db.set_relation_for_vid(
+            "did:web:did.tsp-test.org:user:q",
+            Some("did:web:did.tsp-test.org:user:p"),
+        )
+        .unwrap();
+
+        if let Err(e) = start_intermediary("p.tsp-test.org", 3001, db).await {
             eprintln!("error starting intermediary: {:?}", e);
         }
     });
@@ -96,19 +99,21 @@ async fn main() {
     tokio::task::spawn(async {
         let mut db = AsyncStore::new();
         let piv: OwnedVid =
-            serde_json::from_str(include_str!("../../examples/test/dave.json")).unwrap();
+            serde_json::from_str(include_str!("../../examples/test/q.json")).unwrap();
         db.add_private_vid(piv).unwrap();
-        db.verify_vid("did:web:did.tsp-test.org:user:carol")
+        db.verify_vid("did:web:did.tsp-test.org:user:p")
             .await
             .unwrap();
-        db.verify_vid("did:web:did.tsp-test.org:user:eve")
+        db.verify_vid("did:web:did.tsp-test.org:user:b")
             .await
             .unwrap();
-        db.verify_vid("did:web:did.tsp-test.org:user:frank")
-            .await
-            .unwrap();
+        db.set_relation_for_vid(
+            "did:web:did.tsp-test.org:user:q",
+            Some("did:web:did.tsp-test.org:user:b"),
+        )
+        .unwrap();
 
-        if let Err(e) = start_intermediary("dave.tsp-test.org", 3002, AsyncStore::new()).await {
+        if let Err(e) = start_intermediary("q.tsp-test.org", 3002, db).await {
             eprintln!("error starting intermediary: {:?}", e);
         }
     });
@@ -168,6 +173,8 @@ async fn create_identity(
         },
     );
 
+    tracing::debug!("created identity {key}");
+
     Json(private_vid)
 }
 
@@ -189,6 +196,8 @@ async fn verify_vid(
     // remote lookup
     let vid = tsp::vid::verify_vid(&form.vid).await.ok();
 
+    tracing::debug!("verified VID {}", form.vid);
+
     match vid {
         Some(vid) => Json(&vid).into_response(),
         None => (StatusCode::BAD_REQUEST, "invalid vid").into_response(),
@@ -207,6 +216,8 @@ async fn add_vid(State(state): State<Arc<AppState>>, Json(vid): Json<Vid>) -> Re
         },
     );
 
+    tracing::debug!("added VID {}", vid.identifier());
+
     Json(&vid).into_response()
 }
 
@@ -215,7 +226,11 @@ async fn get_did_doc(State(state): State<Arc<AppState>>, Path(name): Path<String
     let key = format!("did:web:{DOMAIN}:user:{name}");
 
     match state.db.read().await.get(&key) {
-        Some(identity) => Json(identity.did_doc.clone()).into_response(),
+        Some(identity) => {
+            tracing::debug!("served did.json for {key}");
+
+            Json(identity.did_doc.clone()).into_response()
+        }
         None => {
             let keys = state.db.read().await;
             let keys = keys.keys().collect::<Vec<_>>();
@@ -270,12 +285,13 @@ async fn route_message(State(state): State<Arc<AppState>>, body: Bytes) -> Respo
         return (StatusCode::BAD_REQUEST, "invalid message").into_response();
     };
 
+    let sender = String::from_utf8_lossy(sender).to_string();
+    let receiver = String::from_utf8_lossy(receiver).to_string();
+
+    tracing::debug!("forwarded message {sender} {receiver}");
+
     // insert message in queue
-    let _ = state.tx.send((
-        String::from_utf8_lossy(sender).to_string(),
-        String::from_utf8_lossy(receiver).to_string(),
-        body.to_vec(),
-    ));
+    let _ = state.tx.send((sender, receiver, body.to_vec()));
 
     StatusCode::OK.into_response()
 }
@@ -284,6 +300,8 @@ async fn websocket_handler(
     ws: WebSocketUpgrade,
     State(state): State<Arc<AppState>>,
 ) -> impl IntoResponse {
+    tracing::debug!("received websocket connection");
+
     ws.on_upgrade(|socket| websocket(socket, state))
 }
 
@@ -316,6 +334,12 @@ async fn send_message(
 
             let decoded = open_message(&message, Some(form.message.as_bytes())).unwrap();
 
+            tracing::debug!(
+                "sent message from {} to {}",
+                form.sender.identifier(),
+                form.receiver.identifier()
+            );
+
             Json(decoded).into_response()
         }
         Err(_) => (StatusCode::INTERNAL_SERVER_ERROR, "error creating message").into_response(),
@@ -330,6 +354,8 @@ async fn websocket_user_handler(
 ) -> impl IntoResponse {
     let mut messages_rx = state.tx.subscribe();
     let current = format!("did:web:{DOMAIN}:user:{name}");
+
+    tracing::debug!("new websocket connection for {current}");
 
     ws.on_upgrade(|socket| {
         let (mut ws_send, _) = socket.split();

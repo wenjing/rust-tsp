@@ -69,4 +69,4 @@ pub use crate::{
 };
 pub use async_store::AsyncStore;
 pub use error::Error;
-pub use store::Store;
+pub use store::{ExportVid, Store};

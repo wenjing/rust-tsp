@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use crate::definitions::{KeyData, PrivateVid, VerifiedVid};
 use deserialize::{serde_key_data, serde_public_sigkey, serde_sigkey};
 use ed25519_dalek::{self as Ed};
@@ -48,6 +50,32 @@ impl std::fmt::Debug for OwnedVid {
             .field("sigkey", &"<secret>")
             .field("enckey", &"<secret>")
             .finish()
+    }
+}
+
+impl Vid {
+    pub(crate) fn from_verified_vid(vid: Arc<dyn VerifiedVid>) -> Self {
+        Self {
+            id: vid.identifier().to_string(),
+            transport: vid.endpoint().clone(),
+            public_sigkey: Ed::VerifyingKey::from_bytes(vid.verifying_key()).unwrap(),
+            public_enckey: *vid.encryption_key(),
+        }
+    }
+}
+
+impl OwnedVid {
+    pub(crate) fn from_private_vid(vid: Arc<dyn PrivateVid>) -> Self {
+        Self {
+            vid: Vid {
+                id: vid.identifier().to_string(),
+                transport: vid.endpoint().clone(),
+                public_sigkey: Ed::VerifyingKey::from_bytes(vid.verifying_key()).unwrap(),
+                public_enckey: *vid.encryption_key(),
+            },
+            sigkey: Ed::SigningKey::from_bytes(vid.signing_key()),
+            enckey: *vid.decryption_key(),
+        }
     }
 }
 

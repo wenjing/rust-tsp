@@ -1,11 +1,14 @@
 use base64ct::{Base64UrlUnpadded, Encoding};
 use clap::{Parser, Subcommand};
 use serde::{Deserialize, Serialize};
-use std::path::Path;
+use std::{
+    collections::HashMap,
+    path::{Path, PathBuf},
+};
 use tokio::io::AsyncReadExt;
 use tracing::{info, trace};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
-use tsp::{cesr::Part, AsyncStore, Error, OwnedVid, ReceivedTspMessage, VerifiedVid, Vid};
+use tsp::{cesr::Part, AsyncStore, Error, ExportVid, OwnedVid, ReceivedTspMessage, VerifiedVid};
 
 #[derive(Debug, Parser)]
 #[command(name = "tsp")]
@@ -20,6 +23,13 @@ struct Cli {
         help = "Database file path"
     )]
     database: String,
+    #[arg(
+        short,
+        long,
+        default_value = "tsp-test.org",
+        help = "Test server domain"
+    )]
+    server: String,
     #[arg(short, long)]
     verbose: bool,
     #[arg(short, long, help = "Pretty print CESR messages")]
@@ -29,9 +39,33 @@ struct Cli {
 #[derive(Debug, Subcommand)]
 enum Commands {
     #[command(arg_required_else_help = true)]
-    Verify { vid: String },
+    Verify {
+        vid: String,
+        #[arg(short, long)]
+        alias: Option<String>,
+        #[arg(short, long)]
+        sender: Option<String>,
+    },
     #[command(arg_required_else_help = true)]
-    Create { username: String },
+    Print { alias: String },
+    Create {
+        username: String,
+        #[arg(short, long)]
+        alias: Option<String>,
+    },
+    #[command(arg_required_else_help = true)]
+    CreatePeer { alias: String },
+    CreateFromFile {
+        file: PathBuf,
+        #[arg(short, long)]
+        alias: Option<String>,
+    },
+    #[command(arg_required_else_help = true)]
+    SetRoute { vid: String, route: String },
+    #[command(arg_required_else_help = true)]
+    SetParent { vid: String, other_vid: String },
+    #[command(arg_required_else_help = true)]
+    SetRelation { vid: String, other_vid: String },
     #[command(arg_required_else_help = true)]
     Send {
         #[arg(short, long, required = true)]
@@ -49,36 +83,39 @@ enum Commands {
     },
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+type Aliases = HashMap<String, String>;
+
+#[derive(Serialize, Deserialize)]
 struct DatabaseContents {
-    private_vids: Vec<OwnedVid>,
-    verified_vids: Vec<Vid>,
+    data: Vec<ExportVid>,
+    aliases: Aliases,
 }
 
-// TODO
-async fn write_database(database_file: &str, _db: &AsyncStore) -> Result<(), Error> {
-    // let db_path = Path::new(database_file);
+async fn write_database(
+    database_file: &str,
+    db: &AsyncStore,
+    aliases: Aliases,
+) -> Result<(), Error> {
+    let db_path = Path::new(database_file);
 
-    // let (private_vids, verified_vids) = db.export()?;
+    let db_contents = DatabaseContents {
+        data: db.export()?,
+        aliases,
+    };
 
-    // let db_contents = DatabaseContents {
-    //     private_vids,
-    //     verified_vids,
-    // };
+    let db_contents_json =
+        serde_json::to_string_pretty(&db_contents).expect("Could not serialize database");
 
-    // let db_contents_json =
-    //     serde_json::to_string_pretty(&db_contents).expect("Could not serialize database");
-
-    // tokio::fs::write(db_path, db_contents_json)
-    //     .await
-    //     .expect("Could not write database");
+    tokio::fs::write(db_path, db_contents_json)
+        .await
+        .expect("Could not write database");
 
     trace!("persisted database to {database_file}");
 
     Ok(())
 }
 
-async fn read_database(database_file: &str) -> Result<AsyncStore, Error> {
+async fn read_database(database_file: &str) -> Result<(AsyncStore, Aliases), Error> {
     let db_path = Path::new(database_file);
     if db_path.exists() {
         let contents = tokio::fs::read_to_string(db_path)
@@ -89,27 +126,18 @@ async fn read_database(database_file: &str) -> Result<AsyncStore, Error> {
             serde_json::from_str(&contents).expect("Could not deserialize database");
 
         let db = AsyncStore::new();
+        db.import(db_contents.data)?;
 
         trace!("opened database {database_file}");
 
-        for private_vid in db_contents.private_vids {
-            trace!("loaded {} (private)", private_vid.identifier());
-            db.add_private_vid(private_vid)?;
-        }
-
-        for verified_vid in db_contents.verified_vids {
-            trace!("loaded {}", verified_vid.identifier());
-            db.add_verified_vid(verified_vid)?;
-        }
-
-        Ok(db)
+        Ok((db, db_contents.aliases))
     } else {
         let db = AsyncStore::new();
-        write_database(database_file, &db).await?;
+        write_database(database_file, &db, Aliases::new()).await?;
 
         info!("created new database");
 
-        Ok(db)
+        Ok((db, Aliases::new()))
     }
 }
 
@@ -158,38 +186,119 @@ async fn run() -> Result<(), Error> {
         )
         .init();
 
-    let mut vid_database = read_database(&args.database).await?;
+    let (mut vid_database, mut aliases) = read_database(&args.database).await?;
+    let server: String = args.server;
 
     match args.command {
-        Commands::Verify { vid } => {
+        Commands::Verify { vid, alias, sender } => {
             vid_database.verify_vid(&vid).await?;
-            write_database(&args.database, &vid_database).await?;
+            let sender = sender.map(|s| aliases.get(&s).cloned().unwrap_or(s));
 
-            info!("{vid} is verified and added to the database");
+            if let Some(alias) = alias {
+                aliases.insert(alias.clone(), vid.clone());
+            }
+
+            vid_database.set_relation_for_vid(&vid, sender.as_deref())?;
+
+            write_database(&args.database, &vid_database, aliases).await?;
+
+            info!(
+                "{vid} is verified and added to the database {}",
+                &args.database
+            );
         }
-        Commands::Create { username } => {
-            let did = format!("did:web:tsp-test.org:user:{username}");
-            let transport =
-                url::Url::parse(&format!("https://tsp-test.org/user/{username}")).unwrap();
+        Commands::Print { alias } => {
+            let vid = aliases.get(&alias).unwrap_or(&alias);
+
+            print!("{vid}");
+        }
+        Commands::Create { username, alias } => {
+            let did = format!("did:web:{server}:user:{username}");
+
+            if let Some(alias) = alias {
+                aliases.insert(alias.clone(), did.clone());
+            }
+
+            let transport = url::Url::parse(&format!("https://{server}/user/{username}")).unwrap();
             let private_vid = OwnedVid::bind(&did, transport);
 
             reqwest::Client::new()
-                .post("https://tsp-test.org/add-vid")
+                .post(format!("https://{server}/add-vid"))
                 .json(&private_vid)
                 .send()
                 .await
                 .expect("Could not publish VID on server");
 
             vid_database.add_private_vid(private_vid.clone())?;
-            write_database(&args.database, &vid_database).await?;
+            write_database(&args.database, &vid_database, aliases).await?;
 
             info!("created identity {}", private_vid.identifier());
+        }
+        Commands::CreatePeer { alias } => {
+            let transport = url::Url::parse(&format!("https://{server}/user/{alias}")).unwrap();
+            let private_vid = OwnedVid::new_did_peer(transport);
+
+            aliases.insert(alias.clone(), private_vid.identifier().to_string());
+
+            vid_database.add_private_vid(private_vid.clone())?;
+            write_database(&args.database, &vid_database, aliases).await?;
+
+            info!("created peer identity {}", private_vid.identifier());
+        }
+        Commands::CreateFromFile { file, alias } => {
+            let private_vid = OwnedVid::from_file(file).await?;
+            vid_database.add_private_vid(private_vid.clone())?;
+
+            if let Some(alias) = alias {
+                aliases.insert(alias.clone(), private_vid.identifier().to_string());
+            }
+
+            write_database(&args.database, &vid_database, aliases).await?;
+
+            info!("created identity from file {}", private_vid.identifier());
+        }
+        Commands::SetParent { vid, other_vid } => {
+            let vid = aliases.get(&vid).unwrap_or(&vid);
+            let other_vid = aliases.get(&other_vid).unwrap_or(&other_vid);
+
+            vid_database.set_parent_for_vid(vid, Some(other_vid))?;
+
+            info!("{vid} is now a child of {other_vid}");
+
+            write_database(&args.database, &vid_database, aliases).await?;
+        }
+        Commands::SetRoute { vid, route } => {
+            let vid = aliases.get(&vid).cloned().unwrap_or(vid);
+
+            let route: Vec<_> = route
+                .split(',')
+                .map(|s| aliases.get(s).cloned().unwrap_or(s.to_string()))
+                .collect();
+
+            let route_ref = route.iter().map(|s| s.as_str()).collect::<Vec<_>>();
+
+            vid_database.set_route_for_vid(&vid, &route_ref)?;
+            write_database(&args.database, &vid_database, aliases).await?;
+
+            info!("{vid} has route {route:?}");
+        }
+        Commands::SetRelation { vid, other_vid } => {
+            let vid = aliases.get(&vid).cloned().unwrap_or(vid);
+            let other_vid = aliases.get(&other_vid).cloned().unwrap_or(other_vid);
+
+            vid_database.set_relation_for_vid(&vid, Some(&other_vid))?;
+            write_database(&args.database, &vid_database, aliases).await?;
+
+            info!("{vid} has relation to {other_vid}");
         }
         Commands::Send {
             sender_vid,
             receiver_vid,
             non_confidential_data,
         } => {
+            let sender_vid = aliases.get(&sender_vid).unwrap_or(&sender_vid);
+            let receiver_vid = aliases.get(&receiver_vid).unwrap_or(&receiver_vid);
+
             let non_confidential_data = non_confidential_data.as_deref().map(|s| s.as_bytes());
 
             let mut message = Vec::new();
@@ -198,9 +307,19 @@ async fn run() -> Result<(), Error> {
                 .await
                 .expect("Could not read message from stdin");
 
-            let cesr_message = vid_database
-                .send(&sender_vid, &receiver_vid, non_confidential_data, &message)
-                .await?;
+            let cesr_message = match vid_database
+                .send(sender_vid, receiver_vid, non_confidential_data, &message)
+                .await
+            {
+                Ok(m) => m,
+                Err(e) => {
+                    tracing::error!(
+                        "error sending message from {sender_vid} to {receiver_vid}: {e}"
+                    );
+
+                    return Ok(());
+                }
+            };
 
             if args.pretty_print {
                 print_message(&cesr_message);
@@ -212,6 +331,7 @@ async fn run() -> Result<(), Error> {
             );
         }
         Commands::Receive { vid, one } => {
+            let vid = aliases.get(&vid).cloned().unwrap_or(vid);
             let mut messages = vid_database.receive(&vid).await?;
 
             info!("listening for messages...");
