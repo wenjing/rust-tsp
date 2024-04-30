@@ -50,9 +50,16 @@ pub enum Payload<'a, Bytes: AsRef<[u8]>> {
     Content(Bytes),
     NestedMessage(Bytes),
     RoutedMessage(Vec<VidData<'a>>, Bytes),
-    CancelRelationship { thread_id: Digest },
-    RequestRelationship,
-    AcceptRelationship { thread_id: Digest },
+    CancelRelationship {
+        thread_id: Digest,
+    },
+    RequestRelationship {
+        route: Option<Vec<VidData<'a>>>,
+    },
+    AcceptRelationship {
+        thread_id: Digest,
+        route: Option<Vec<VidData<'a>>>,
+    },
 }
 
 impl<'a, Bytes: AsRef<[u8]>> Payload<'a, Bytes> {
@@ -62,7 +69,7 @@ impl<'a, Bytes: AsRef<[u8]>> Payload<'a, Bytes> {
             Payload::NestedMessage(bytes) => bytes.as_ref(),
             Payload::RoutedMessage(_, bytes) => bytes.as_ref(),
             Payload::CancelRelationship { .. } => &[],
-            Payload::RequestRelationship => &[],
+            Payload::RequestRelationship { .. } => &[],
             Payload::AcceptRelationship { .. } => &[],
         }
     }
@@ -91,8 +98,11 @@ impl<'a, Bytes: AsRef<[u8]>> fmt::Display for Payload<'a, Bytes> {
                 write!(f, "]")
             }
             Payload::CancelRelationship { thread_id: _ } => write!(f, "Cancel Relationship"),
-            Payload::RequestRelationship => write!(f, "Request Relationship"),
-            Payload::AcceptRelationship { thread_id: _ } => write!(f, "Accept Relationship"),
+            Payload::RequestRelationship { route: _ } => write!(f, "Request Relationship"),
+            Payload::AcceptRelationship {
+                thread_id: _,
+                route: _,
+            } => write!(f, "Accept Relationship"),
         }
     }
 }
