@@ -136,7 +136,6 @@ fn checked_encode_variable_data(
 }
 
 /// Encode a TSP Payload into CESR for encryption
-/// TODO: add 'hops'
 pub fn encode_payload(
     payload: Payload<impl AsRef<[u8]>, impl AsRef<[u8]>>,
     output: &mut impl for<'a> Extend<&'a u8>,
