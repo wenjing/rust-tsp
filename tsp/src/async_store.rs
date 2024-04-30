@@ -348,13 +348,13 @@ impl AsyncStore {
     pub async fn send_anycast(
         &self,
         sender: &str,
-        receivers: &[&str],
+        receivers: impl IntoIterator<Item = impl AsRef<str>>,
         nonconfidential_message: &[u8],
     ) -> Result<(), Error> {
         let message = self.inner.sign_anycast(sender, nonconfidential_message)?;
 
         for vid in receivers {
-            let receiver = self.inner.get_verified_vid(vid)?;
+            let receiver = self.inner.get_verified_vid(vid.as_ref())?;
 
             crate::transport::send_message(receiver.endpoint(), &message).await?;
         }
