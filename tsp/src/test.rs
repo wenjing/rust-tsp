@@ -477,6 +477,7 @@ async fn test_relation_forming() {
         .send_relationship_request(
             "did:web:did.tsp-test.org:user:alice",
             "did:web:did.tsp-test.org:user:bob",
+            None,
         )
         .await
         .unwrap();
@@ -502,6 +503,7 @@ async fn test_relation_forming() {
             "did:web:did.tsp-test.org:user:bob",
             "did:web:did.tsp-test.org:user:alice",
             thread_id,
+            None,
         )
         .await
         .unwrap();
