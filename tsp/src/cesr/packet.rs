@@ -70,6 +70,7 @@ pub struct PairedKeys<'a> {
 #[repr(u32)]
 #[derive(Debug)]
 #[cfg_attr(test, derive(PartialEq, Eq, Clone))]
+//TODO: Boxed slices?
 pub enum Payload<'a, Bytes: AsRef<[u8]>, Vid> {
     /// A TSP message which consists only of a message which will be protected using HPKE
     GenericMessage(Bytes),
@@ -78,9 +79,12 @@ pub enum Payload<'a, Bytes: AsRef<[u8]>, Vid> {
     /// A routed payload; same as above but with routing information attached
     RoutedMessage(Vec<Vid>, Bytes),
     /// A TSP message requesting a relationship
-    DirectRelationProposal { nonce: Nonce },
+    DirectRelationProposal { nonce: Nonce, hops: Vec<Vid> },
     /// A TSP message confiming a relationship
-    DirectRelationAffirm { reply: &'a Sha256Digest },
+    DirectRelationAffirm {
+        reply: &'a Sha256Digest,
+        hops: Vec<Vid>,
+    },
     /// A TSP message requesting a nested relationship
     NestedRelationProposal { public_keys: PairedKeys<'a> },
     /// A TSP message confiming a relationship
@@ -158,11 +162,11 @@ pub fn encode_payload(
             }
             checked_encode_variable_data(TSP_PLAINTEXT, data.as_ref(), output)?;
         }
-        Payload::DirectRelationProposal { nonce } => {
+        Payload::DirectRelationProposal { nonce, hops } => {
             encode_fixed_data(TSP_TYPECODE, &msgtype::NEW_REL, output);
             encode_fixed_data(TSP_NONCE, &nonce.0, output);
         }
-        Payload::DirectRelationAffirm { reply } => {
+        Payload::DirectRelationAffirm { reply, hops } => {
             encode_fixed_data(TSP_TYPECODE, &msgtype::NEW_REL_REPLY, output);
             encode_fixed_data(TSP_SHA256, reply, output);
         }
@@ -204,6 +208,7 @@ pub fn decode_payload<'a, Vid: TryFrom<&'a [u8]>>(
         msgtype::NEW_REL => {
             decode_fixed_data(TSP_NONCE, &mut stream).map(|nonce| Payload::DirectRelationProposal {
                 nonce: Nonce(*nonce),
+                hops: todo!(),
             })
         }
         msgtype::NEST_MSG => {
@@ -227,8 +232,12 @@ pub fn decode_payload<'a, Vid: TryFrom<&'a [u8]>>(
             decode_variable_data(TSP_PLAINTEXT, &mut stream)
                 .map(|msg| Payload::RoutedMessage(hop_list, msg))
         }
-        msgtype::NEW_REL_REPLY => decode_fixed_data(TSP_SHA256, &mut stream)
-            .map(|reply| Payload::DirectRelationAffirm { reply }),
+        msgtype::NEW_REL_REPLY => {
+            decode_fixed_data(TSP_SHA256, &mut stream).map(|reply| Payload::DirectRelationAffirm {
+                reply,
+                hops: todo!(),
+            })
+        }
         msgtype::NEW_NEST_REL => {
             decode_fixed_data(ED25519_PUBLICKEY, &mut stream).and_then(|signing| {
                 decode_fixed_data(HPKE_PUBLICKEY, &mut stream).map(|encrypting| {
@@ -1008,8 +1017,12 @@ mod test {
         let nonce: &[u8; 32] = temp.as_slice().try_into().unwrap();
         test_turn_around(Payload::DirectRelationProposal {
             nonce: Nonce(*nonce),
+            hops: vec![],
         });
-        test_turn_around(Payload::DirectRelationAffirm { reply: nonce });
+        test_turn_around(Payload::DirectRelationAffirm {
+            reply: nonce,
+            hops: vec![],
+        });
         let public_keys = PairedKeys {
             signing: pk1.as_slice().try_into().unwrap(),
             encrypting: pk2.as_slice().try_into().unwrap(),

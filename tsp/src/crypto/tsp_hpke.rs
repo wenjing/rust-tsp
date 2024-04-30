@@ -36,11 +36,15 @@ where
         Payload::Content(data) => crate::cesr::Payload::GenericMessage(data),
         Payload::RequestRelationship { route } => crate::cesr::Payload::DirectRelationProposal {
             nonce: fresh_nonce(&mut csprng),
+            hops: route.unwrap_or_else(Vec::new),
         },
         Payload::AcceptRelationship {
             ref thread_id,
             route,
-        } => crate::cesr::Payload::DirectRelationAffirm { reply: thread_id },
+        } => crate::cesr::Payload::DirectRelationAffirm {
+            reply: thread_id,
+            hops: route.unwrap_or_else(Vec::new),
+        },
         Payload::CancelRelationship { ref thread_id } => crate::cesr::Payload::RelationshipCancel {
             nonce: fresh_nonce(&mut csprng),
             reply: thread_id,
@@ -157,15 +161,24 @@ where
 
     let secret_payload = match crate::cesr::decode_payload(ciphertext)? {
         crate::cesr::Payload::GenericMessage(data) => Payload::Content(data),
-        crate::cesr::Payload::DirectRelationProposal { .. } => {
-            Payload::RequestRelationship { route: todo!() }
-        }
-        crate::cesr::Payload::DirectRelationAffirm { reply: &thread_id } => {
-            Payload::AcceptRelationship {
-                thread_id,
-                route: todo!(),
-            }
-        }
+        crate::cesr::Payload::DirectRelationProposal { hops, .. } => Payload::RequestRelationship {
+            route: if hops.is_empty() {
+                None
+            } else {
+                Some(hops.to_vec())
+            },
+        },
+        crate::cesr::Payload::DirectRelationAffirm {
+            reply: &thread_id,
+            hops,
+        } => Payload::AcceptRelationship {
+            thread_id,
+            route: if hops.is_empty() {
+                None
+            } else {
+                Some(hops.to_vec())
+            },
+        },
         crate::cesr::Payload::NestedRelationProposal { .. } => todo!(),
         crate::cesr::Payload::NestedRelationAffirm { .. } => todo!(),
         crate::cesr::Payload::RelationshipCancel {
