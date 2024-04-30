@@ -316,6 +316,21 @@ impl Store {
         Ok((receiver_context.vid.endpoint().clone(), tsp_message))
     }
 
+    pub fn sign_anycast(&self, sender: &str, message: &[u8]) -> Result<Vec<u8>, Error> {
+        self.sign_anycast_payload(sender, Payload::Content(message))
+    }
+
+    pub(crate) fn sign_anycast_payload(
+        &self,
+        sender: &str,
+        payload: Payload<&[u8]>,
+    ) -> Result<Vec<u8>, Error> {
+        let sender = self.get_private_vid(sender)?;
+        let message = crate::crypto::sign(&*sender, None, payload.as_bytes())?;
+
+        Ok(message)
+    }
+
     /// Decode an encrypted `message``, which has to be addressed to one of the VID's in `receivers`, and has to have
     /// `verified_vids` as one of the senders.
     pub(crate) fn open_message(self, message: &mut [u8]) -> Result<ReceivedTspMessage, Error> {

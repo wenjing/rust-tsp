@@ -57,6 +57,60 @@ async fn test_direct_mode() {
 
 #[tokio::test]
 #[serial_test::serial(tcp)]
+async fn test_anycast() {
+    crate::transport::tcp::start_broadcast_server("127.0.0.1:1337")
+        .await
+        .unwrap();
+
+    // bob database
+    let mut bob_db = AsyncStore::new();
+    let bob_vid = OwnedVid::from_file("../examples/test/bob.json")
+        .await
+        .unwrap();
+    bob_db.add_private_vid(bob_vid.clone()).unwrap();
+    bob_db
+        .verify_vid("did:web:did.tsp-test.org:user:alice")
+        .await
+        .unwrap();
+
+    let mut bobs_messages = bob_db
+        .receive("did:web:did.tsp-test.org:user:bob")
+        .await
+        .unwrap();
+
+    // alice database
+    let mut alice_db = AsyncStore::new();
+    let alice_vid = OwnedVid::from_file("../examples/test/alice.json")
+        .await
+        .unwrap();
+    alice_db.add_private_vid(alice_vid.clone()).unwrap();
+    alice_db
+        .verify_vid("did:web:did.tsp-test.org:user:bob")
+        .await
+        .unwrap();
+
+    // send a message
+    alice_db
+        .send_anycast(
+            "did:web:did.tsp-test.org:user:alice",
+            &["did:web:did.tsp-test.org:user:bob"],
+            b"hello world",
+        )
+        .await
+        .unwrap();
+
+    // receive a message
+    let crate::definitions::ReceivedTspMessage::GenericMessage { message, .. } =
+        bobs_messages.recv().await.unwrap().unwrap()
+    else {
+        panic!("bob did not receive a broadcast message")
+    };
+
+    assert_eq!(message, b"hello world");
+}
+
+#[tokio::test]
+#[serial_test::serial(tcp)]
 async fn test_nested_mode() {
     crate::transport::tcp::start_broadcast_server("127.0.0.1:1337")
         .await
