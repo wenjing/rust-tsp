@@ -178,13 +178,14 @@ impl AsyncStore {
     ///     let sender = "did:web:did.tsp-test.org:user:bob";
     ///     let receiver = "did:web:did.tsp-test.org:user:alice";
     ///
-    ///     let result = db.send_relationship_request(sender, receiver).await;
+    ///     let result = db.send_relationship_request(sender, receiver, None).await;
     /// }
     /// ```
     pub async fn send_relationship_request(
         &self,
         sender: &str,
         receiver: &str,
+        route: Option<&[&str]>,
     ) -> Result<(), Error> {
         let sender = self.inner.get_private_vid(sender)?;
         let receiver = self.inner.get_verified_vid(receiver)?;
@@ -210,6 +211,7 @@ impl AsyncStore {
         sender: &str,
         receiver: &str,
         thread_id: Digest,
+        route: Option<&[&str]>,
     ) -> Result<(), Error> {
         let (transport, message) = self.inner.seal_message_payload(
             sender,
