@@ -190,8 +190,14 @@ impl AsyncStore {
         let sender = self.inner.get_private_vid(sender)?;
         let receiver = self.inner.get_verified_vid(receiver)?;
 
-        let (tsp_message, thread_id) =
-            crate::crypto::seal_and_hash(&*sender, &*receiver, None, Payload::RequestRelationship)?;
+        let route = route.map(|collection| collection.iter().map(|vid| vid.as_ref()).collect());
+
+        let (tsp_message, thread_id) = crate::crypto::seal_and_hash(
+            &*sender,
+            &*receiver,
+            None,
+            Payload::RequestRelationship { route },
+        )?;
 
         crate::transport::send_message(receiver.endpoint(), &tsp_message).await?;
 
@@ -213,11 +219,13 @@ impl AsyncStore {
         thread_id: Digest,
         route: Option<&[&str]>,
     ) -> Result<(), Error> {
+        let route = route.map(|collection| collection.iter().map(|vid| vid.as_ref()).collect());
+
         let (transport, message) = self.inner.seal_message_payload(
             sender,
             receiver,
             None,
-            Payload::AcceptRelationship { thread_id },
+            Payload::AcceptRelationship { thread_id, route },
         )?;
 
         crate::transport::send_message(&transport, &message).await?;

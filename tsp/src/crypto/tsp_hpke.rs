@@ -34,12 +34,13 @@ where
 
     let secret_payload = match secret_payload {
         Payload::Content(data) => crate::cesr::Payload::GenericMessage(data),
-        Payload::RequestRelationship => crate::cesr::Payload::DirectRelationProposal {
+        Payload::RequestRelationship { route } => crate::cesr::Payload::DirectRelationProposal {
             nonce: fresh_nonce(&mut csprng),
         },
-        Payload::AcceptRelationship { ref thread_id } => {
-            crate::cesr::Payload::DirectRelationAffirm { reply: thread_id }
-        }
+        Payload::AcceptRelationship {
+            ref thread_id,
+            route,
+        } => crate::cesr::Payload::DirectRelationAffirm { reply: thread_id },
         Payload::CancelRelationship { ref thread_id } => crate::cesr::Payload::RelationshipCancel {
             nonce: fresh_nonce(&mut csprng),
             reply: thread_id,
@@ -156,9 +157,14 @@ where
 
     let secret_payload = match crate::cesr::decode_payload(ciphertext)? {
         crate::cesr::Payload::GenericMessage(data) => Payload::Content(data),
-        crate::cesr::Payload::DirectRelationProposal { .. } => Payload::RequestRelationship,
+        crate::cesr::Payload::DirectRelationProposal { .. } => {
+            Payload::RequestRelationship { route: todo!() }
+        }
         crate::cesr::Payload::DirectRelationAffirm { reply: &thread_id } => {
-            Payload::AcceptRelationship { thread_id }
+            Payload::AcceptRelationship {
+                thread_id,
+                route: todo!(),
+            }
         }
         crate::cesr::Payload::NestedRelationProposal { .. } => todo!(),
         crate::cesr::Payload::NestedRelationAffirm { .. } => todo!(),

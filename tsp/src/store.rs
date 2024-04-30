@@ -531,11 +531,13 @@ impl Store {
                             opaque_payload: message.to_owned(),
                         })
                     }
-                    Payload::RequestRelationship => Ok(ReceivedTspMessage::RequestRelationship {
-                        sender,
-                        thread_id: crate::crypto::sha256(raw_bytes),
-                    }),
-                    Payload::AcceptRelationship { thread_id } => {
+                    Payload::RequestRelationship { route } => {
+                        Ok(ReceivedTspMessage::RequestRelationship {
+                            sender,
+                            thread_id: crate::crypto::sha256(raw_bytes),
+                        })
+                    }
+                    Payload::AcceptRelationship { thread_id, route } => {
                         let mut vids = self.vids.write()?;
                         let Some(context) = vids.get_mut(&sender) else {
                             //TODO: should we inform the user of who sent this?
