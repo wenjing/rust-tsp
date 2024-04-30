@@ -1,5 +1,7 @@
-use crate::definitions::MessageType::{Signed, SignedAndEncrypted};
-use crate::{AsyncStore, OwnedVid, VerifiedVid};
+use crate::{
+    definitions::MessageType::{Signed, SignedAndEncrypted},
+    AsyncStore, OwnedVid, VerifiedVid,
+};
 
 #[tokio::test]
 #[serial_test::serial(tcp)]
