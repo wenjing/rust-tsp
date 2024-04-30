@@ -1,13 +1,12 @@
 use crate::{
-    crypto::CryptoError,
     definitions::{Digest, Payload, ReceivedTspMessage, VerifiedVid},
     error::Error,
-    store::{RelationshipStatus, Store},
-    vid::VidError,
+    store::{ExportVid, RelationshipStatus, Store},
     PrivateVid,
 };
 use futures::StreamExt;
 use tokio::sync::mpsc::{self, Receiver};
+use url::Url;
 
 /// Holds private ands verified VID's
 /// A Store contains verified vid's, our relationship status to them,
@@ -45,6 +44,16 @@ pub struct AsyncStore {
 impl AsyncStore {
     pub fn new() -> Self {
         Default::default()
+    }
+
+    /// Export the database to serializable default types
+    pub fn export(&self) -> Result<Vec<ExportVid>, Error> {
+        self.inner.export()
+    }
+
+    /// Import the database from serializable default types
+    pub fn import(&self, vids: Vec<ExportVid>) -> Result<(), Error> {
+        self.inner.import(vids)
     }
 
     /// Adds a relation to an already existing vid, making it a nested Vid
@@ -138,6 +147,8 @@ impl AsyncStore {
         let (endpoint, message) =
             self.inner
                 .seal_message(sender, receiver, nonconfidential_data, message)?;
+
+        tracing::info!("sending message to {endpoint}");
 
         crate::transport::send_message(&endpoint, &message).await?;
 
@@ -243,31 +254,12 @@ impl AsyncStore {
         sender: &str,
         receiver: &str,
         message: &mut [u8],
-    ) -> Result<(), Error> {
-        let Ok(receiver) = self.inner.get_private_vid(receiver) else {
-            return Err(CryptoError::UnexpectedRecipient.into());
-        };
+    ) -> Result<Url, Error> {
+        let (transport, message) = self.inner.route_message(sender, receiver, message)?;
 
-        let Ok(sender) = self.inner.get_verified_vid(sender) else {
-            return Err(Error::UnverifiedVid(sender.to_string()));
-        };
+        crate::transport::send_message(&transport, &message).await?;
 
-        let (_, payload, _) = crate::crypto::open(&*receiver, &*sender, message)?;
-
-        let Payload::RoutedMessage(hops, inner_message) = payload else {
-            return Err(Error::InvalidRoute("expected a routed message".to_string()));
-        };
-
-        let next_hop = std::str::from_utf8(hops[0])?;
-
-        let Ok(next_hop) = self.inner.get_verified_vid(next_hop) else {
-            return Err(Error::UnverifiedVid(next_hop.to_string()));
-        };
-
-        let path = hops[1..].to_vec();
-
-        self.forward_routed_message(next_hop.identifier(), path, inner_message)
-            .await
+        Ok(transport)
     }
 
     /// Pass along a in-transit routed TSP `opaque_message` that is not meant for us, given earlier resolved VID's.
@@ -277,44 +269,14 @@ impl AsyncStore {
         next_hop: &str,
         path: Vec<&[u8]>,
         opaque_message: &[u8],
-    ) -> Result<(), Error> {
-        if path.is_empty() {
-            // we are the final delivery point, we should be the 'next_hop'
-            let sender = self.inner.get_private_vid(next_hop)?;
+    ) -> Result<Url, Error> {
+        let (transport, message) =
+            self.inner
+                .forward_routed_message(next_hop, path, opaque_message)?;
 
-            //TODO: we cannot user 'sender.relation_vid()', since the relationship status of this cannot be set
-            let recipient = match self.inner.get_vid(sender.identifier())?.get_relation_vid() {
-                Some(destination) => self.inner.get_verified_vid(destination)?,
-                None => return Err(VidError::ResolveVid("no relation for drop-off VID").into()),
-            };
+        crate::transport::send_message(&transport, &message).await?;
 
-            let tsp_message = crate::crypto::seal(
-                &*sender,
-                &*recipient,
-                None,
-                Payload::NestedMessage(opaque_message),
-            )?;
-
-            Ok(crate::transport::send_message(recipient.endpoint(), &tsp_message).await?)
-        } else {
-            // we are an intermediary, continue sending the message
-            // let next_hop = self.inner.get_vid(next_hop)?;
-            let next_bop_vid = self.inner.get_verified_vid(next_hop)?;
-
-            let sender = match self.inner.get_vid(next_hop)?.get_relation_vid() {
-                Some(first_sender) => self.inner.get_private_vid(first_sender)?,
-                None => return Err(VidError::ResolveVid("missing sender VID for first hop").into()),
-            };
-
-            let tsp_message = crate::crypto::seal(
-                &*sender,
-                &*next_bop_vid,
-                None,
-                Payload::RoutedMessage(path, opaque_message),
-            )?;
-
-            Ok(crate::transport::send_message(next_bop_vid.endpoint(), &tsp_message).await?)
-        }
+        Ok(transport)
     }
 
     /// Receive TSP messages for the private VID identified by `vid`, using the appropriate transport mechanism for it.

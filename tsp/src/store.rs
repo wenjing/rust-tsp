@@ -1,20 +1,20 @@
 use crate::{
     cesr::EnvelopeType,
     crypto::CryptoError,
-    definitions::{Digest, MessageType, Payload, PrivateVid},
-    vid::VidError,
-};
-pub use crate::{
-    definitions::{ReceivedTspMessage, VerifiedVid},
+    definitions::{Digest, MessageType, Payload, PrivateVid, ReceivedTspMessage, VerifiedVid},
     error::Error,
+    vid::VidError,
+    OwnedVid, Vid,
 };
+use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
     fmt::Debug,
     sync::{Arc, RwLock},
 };
+use url::Url;
 
-#[derive(Clone, Copy, Debug, serde::Serialize)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 pub(crate) enum RelationshipStatus {
     _Controlled,
     Bidirectional(Digest),
@@ -22,14 +22,24 @@ pub(crate) enum RelationshipStatus {
     Unrelated,
 }
 
-#[derive(Clone)]
-pub(crate) struct VidContext {
-    vid: Arc<dyn VerifiedVid>,
-    private: Option<Arc<dyn PrivateVid>>,
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ExportVid {
+    vid: crate::Vid,
+    private: Option<crate::OwnedVid>,
     relation_status: RelationshipStatus,
     relation_vid: Option<String>,
     parent_vid: Option<String>,
     tunnel: Option<Box<[String]>>,
+}
+
+#[derive(Clone)]
+pub(crate) struct VidContext {
+    pub(crate) vid: Arc<dyn VerifiedVid>,
+    pub(crate) private: Option<Arc<dyn PrivateVid>>,
+    pub(crate) relation_status: RelationshipStatus,
+    pub(crate) relation_vid: Option<String>,
+    pub(crate) parent_vid: Option<String>,
+    pub(crate) tunnel: Option<Box<[String]>>,
 }
 
 impl VidContext {
@@ -80,6 +90,46 @@ impl Store {
     /// Create a new, empty VID database
     pub fn new() -> Self {
         Default::default()
+    }
+
+    /// Export the database to serializable default types
+    pub fn export(&self) -> Result<Vec<ExportVid>, Error> {
+        self.vids
+            .read()?
+            .values()
+            .map(|context| {
+                Ok(ExportVid {
+                    vid: Vid::from_verified_vid(context.vid.clone()),
+                    private: context.private.clone().map(OwnedVid::from_private_vid),
+                    relation_status: context.relation_status,
+                    relation_vid: context.relation_vid.clone(),
+                    parent_vid: context.parent_vid.clone(),
+                    tunnel: context.tunnel.clone(),
+                })
+            })
+            .collect()
+    }
+
+    /// Import the database from serializable default types
+    pub fn import(&self, vids: Vec<ExportVid>) -> Result<(), Error> {
+        vids.into_iter().try_for_each(|vid| {
+            self.vids.write()?.insert(
+                vid.vid.identifier().to_string(),
+                VidContext {
+                    vid: Arc::new(vid.vid),
+                    private: match vid.private {
+                        Some(private) => Some(Arc::new(private)),
+                        None => None,
+                    },
+                    relation_status: vid.relation_status,
+                    relation_vid: vid.relation_vid,
+                    parent_vid: vid.parent_vid,
+                    tunnel: vid.tunnel,
+                },
+            );
+
+            Ok(())
+        })
     }
 
     /// Add the already resolved `verified_vid` to the database as a relationship
@@ -329,6 +379,93 @@ impl Store {
         let message = crate::crypto::sign(&*sender, None, payload.as_bytes())?;
 
         Ok(message)
+    }
+
+    // Receive, open and forward a TSP message
+    pub fn route_message(
+        &self,
+        sender: &str,
+        receiver: &str,
+        message: &mut [u8],
+    ) -> Result<(Url, Vec<u8>), Error> {
+        let Ok(sender) = self.get_verified_vid(sender) else {
+            return Err(Error::UnverifiedVid(sender.to_string()));
+        };
+
+        let Ok(receiver) = self.get_private_vid(receiver) else {
+            return Err(CryptoError::UnexpectedRecipient.into());
+        };
+
+        let (_, payload, _) = crate::crypto::open(&*receiver, &*sender, message)?;
+
+        let (next_hop, path, inner_message) = match payload {
+            Payload::RoutedMessage(hops, inner_message) => {
+                let next_hop = std::str::from_utf8(hops[0])?;
+
+                (next_hop, hops[1..].to_vec(), inner_message)
+            }
+            _ => {
+                return Err(Error::InvalidRoute(format!(
+                    "expected a routed message, got {:?}",
+                    payload
+                )));
+            }
+        };
+
+        tracing::debug!(
+            "forwarding message to next hop {}, hops left: {:?}",
+            next_hop,
+            path.iter()
+                .map(|v| String::from_utf8_lossy(v))
+                .collect::<Vec<_>>()
+        );
+
+        self.forward_routed_message(next_hop, path, inner_message)
+    }
+
+    /// Pass along a in-transit routed TSP `opaque_message` that is not meant for us, given earlier resolved VID's.
+    /// The message is routed through the route that has been established with `receiver`.
+    pub fn forward_routed_message(
+        &self,
+        next_hop: &str,
+        path: Vec<&[u8]>,
+        opaque_message: &[u8],
+    ) -> Result<(Url, Vec<u8>), Error> {
+        if path.is_empty() {
+            // we are the final delivery point, we should be the 'next_hop'
+            let sender = self.get_private_vid(next_hop)?;
+
+            //TODO: we cannot user 'sender.relation_vid()', since the relationship status of this cannot be set
+            let recipient = match self.get_vid(sender.identifier())?.get_relation_vid() {
+                Some(destination) => self.get_verified_vid(destination)?,
+                None => return Err(VidError::ResolveVid("no relation for drop-off VID").into()),
+            };
+
+            let tsp_message = crate::crypto::seal(
+                &*sender,
+                &*recipient,
+                None,
+                Payload::NestedMessage(opaque_message),
+            )?;
+
+            Ok((recipient.endpoint().clone(), tsp_message))
+        } else {
+            let next_hop_context = self.get_vid(next_hop)?;
+
+            let sender = match self.get_vid(next_hop)?.get_relation_vid() {
+                Some(first_sender) => self.get_private_vid(first_sender)?,
+                None => return Err(VidError::ResolveVid("missing sender VID for first hop").into()),
+            };
+
+            let tsp_message = crate::crypto::seal(
+                &*sender,
+                &*next_hop_context.vid,
+                None,
+                Payload::RoutedMessage(path, opaque_message),
+            )?;
+
+            Ok((next_hop_context.vid.endpoint().clone(), tsp_message))
+        }
     }
 
     /// Decode an encrypted `message``, which has to be addressed to one of the VID's in `receivers`, and has to have

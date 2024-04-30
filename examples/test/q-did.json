@@ -4,23 +4,23 @@
     "https://w3id.org/security/suites/jws-2020/v1"
   ],
   "authentication": [
-    "did:web:did.tsp-test.org:user:dave#verification-key"
+    "did:web:did.tsp-test.org:user:q#verification-key"
   ],
-  "id": "did:web:did.tsp-test.org:user:dave",
+  "id": "did:web:did.tsp-test.org:user:q",
   "keyAgreement": [
-    "did:web:did.tsp-test.org:user:dave#encryption-key"
+    "did:web:did.tsp-test.org:user:q#encryption-key"
   ],
   "service": [
     {
       "id": "#tsp-transport",
-      "serviceEndpoint": "https://dave.tsp-test.org/transport/dave",
+      "serviceEndpoint": "https://q.tsp-test.org/transport/q",
       "type": "TSPTransport"
     }
   ],
   "verificationMethod": [
     {
-      "controller": "did:web:did.tsp-test.org:user:dave",
-      "id": "did:web:did.tsp-test.org:user:dave#verification-key",
+      "controller": "did:web:did.tsp-test.org:user:q",
+      "id": "did:web:did.tsp-test.org:user:q#verification-key",
       "publicKeyJwk": {
         "crv": "Ed25519",
         "kty": "OKP",
@@ -30,8 +30,8 @@
       "type": "JsonWebKey2020"
     },
     {
-      "controller": "did:web:did.tsp-test.org:user:dave",
-      "id": "did:web:did.tsp-test.org:user:dave#encryption-key",
+      "controller": "did:web:did.tsp-test.org:user:q",
+      "id": "did:web:did.tsp-test.org:user:q#encryption-key",
       "publicKeyJwk": {
         "crv": "X25519",
         "kty": "OKP",
