@@ -1,3 +1,4 @@
+use crate::definitions::MessageType::{Signed, SignedAndEncrypted};
 use crate::{AsyncStore, OwnedVid, VerifiedVid};
 
 #[tokio::test]
@@ -46,8 +47,11 @@ async fn test_direct_mode() {
         .unwrap();
 
     // receive a message
-    let crate::definitions::ReceivedTspMessage::GenericMessage { message, .. } =
-        bobs_messages.recv().await.unwrap().unwrap()
+    let crate::definitions::ReceivedTspMessage::GenericMessage {
+        message,
+        message_type: SignedAndEncrypted,
+        ..
+    } = bobs_messages.recv().await.unwrap().unwrap()
     else {
         panic!("bob did not receive a generic message")
     };
@@ -100,8 +104,11 @@ async fn test_anycast() {
         .unwrap();
 
     // receive a message
-    let crate::definitions::ReceivedTspMessage::GenericMessage { message, .. } =
-        bobs_messages.recv().await.unwrap().unwrap()
+    let crate::definitions::ReceivedTspMessage::GenericMessage {
+        message,
+        message_type: Signed,
+        ..
+    } = bobs_messages.recv().await.unwrap().unwrap()
     else {
         panic!("bob did not receive a broadcast message")
     };
@@ -184,8 +191,11 @@ async fn test_nested_mode() {
         .unwrap();
 
     // receive message using inner vid
-    let crate::definitions::ReceivedTspMessage::GenericMessage { message, .. } =
-        bobs_inner_messages.recv().await.unwrap().unwrap()
+    let crate::definitions::ReceivedTspMessage::GenericMessage {
+        message,
+        message_type: SignedAndEncrypted,
+        ..
+    } = bobs_inner_messages.recv().await.unwrap().unwrap()
     else {
         panic!("bob did not receive a generic message inner")
     };
@@ -342,7 +352,10 @@ async fn test_routed_mode() {
         .await
         .unwrap();
     let crate::definitions::ReceivedTspMessage::GenericMessage {
-        sender, message, ..
+        sender,
+        message,
+        message_type: SignedAndEncrypted,
+        ..
     } = alice_messages.recv().await.unwrap().unwrap()
     else {
         panic!("alice did not receive message");

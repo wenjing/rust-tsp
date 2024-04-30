@@ -366,7 +366,17 @@ impl Store {
                     Payload::NestedMessage(message) => {
                         // TODO: do not allocate
                         let mut inner = message.to_owned();
-                        self.open_message(&mut inner)
+
+                        let mut received_message = self.open_message(&mut inner)?;
+                        if let ReceivedTspMessage::GenericMessage {
+                            ref mut message_type,
+                            ..
+                        } = received_message
+                        {
+                            *message_type = MessageType::SignedAndEncrypted;
+                        }
+
+                        Ok(received_message)
                     }
                     Payload::RoutedMessage(hops, message) => {
                         let next_hop = std::str::from_utf8(hops[0])?;
