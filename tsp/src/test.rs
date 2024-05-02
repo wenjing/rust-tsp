@@ -485,8 +485,9 @@ async fn test_relation_forming() {
         .unwrap();
 
     // receive a message
-    let crate::definitions::ReceivedTspMessage::RequestRelationship { sender, thread_id } =
-        bobs_messages.recv().await.unwrap().unwrap()
+    let crate::definitions::ReceivedTspMessage::RequestRelationship {
+        sender, thread_id, ..
+    } = bobs_messages.recv().await.unwrap().unwrap()
     else {
         panic!("bob did not receive a relation request")
     };

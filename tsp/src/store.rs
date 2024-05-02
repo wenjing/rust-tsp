@@ -534,6 +534,7 @@ impl Store {
                     Payload::RequestRelationship { route } => {
                         Ok(ReceivedTspMessage::RequestRelationship {
                             sender,
+                            route: route.map(|vec| vec.iter().map(|vid| vid.to_vec()).collect()),
                             thread_id: crate::crypto::sha256(raw_bytes),
                         })
                     }

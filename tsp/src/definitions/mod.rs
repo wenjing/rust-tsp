@@ -29,6 +29,7 @@ pub enum ReceivedTspMessage {
     },
     RequestRelationship {
         sender: String,
+        route: Option<Vec<Vec<u8>>>,
         thread_id: Digest,
     },
     AcceptRelationship {
