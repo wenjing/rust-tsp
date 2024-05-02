@@ -38,13 +38,9 @@ where
             nonce: fresh_nonce(&mut csprng),
             hops: route.unwrap_or_else(Vec::new),
         },
-        Payload::AcceptRelationship {
-            ref thread_id,
-            route,
-        } => crate::cesr::Payload::DirectRelationAffirm {
-            reply: thread_id,
-            hops: route.unwrap_or_else(Vec::new),
-        },
+        Payload::AcceptRelationship { ref thread_id } => {
+            crate::cesr::Payload::DirectRelationAffirm { reply: thread_id }
+        }
         Payload::CancelRelationship { ref thread_id } => crate::cesr::Payload::RelationshipCancel {
             nonce: fresh_nonce(&mut csprng),
             reply: thread_id,
@@ -168,17 +164,9 @@ where
                 Some(hops.to_vec())
             },
         },
-        crate::cesr::Payload::DirectRelationAffirm {
-            reply: &thread_id,
-            hops,
-        } => Payload::AcceptRelationship {
-            thread_id,
-            route: if hops.is_empty() {
-                None
-            } else {
-                Some(hops.to_vec())
-            },
-        },
+        crate::cesr::Payload::DirectRelationAffirm { reply: &thread_id } => {
+            Payload::AcceptRelationship { thread_id }
+        }
         crate::cesr::Payload::NestedRelationProposal { .. } => todo!(),
         crate::cesr::Payload::NestedRelationAffirm { .. } => todo!(),
         crate::cesr::Payload::RelationshipCancel {

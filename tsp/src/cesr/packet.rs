@@ -81,10 +81,7 @@ pub enum Payload<'a, Bytes: AsRef<[u8]>, Vid> {
     /// A TSP message requesting a relationship
     DirectRelationProposal { nonce: Nonce, hops: Vec<Vid> },
     /// A TSP message confiming a relationship
-    DirectRelationAffirm {
-        reply: &'a Sha256Digest,
-        hops: Vec<Vid>,
-    },
+    DirectRelationAffirm { reply: &'a Sha256Digest },
     /// A TSP message requesting a nested relationship
     NestedRelationProposal { public_keys: PairedKeys<'a> },
     /// A TSP message confiming a relationship
@@ -164,9 +161,8 @@ pub fn encode_payload(
             encode_hops(hops, output)?;
             encode_fixed_data(TSP_NONCE, &nonce.0, output);
         }
-        Payload::DirectRelationAffirm { reply, hops } => {
+        Payload::DirectRelationAffirm { reply } => {
             encode_fixed_data(TSP_TYPECODE, &msgtype::NEW_REL_REPLY, output);
-            encode_hops(hops, output)?;
             encode_fixed_data(TSP_SHA256, reply, output);
         }
         Payload::NestedRelationProposal { public_keys } => {
@@ -258,14 +254,8 @@ pub fn decode_payload<'a, Vid: TryFrom<&'a [u8]>>(
             decode_variable_data(TSP_PLAINTEXT, &mut stream)
                 .map(|msg| Payload::RoutedMessage(hop_list, msg))
         }
-        msgtype::NEW_REL_REPLY => {
-            let hop_list = decode_hops(&mut stream)?;
-
-            decode_fixed_data(TSP_SHA256, &mut stream).map(|reply| Payload::DirectRelationAffirm {
-                reply,
-                hops: hop_list,
-            })
-        }
+        msgtype::NEW_REL_REPLY => decode_fixed_data(TSP_SHA256, &mut stream)
+            .map(|reply| Payload::DirectRelationAffirm { reply }),
         msgtype::NEW_NEST_REL => {
             decode_fixed_data(ED25519_PUBLICKEY, &mut stream).and_then(|signing| {
                 decode_fixed_data(HPKE_PUBLICKEY, &mut stream).map(|encrypting| {
@@ -1047,10 +1037,7 @@ mod test {
             nonce: Nonce(*nonce),
             hops: vec![],
         });
-        test_turn_around(Payload::DirectRelationAffirm {
-            reply: nonce,
-            hops: vec![],
-        });
+        test_turn_around(Payload::DirectRelationAffirm { reply: nonce });
         let public_keys = PairedKeys {
             signing: pk1.as_slice().try_into().unwrap(),
             encrypting: pk2.as_slice().try_into().unwrap(),
