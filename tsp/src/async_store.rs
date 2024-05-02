@@ -190,6 +190,7 @@ impl AsyncStore {
         let sender = self.inner.get_private_vid(sender)?;
         let receiver = self.inner.get_verified_vid(receiver)?;
 
+        let path = route;
         let route = route.map(|collection| collection.iter().map(|vid| vid.as_ref()).collect());
 
         let (tsp_message, thread_id) = crate::crypto::seal_and_hash(
@@ -199,7 +200,12 @@ impl AsyncStore {
             Payload::RequestRelationship { route },
         )?;
 
-        crate::transport::send_message(receiver.endpoint(), &tsp_message).await?;
+        if let Some(hop_list) = path {
+            self.resolve_route_and_send(hop_list, &tsp_message).await?;
+            self.set_route_for_vid(receiver.identifier(), hop_list)?;
+        } else {
+            crate::transport::send_message(receiver.endpoint(), &tsp_message).await?;
+        }
 
         self.set_relation_status_for_vid(
             receiver.identifier(),
@@ -219,16 +225,19 @@ impl AsyncStore {
         thread_id: Digest,
         route: Option<&[&str]>,
     ) -> Result<(), Error> {
-        let route = route.map(|collection| collection.iter().map(|vid| vid.as_ref()).collect());
-
-        let (transport, message) = self.inner.seal_message_payload(
+        let (transport, tsp_message) = self.inner.seal_message_payload(
             sender,
             receiver,
             None,
-            Payload::AcceptRelationship { thread_id, route },
+            Payload::AcceptRelationship { thread_id },
         )?;
 
-        crate::transport::send_message(&transport, &message).await?;
+        if let Some(hop_list) = route {
+            self.resolve_route_and_send(hop_list, &tsp_message).await?;
+            self.set_route_for_vid(receiver, hop_list)?;
+        } else {
+            crate::transport::send_message(&transport, &tsp_message).await?;
+        }
 
         self.set_relation_status_for_vid(receiver, RelationshipStatus::Bidirectional(thread_id))?;
 
@@ -270,6 +279,28 @@ impl AsyncStore {
         crate::transport::send_message(&transport, &message).await?;
 
         Ok(transport)
+    }
+
+    /// Send a message given a route, extracting the next hop and verifying it in the process
+    async fn resolve_route_and_send(
+        &self,
+        hop_list: &[&str],
+        opaque_message: &[u8],
+    ) -> Result<(), Error> {
+        let Some(next_hop) = hop_list.first() else {
+            return Err(Error::InvalidRoute(
+                "relationship route must not be empty".into(),
+            ));
+        };
+
+        let next_hop = self.inner.get_verified_vid(next_hop)?;
+        //TODO: can we avoid the allocation here?
+        let path = hop_list[1..].iter().map(|x| x.as_bytes()).collect();
+
+        self.forward_routed_message(next_hop.identifier(), path, opaque_message)
+            .await?;
+
+        Ok(())
     }
 
     /// Pass along a in-transit routed TSP `opaque_message` that is not meant for us, given earlier resolved VID's.

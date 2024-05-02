@@ -51,16 +51,9 @@ pub enum Payload<'a, Bytes: AsRef<[u8]>> {
     Content(Bytes),
     NestedMessage(Bytes),
     RoutedMessage(Vec<VidData<'a>>, Bytes),
-    CancelRelationship {
-        thread_id: Digest,
-    },
-    RequestRelationship {
-        route: Option<Vec<VidData<'a>>>,
-    },
-    AcceptRelationship {
-        thread_id: Digest,
-        route: Option<Vec<VidData<'a>>>,
-    },
+    CancelRelationship { thread_id: Digest },
+    RequestRelationship { route: Option<Vec<VidData<'a>>> },
+    AcceptRelationship { thread_id: Digest },
 }
 
 impl<'a, Bytes: AsRef<[u8]>> Payload<'a, Bytes> {
@@ -100,10 +93,7 @@ impl<'a, Bytes: AsRef<[u8]>> fmt::Display for Payload<'a, Bytes> {
             }
             Payload::CancelRelationship { thread_id: _ } => write!(f, "Cancel Relationship"),
             Payload::RequestRelationship { route: _ } => write!(f, "Request Relationship"),
-            Payload::AcceptRelationship {
-                thread_id: _,
-                route: _,
-            } => write!(f, "Accept Relationship"),
+            Payload::AcceptRelationship { thread_id: _ } => write!(f, "Accept Relationship"),
         }
     }
 }

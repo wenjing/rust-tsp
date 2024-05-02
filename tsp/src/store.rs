@@ -538,7 +538,7 @@ impl Store {
                             thread_id: crate::crypto::sha256(raw_bytes),
                         })
                     }
-                    Payload::AcceptRelationship { thread_id, route } => {
+                    Payload::AcceptRelationship { thread_id } => {
                         let mut vids = self.vids.write()?;
                         let Some(context) = vids.get_mut(&sender) else {
                             //TODO: should we inform the user of who sent this?
