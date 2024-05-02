@@ -230,6 +230,7 @@ async fn run() -> Result<(), Error> {
                     ReceivedTspMessage::RequestRelationship {
                         sender,
                         thread_id: _,
+                        route: _,
                     } => {
                         info!("received relationship request from {}", sender);
                     }
