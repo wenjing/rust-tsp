@@ -161,10 +161,12 @@ pub fn encode_payload(
         }
         Payload::DirectRelationProposal { nonce, hops } => {
             encode_fixed_data(TSP_TYPECODE, &msgtype::NEW_REL, output);
+            encode_hops(hops, output)?;
             encode_fixed_data(TSP_NONCE, &nonce.0, output);
         }
         Payload::DirectRelationAffirm { reply, hops } => {
             encode_fixed_data(TSP_TYPECODE, &msgtype::NEW_REL_REPLY, output);
+            encode_hops(hops, output)?;
             encode_fixed_data(TSP_SHA256, reply, output);
         }
         Payload::NestedRelationProposal { public_keys } => {
@@ -237,9 +239,11 @@ pub fn decode_payload<'a, Vid: TryFrom<&'a [u8]>>(
             decode_variable_data(TSP_PLAINTEXT, &mut stream).map(Payload::GenericMessage)
         }
         msgtype::NEW_REL => {
+            let hop_list = decode_hops(&mut stream)?;
+
             decode_fixed_data(TSP_NONCE, &mut stream).map(|nonce| Payload::DirectRelationProposal {
                 nonce: Nonce(*nonce),
-                hops: todo!(),
+                hops: hop_list,
             })
         }
         msgtype::NEST_MSG => {
@@ -255,9 +259,11 @@ pub fn decode_payload<'a, Vid: TryFrom<&'a [u8]>>(
                 .map(|msg| Payload::RoutedMessage(hop_list, msg))
         }
         msgtype::NEW_REL_REPLY => {
+            let hop_list = decode_hops(&mut stream)?;
+
             decode_fixed_data(TSP_SHA256, &mut stream).map(|reply| Payload::DirectRelationAffirm {
                 reply,
-                hops: todo!(),
+                hops: hop_list,
             })
         }
         msgtype::NEW_NEST_REL => {
