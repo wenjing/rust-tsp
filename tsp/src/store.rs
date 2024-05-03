@@ -450,6 +450,8 @@ impl Store {
 
             Ok((recipient.endpoint().clone(), tsp_message))
         } else {
+            // we are an intermediary, continue sending the message
+            // let next_hop = self.inner.get_vid(next_hop)?;
             let next_hop_context = self.get_vid(next_hop)?;
 
             let sender = match self.get_vid(next_hop)?.get_relation_vid() {

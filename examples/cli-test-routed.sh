@@ -17,7 +17,6 @@ tsp --database a.json print a | xargs tsp --database b.json verify --alias a
 
 echo "---- verify receiver vids"
 tsp --database b.json print b | xargs tsp --database a.json verify --alias b
-tsp --database b.json verify did:web:did.tsp-test.org:user:p --alias p
 tsp --database b.json verify did:web:did.tsp-test.org:user:q --alias q
 
 echo "---- configure route"
