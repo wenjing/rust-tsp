@@ -217,10 +217,14 @@ async fn run() -> Result<(), Error> {
 
             if let Some(alias) = alias {
                 aliases.insert(alias.clone(), did.clone());
+                info!("added alias {alias} -> {did}");
             }
 
-            let transport = url::Url::parse(&format!("https://{server}/user/{username}")).unwrap();
+            let url = format!("https://{server}/user/{username}");
+            let transport = url::Url::parse(&url).unwrap();
+            
             let private_vid = OwnedVid::bind(&did, transport);
+            info!("created identity {}", private_vid.identifier());
 
             reqwest::Client::new()
                 .post(format!("https://{server}/add-vid"))
@@ -228,11 +232,11 @@ async fn run() -> Result<(), Error> {
                 .send()
                 .await
                 .expect("Could not publish VID on server");
+            
+            trace!("published DID document to {url}/did.json");
 
             vid_database.add_private_vid(private_vid.clone())?;
             write_database(&args.database, &vid_database, aliases).await?;
-
-            info!("created identity {}", private_vid.identifier());
         }
         Commands::CreatePeer { alias } => {
             let transport = url::Url::parse(&format!("https://{server}/user/{alias}")).unwrap();
@@ -344,6 +348,10 @@ async fn run() -> Result<(), Error> {
                         message,
                         message_type: _,
                     } => {
+                        if args.pretty_print {
+                            print_message(&message);
+                        }
+
                         info!("received message ({} bytes) from {}", message.len(), sender,);
                         println!("{}", String::from_utf8_lossy(&message),);
                     }
