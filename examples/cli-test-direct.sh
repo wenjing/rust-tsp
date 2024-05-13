@@ -23,3 +23,6 @@ sleep 2 && echo "Oh hello Marc" | tsp --database marlon.json send -s marlon -r m
 
 echo "---- receive the message"
 tsp --database marc.json receive --one marc
+
+echo "---- cleanup databases"
+rm -f marc.json marlon.json
