@@ -24,6 +24,7 @@ pub enum RelationshipStatus {
     Unrelated,
 }
 
+/// VID and its key material, intended for serialization
 #[cfg_attr(feature = "serialize", derive(Serialize, Deserialize))]
 #[derive(Debug, Clone)]
 pub struct ExportVid {

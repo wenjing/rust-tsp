@@ -40,9 +40,9 @@ At this point in time, this repository is organized using [Cargo workspaces](htt
    * `cesr/` provides minimalist CESR encoding/decoding support that is sufficient for generating and parsing TSP messages; to keep complexity to a minimum, we explicitly do not provide a full CESR decoder/encoder.
    * `crypto/` contains the cryptographic core:
       - generating non-confidential messages signed using Ed25519
-      - genrating confidential messages encrypted using [HPKE-Auth](https://datatracker.ietf.org/doc/rfc9180/); using DHKEM(X25519, HKDF-SHA256) as asymmetric primitives and ChaCha20/Poly1305 as underlying AEAD encryptiong scheme, and signed using Ed25519 to achieve **non-repudiation** (more precisely "strong receiver-unforgeability under chosen ciphertext" or [RUF-CTXT](https://eprint.iacr.org/2001/079) or [Insider-Auth](https://eprint.iacr.org/2020/1499.pdf).
+      - generating confidential messages encrypted using [HPKE-Auth](https://datatracker.ietf.org/doc/rfc9180/); using DHKEM(X25519, HKDF-SHA256) as asymmetric primitives and ChaCha20/Poly1305 as underlying AEAD encrypting scheme, and signed using Ed25519 to achieve **non-repudiation** (more precisely "strong receiver-unforgeability under chosen ciphertext" or [RUF-CTXT](https://eprint.iacr.org/2001/079) or [Insider-Auth](https://eprint.iacr.org/2020/1499.pdf).
    * `definitions/` defines several common data structures, traits and error types that are used throughout the project.
-   * `transport/` code (built using [tokio](https://tokio.rs/) foundations) for actually sending and receiving data over a transport layer. At present only a `tcp`-based broadcast server is supported as a test platform.
+   * `transport/` code (built using [tokio](https://tokio.rs/) foundations) for actually sending and receiving data over a transport layer.
    * `vid/` contains code for handling *verified identifiers* and identities. Currently only an extended form of `did:web` is supported.
 
 # Documentation
