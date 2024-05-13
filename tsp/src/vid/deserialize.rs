@@ -1,9 +1,13 @@
 use ed25519_dalek::{self as Ed};
+
+#[cfg(feature = "async")]
+use super::{error::VidError, OwnedVid};
+#[cfg(feature = "async")]
 use std::path::Path;
+#[cfg(feature = "async")]
 use tokio::fs;
 
-use super::{error::VidError, OwnedVid};
-
+#[cfg(feature = "async")]
 impl OwnedVid {
     pub async fn from_file(path: impl AsRef<Path>) -> Result<Self, VidError> {
         let vid_data = fs::read_to_string(path)

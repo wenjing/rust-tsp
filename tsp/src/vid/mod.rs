@@ -1,44 +1,65 @@
-use std::sync::Arc;
-
 use crate::definitions::{KeyData, PrivateVid, VerifiedVid};
-use deserialize::{serde_key_data, serde_public_sigkey, serde_sigkey};
 use ed25519_dalek::{self as Ed};
 use hpke::{kem::X25519HkdfSha256 as KemType, Kem, Serializable};
 use rand::rngs::OsRng;
+use std::sync::Arc;
+
+#[cfg(feature = "serialize")]
 use serde::{Deserialize, Serialize};
 
+#[cfg(feature = "serialize")]
 pub mod deserialize;
+
+#[cfg(feature = "resolve")]
 pub mod did;
+
 pub mod error;
+
+#[cfg(feature = "resolve")]
 pub mod resolve;
 
+#[cfg(feature = "serialize")]
+use deserialize::{serde_key_data, serde_public_sigkey, serde_sigkey};
+
+#[cfg(feature = "resolve")]
 pub use did::web::{create_did_web, vid_to_did_document};
+
 pub use error::VidError;
-pub use resolve::verify_vid;
 use url::Url;
+
+#[cfg(feature = "resolve")]
+pub use resolve::verify_vid;
 
 /// A Vid represents a *verified* Identifier
 /// (so it doesn't carry any information that allows to verify it)
-#[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
+#[cfg_attr(
+    feature = "serialize",
+    derive(Serialize, Deserialize),
+    serde(rename_all = "camelCase")
+)]
+#[derive(Clone, Debug)]
 pub struct Vid {
     id: String,
-    transport: url::Url,
-    #[serde(with = "serde_public_sigkey")]
+    transport: Url,
+    #[cfg_attr(feature = "serialize", serde(with = "serde_public_sigkey"))]
     public_sigkey: Ed::VerifyingKey,
-    #[serde(with = "serde_key_data")]
+    #[cfg_attr(feature = "serialize", serde(with = "serde_key_data"))]
     public_enckey: KeyData,
 }
 
 /// A OwnedVid represents the 'owner' of a particular Vid
-#[derive(Clone, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
+#[cfg_attr(
+    feature = "serialize",
+    derive(Serialize, Deserialize),
+    serde(rename_all = "camelCase")
+)]
+#[derive(Clone)]
 pub struct OwnedVid {
-    #[serde(flatten)]
+    #[cfg_attr(feature = "serialize", serde(flatten))]
     vid: Vid,
-    #[serde(with = "serde_sigkey")]
+    #[cfg_attr(feature = "serialize", serde(with = "serde_sigkey"))]
     sigkey: Ed::SigningKey,
-    #[serde(with = "serde_key_data")]
+    #[cfg_attr(feature = "serialize", serde(with = "serde_key_data"))]
     enckey: KeyData,
 }
 
@@ -147,6 +168,7 @@ impl OwnedVid {
         }
     }
 
+    #[cfg(feature = "resolve")]
     pub fn new_did_peer(transport: Url) -> OwnedVid {
         let sigkey = Ed::SigningKey::generate(&mut OsRng);
         let (enckey, public_enckey) = KemType::gen_keypair(&mut OsRng);

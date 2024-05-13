@@ -4,6 +4,7 @@ pub enum Error {
     Encode(#[from] crate::cesr::error::EncodeError),
     #[error("Error: {0}")]
     Decode(#[from] crate::cesr::error::DecodeError),
+    #[cfg(feature = "async")]
     #[error("Error: {0}")]
     Transport(#[from] crate::transport::TransportError),
     #[error("Error: {0}")]

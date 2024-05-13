@@ -16,22 +16,18 @@ pub enum DecodeError {
     MissingHops,
 }
 
-#[cfg(feature = "std")]
 impl std::fmt::Display for EncodeError {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
         write!(f, "{:?}", self)
     }
 }
 
-#[cfg(feature = "std")]
 impl std::fmt::Display for DecodeError {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
         write!(f, "{:?}", self)
     }
 }
 
-#[cfg(feature = "std")]
 impl std::error::Error for EncodeError {}
 
-#[cfg(feature = "std")]
 impl std::error::Error for DecodeError {}

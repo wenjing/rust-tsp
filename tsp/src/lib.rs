@@ -53,13 +53,18 @@
 pub mod cesr;
 pub mod crypto;
 pub mod definitions;
-pub mod transport;
 pub mod vid;
 
+#[cfg(feature = "async")]
+pub mod transport;
+
+#[cfg(feature = "async")]
 mod async_store;
+
 mod error;
 mod store;
 
+#[cfg(feature = "async")]
 #[cfg(test)]
 mod test;
 
@@ -67,6 +72,9 @@ pub use crate::{
     definitions::{Payload, PrivateVid, ReceivedTspMessage, VerifiedVid},
     vid::{OwnedVid, Vid},
 };
+
+#[cfg(feature = "async")]
 pub use async_store::AsyncStore;
+
 pub use error::Error;
 pub use store::{ExportVid, Store};

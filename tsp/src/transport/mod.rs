@@ -2,6 +2,7 @@ use crate::definitions::TSPStream;
 use url::Url;
 
 pub mod error;
+
 mod http;
 pub mod tcp;
 
