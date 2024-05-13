@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = [ "tsp", "examples", "demo-server"]
+members = [ "tsp", "examples"]
 
 [workspace.package]
 version = "0.0.1"
@@ -42,3 +42,5 @@ serde_json = { version = "1.0" }
 bs58 = "0.5"
 # cli
 clap = { version = "4.5", features = ["derive"] }
+# demo server
+axum = { version = "0.7", features = ["ws"] }

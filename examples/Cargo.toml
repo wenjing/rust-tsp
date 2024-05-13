@@ -16,14 +16,20 @@ path = "src/create-did-web.rs"
 name = "tsp"
 path = "src/cli.rs"
 
+[[bin]]
+name = "demo-server"
+path = "src/server.rs"
+
 [dependencies]
 tsp = { path = "../tsp" }
-tokio = { workspace = true}
-url = { workspace = true}
+axum = { workspace = true}
+base64ct = { workspace = true }
 clap = { workspace = true}
 reqwest = { workspace = true}
+futures = { workspace = true}
 serde = { workspace = true}
 serde_json = { workspace = true}
+tokio = { workspace = true}
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
-base64ct = { workspace = true }
+url = { workspace = true}
