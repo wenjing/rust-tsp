@@ -241,7 +241,7 @@ async fn get_did_doc(State(state): State<Arc<AppState>>, Path(name): Path<String
     }
 }
 
-/// Format CESR encoded message parts to descriptive JSON
+/// Format CESR-encoded message parts to descriptive JSON
 fn format_part(title: &str, part: &tsp::cesr::Part, plain: Option<&[u8]>) -> serde_json::Value {
     let full = [&part.prefix[..], &part.data[..]].concat();
 
@@ -255,7 +255,7 @@ fn format_part(title: &str, part: &tsp::cesr::Part, plain: Option<&[u8]>) -> ser
     })
 }
 
-/// Decode a CESR encoded message into descriptive JSON
+/// Decode a CESR-encoded message into descriptive JSON
 fn open_message(message: &[u8], payload: Option<&[u8]>) -> Option<serde_json::Value> {
     let parts = tsp::cesr::open_message_into_parts(message).ok()?;
 
@@ -378,7 +378,7 @@ struct EncodedMessage {
 }
 
 /// Handle the websocket connection
-/// Keep track of the verified VID's, private VID's and forward messages
+/// Keep track of the verified VIDs, private VIDs and forward messages
 async fn websocket(stream: WebSocket, state: Arc<AppState>) {
     let (mut sender, mut receiver) = stream.split();
     let mut rx = state.tx.subscribe();
@@ -428,7 +428,7 @@ async fn websocket(stream: WebSocket, state: Arc<AppState>) {
         }
     });
 
-    // Receive encoded VID's from the websocket and store them in the local state
+    // Receive encoded VIDs from the websocket and store them in the local state
     let mut recv_task = tokio::spawn(async move {
         while let Some(Ok(Message::Text(incoming_message))) = receiver.next().await {
             if let Ok(identity) = serde_json::from_str::<OwnedVid>(&incoming_message) {

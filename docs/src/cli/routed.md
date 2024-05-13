@@ -54,14 +54,14 @@ tsp -d a.json print a | xargs tsp -d b.json verify --alias a
 ```
 
 Resolve and verify the VID for `b` in the database for `a`,
-and verify the VID's for the intermediary servers `p` and `q`:
+and verify the VIDs for the intermediary servers `p` and `q`:
 
 ```sh
 tsp -d b.json print b | xargs tsp -d a.json verify --alias b
 tsp -d b.json verify did:web:did.tsp-test.org:user:q --alias q
 ```
 
-Verify the VID's foure the intermediaries and the endpoint.
+Verify the VIDs foure the intermediaries and the endpoint.
 Passing the `--sender` argument configures which sender VID is used when sending
 messages to the passed VID. This is equivalent with an extra call to the `set-relation`
 command.
@@ -98,7 +98,7 @@ echo "Hi b" | tsp --pretty-print -d a.json send -s a -r b
 Output:
 ```
  INFO tsp::async_store: sending message to https://p.tsp-test.org/transport/p
-CESR encoded message:
+CESR-encoded message:
 -EABXAAA9VIDAAALAAAZGlkOndlYjpkaWQudHNwLXRlc3Qub3JnOnVzZXI6YQ9VIDAAALAAAZGlkOn
 dlYjpkaWQudHNwLXRlc3Qub3JnOnVzZXI6cA4CB2WE2d08bhGjkJJUg3la1JbsK7apfaOSxH-otajv
 YveQ093-rTQWvq3kUJokCH7dT_5gbIzJdDsLxTYDu6dz4IyJhGg6JzCpqrerG5GwMaoICtJGn9wPGN
@@ -112,7 +112,7 @@ sd_mGJp4hkMz_P9-R04we14TOl-v8dvCuOjcp_UIDrB-vjeAwqzyNBw
  to did:web:did.tsp-test.org:user:b
 ```
 
-Note that the message longer than a direct mode message, since the ciphertext contains another
+Note that the message is longer than a direct mode message, since the ciphertext contains another
 TSP message.
 
 ## Debug intermediaries

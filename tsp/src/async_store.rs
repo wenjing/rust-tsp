@@ -8,7 +8,7 @@ use futures::StreamExt;
 use tokio::sync::mpsc::{self, Receiver};
 use url::Url;
 
-/// Holds private ands verified VID's
+/// Holds private ands verified VIDs
 /// A Store contains verified vid's, our relationship status to them,
 /// as well as the private vid's that this application has control over.
 ///
@@ -109,7 +109,7 @@ impl AsyncStore {
         Ok(())
     }
 
-    /// Send a TSP message given earlier resolved VID's
+    /// Send a TSP message given earlier resolved VIDs
     /// Encodes, encrypts, signs and sends a TSP message
     ///
     /// # Arguments
@@ -215,7 +215,7 @@ impl AsyncStore {
         Ok(())
     }
 
-    /// Accept a direct relationship between the resolved VID's identifier by `sender` and `receiver`.
+    /// Accept a direct relationship between the resolved VIDs identifier by `sender` and `receiver`.
     /// `thread_id` must be the same as the one that was present in the relationship request.
     /// Encodes the control message, encrypts, signs and sends a TSP message
     pub async fn send_relationship_accept(
@@ -244,7 +244,7 @@ impl AsyncStore {
         Ok(())
     }
 
-    /// Cancels a direct relationship between the resolved `sender` and `receiver` VID's.
+    /// Cancels a direct relationship between the resolved `sender` and `receiver` VIDs.
     /// Encodes the control message, encrypts, signs and sends a TSP message
     pub async fn send_relationship_cancel(
         &self,
@@ -303,7 +303,8 @@ impl AsyncStore {
         Ok(())
     }
 
-    /// Pass along a in-transit routed TSP `opaque_message` that is not meant for us, given earlier resolved VID's.
+
+    /// Pass along a in-transit routed TSP `opaque_message` that is not meant for us, given earlier resolved VIDs.
     /// The message is routed through the route that has been established with `receiver`.
     pub async fn forward_routed_message(
         &self,
@@ -347,7 +348,7 @@ impl AsyncStore {
         Ok(rx)
     }
 
-    /// Send TSP broadcast message to the specified VID's
+    /// Send TSP broadcast message to the specified VIDs
     pub async fn send_anycast(
         &self,
         sender: &str,

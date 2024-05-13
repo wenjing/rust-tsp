@@ -54,7 +54,7 @@ mod selector {
     pub const DASH: u32 = 62;
 }
 
-/// (Temporary) interface to get Sender/Receiver VID's information from a CESR-encoded message
+/// (Temporary) interface to get Sender/Receiver VIDs information from a CESR-encoded message
 pub fn get_sender_receiver(message: &[u8]) -> Result<(&[u8], Option<&[u8]>), error::DecodeError> {
     let mut stream = message;
     let (sender, receiver, _) = decode_sender_receiver(&mut stream)?;

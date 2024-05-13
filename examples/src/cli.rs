@@ -157,7 +157,7 @@ fn print_message(message: &[u8]) {
         return;
     };
 
-    println!("CESR encoded message:");
+    println!("CESR-encoded message:");
 
     color_print_part(Some(parts.prefix), 31);
     color_print_part(Some(parts.sender), 35);

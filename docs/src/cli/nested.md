@@ -1,11 +1,11 @@
 # Nested mode
 
 To send a nested TSP message both sender and and receiver should
-establish a pair of VID's. One VId is used for the inner- and one for the outer message.
+establish a pair of VIDs. One VID is used for the inner message and one for the outer.
 
 We use the same __alice__ and __bob__ example as in the previous chapter.
 
-First, we create an inner- or nested VID for __alice__:
+First, we create an inner or nested VID for __alice__:
 
 ```sh
 tsp -d alice.json create-peer alice-inner
@@ -89,7 +89,7 @@ Output:
  is verified and added to the database bob.json
 ```
 
-We need to configure the association between __alice__ and __bob__'s inner VID's.
+We need to configure the association between __alice__ and __bob__'s inner VIDs.
 Use the `set-relation` command to soecify which VID should be used to send messages
 a certain VID:
 
@@ -97,7 +97,7 @@ a certain VID:
 tsp -d alice.json set-relation bob-inner alice-inner
 ```
 
-Then set the parent/child relationship of __bob__'s VID's in __alice__'s database:
+Then set the parent/child relationship of __bob__'s VIDs in __alice__'s database:
 
 ```sh
 tsp -d alice.json set-parent bob-inner bob
@@ -118,7 +118,7 @@ echo "Hi Bob!" | tsp --pretty-print -d alice.json send -s alice-inner -r bob-inn
 Output:
 ```
  INFO tsp::async_store: sending message to https://tsp-test.org/user/bob
-CESR encoded message:
+CESR-encoded message:
 -EABXAAA9VIDAAALAAAZGlkOndlYjp0c3AtdGVzdC5vcmc6dXNlcjphbGljZQ8VIDAAAKAAZGlkOnd
 lYjp0c3AtdGVzdC5vcmc6dXNlcjpib2I4CC2TF93f5Igkjgp4feBYOas18w-GhN_Q7oCRNStEbbdVK
 aN7Uqr2DK3-A3xf7b9px6KchftsEsIx7AM2fVO1V4KJ8OixmVPoPK59q9TpoioCiL2XmmZLT3Gj4X0

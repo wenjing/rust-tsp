@@ -79,7 +79,7 @@ impl VidContext {
     }
 }
 
-/// Holds private ands verified VID's
+/// Holds private ands verified VIDs
 /// A Store contains verified vid's, our relationship status to them,
 /// as well as the private vid's that this application has control over.
 #[derive(Default, Clone)]
@@ -88,7 +88,7 @@ pub struct Store {
     pub(crate) vids: Arc<RwLock<HashMap<String, VidContext>>>,
 }
 
-/// This database is used to store and resolve VID's
+/// This database is used to store and resolve VIDs
 impl Store {
     /// Create a new, empty VID database
     pub fn new() -> Self {
@@ -208,7 +208,7 @@ impl Store {
     pub fn set_route_for_vid(&self, vid: &str, route: &[&str]) -> Result<(), Error> {
         if route.len() == 1 {
             return Err(Error::InvalidRoute(
-                "A route must have at least two VID's".into(),
+                "A route must have at least two VIDs".into(),
             ));
         }
 
@@ -418,7 +418,7 @@ impl Store {
         self.forward_routed_message(next_hop, path, inner_message)
     }
 
-    /// Pass along a in-transit routed TSP `opaque_message` that is not meant for us, given earlier resolved VID's.
+    /// Pass along a in-transit routed TSP `opaque_message` that is not meant for us, given earlier resolved VIDs.
     /// The message is routed through the route that has been established with `receiver`.
     pub fn forward_routed_message(
         &self,
@@ -465,7 +465,7 @@ impl Store {
         }
     }
 
-    /// Decode an encrypted `message``, which has to be addressed to one of the VID's in `receivers`, and has to have
+    /// Decode an encrypted `message``, which has to be addressed to one of the VIDs in `receivers`, and has to have
     /// `verified_vids` as one of the senders.
     pub fn open_message(self, message: &mut [u8]) -> Result<ReceivedTspMessage, Error> {
         let probed_message = crate::cesr::probe(message)?;

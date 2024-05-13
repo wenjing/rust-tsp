@@ -49,7 +49,7 @@ where
         Payload::RoutedMessage(hops, data) => crate::cesr::Payload::RoutedMessage(hops, data),
     };
 
-    // prepare CESR encoded ciphertext
+    // prepare CESR-encoded ciphertext
     let mut cesr_message = Vec::with_capacity(
         // plaintext size
         secret_payload.estimate_size()

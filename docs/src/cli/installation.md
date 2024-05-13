@@ -1,7 +1,7 @@
 
 # Installation
 
-To get started with the CLI, first inbstall Rust. See [https://www.rust-lang.org/tools/install](https://www.rust-lang.org/tools/install). The fastes way is running the following command in your terminal:
+To get started with the CLI, first install Rust. See [https://www.rust-lang.org/tools/install](https://www.rust-lang.org/tools/install). The fastest way is running the following command in your terminal:
 
 ```sh
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh

@@ -1,10 +1,10 @@
 //! # Trust Spanning Protocol
 //!
 //! The Trust Spanning Protocol (TSP) is a protocol for secure communication
-//! between entities identified by their Verified Identities (VID's).
+//! between entities identified by their Verified Identities (VIDs).
 //!
 //! The primary API this crates exposes is the [AsyncStore] struct, which
-//! is used to manage and resolve VID's, as well as send and receive messages
+//! is used to manage and resolve VIDs, as well as send and receive messages
 //! between them.
 //!
 //! # Example

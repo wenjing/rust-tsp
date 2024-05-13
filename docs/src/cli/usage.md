@@ -49,8 +49,8 @@ TRACE tsp: persisted database to database.json
 
 ## Resolve a VID
 
-VID's created with the `tsp` tool are published on __tsp-test.org__.
-Currently Rust TSP is able to verify `did:web` and `did:peer` VID's
+VIDs created with the `tsp` tool are published on __tsp-test.org__.
+Currently Rust TSP is able to verify `did:web` and `did:peer` VIDs
 
 To resolve and verify a VID, run the following:
 
@@ -143,7 +143,7 @@ Hello Bob!
 ### Pretty print messages
 
 The send command supports the `--pretty-print` argument.
-This wil output the CESR encoded TSP mesage that is sent.
+This wil output the CESR-encoded TSP mesage that is sent.
 
 Continuing with the __alice__ and __bob__ example:
 
@@ -154,7 +154,7 @@ echo "Hello Bob!" | tsp --pretty-print -d alice.json send -s alice -r bob
 Output:
 ```
  INFO tsp::async_store: sending message to https://tsp-test.org/user/bob
-CESR encoded message:
+CESR-encoded message:
 -EABXAAA9VIDAAALAAAZGlkOndlYjp0c3AtdGVzdC5vcmc6dXNlcjphbGljZQ8VIDAAAKAAZGlkOndlYjp0c3AtdGVzdC5vcmc6dXNlcjpib2I4CAX7ngr3YHl2z91L-anFBYxbQhM48CT_wqrCCRNdsN5fm-oshqvwqnKDK5rLkn_kvVI8aWZ7SEhiaiB8N6e-bjInrBbhNII0BAceo-mZoSvG3MY_UEqrgzP4kpeLJJK9MdQx53c4nxKh6_jvB2DuXJ6TBNjj-lXszyTH8yDAMSioDRluucSBpPAg
  INFO tsp: sent message (11 bytes) from did:web:tsp-test.org:user:alice to did:web:tsp-test.org:user:bob
 ```
