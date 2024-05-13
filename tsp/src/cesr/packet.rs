@@ -677,17 +677,17 @@ pub fn open_message_into_parts(data: &[u8]) -> Result<MessageParts, DecodeError>
 
 /// Convenience interface: this struct is isomorphic to [Envelope] but represents
 /// a "opened" envelope, i.e. message.
-#[cfg(feature = "demo")]
+#[cfg(all(feature = "demo", feature = "test"))]
 #[derive(Debug, Clone)]
 pub struct Message<'a, Vid, Bytes: AsRef<[u8]>> {
     pub sender: Vid,
     pub receiver: Vid,
     pub nonconfidential_data: Option<&'a [u8]>,
-    pub message: Payload<Bytes>,
+    pub message: Payload<'a, Bytes, Vid>,
 }
 
 /// Convenience interface which illustrates encoding as a single operation
-#[cfg(feature = "demo")]
+#[cfg(all(feature = "demo", feature = "test"))]
 pub fn encode_tsp_message<Vid: AsRef<[u8]>>(
     Message {
         ref sender,
@@ -713,7 +713,7 @@ pub fn encode_tsp_message<Vid: AsRef<[u8]>>(
 }
 
 /// A convenience interface which illustrates decoding as a single operation
-#[cfg(feature = "demo")]
+#[cfg(all(feature = "demo", feature = "test"))]
 pub fn decode_tsp_message<'a, Vid: TryFrom<&'a [u8]>>(
     data: &'a [u8],
     decrypt: impl FnOnce(&Vid, &[u8]) -> Vec<u8>,
@@ -938,7 +938,7 @@ mod test {
         assert!(decode_envelope::<&[u8]>(&outer).is_err());
     }
 
-    #[cfg(feature = "demo")]
+    #[cfg(all(feature = "demo", feature = "test"))]
     #[test]
     fn convenience() {
         let sender = b"Alister".as_slice();

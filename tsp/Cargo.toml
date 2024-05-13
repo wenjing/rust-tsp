@@ -12,39 +12,60 @@ rust-version.workspace = true
 
 [features]
 cesr-t = [ ]
-default = ["std"]
-std = [ ]
+default = ["async"]
 strict = [ ]
 alloc = [ ]
 demo = ["alloc"]
+async = [
+    "resolve",
+    "dep:async-stream",
+    "dep:futures",
+    "dep:futures-core",
+    "dep:futures-util",
+    "dep:tokio",
+    "dep:tokio-stream",
+    "dep:tokio-tungstenite",
+    "dep:tokio-util",
+    "dep:tracing",
+    "dep:tracing-subscriber"
+]
+resolve = [
+    "serialize",
+    "dep:reqwest"
+]
+serialize = [
+    "dep:serde",
+    "dep:serde_json",
+    "dep:bs58"
+]
 
 [dependencies]
 # generic
-url = { workspace = true }
-thiserror = { workspace = true }
 base64ct = { workspace = true }
+thiserror = { workspace = true }
+url = { workspace = true }
 # crypto
+ed25519-dalek = { workspace = true, features = ["fast", "zeroize", "rand_core"] }
 hpke = { workspace = true }
 rand = { workspace = true }
-ed25519-dalek = { workspace = true, features = ["fast", "zeroize", "rand_core"] }
 sha2 = { workspace = true }
 # async
-async-recursion = { workspace = true }
-async-stream = { workspace = true }
-futures = { workspace = true }
-futures-core = { workspace = true }
-futures-util = { workspace = true }
-tokio = { workspace = true }
-tokio-stream = { workspace = true }
-tokio-tungstenite = { workspace = true }
-tokio-util = { workspace = true }
-tracing = { workspace = true }
-tracing-subscriber = { workspace = true }
+async-stream = { workspace = true, optional = true }
+futures = { workspace = true, optional = true }
+futures-core = { workspace = true, optional = true }
+futures-util = { workspace = true, optional = true }
+tokio = { workspace = true, optional = true }
+tokio-stream = { workspace = true, optional = true }
+tokio-tungstenite = { workspace = true, optional = true }
+tokio-util = { workspace = true, optional = true }
+tracing = { workspace = true, optional = true }
+tracing-subscriber = { workspace = true, optional = true }
 # resolve
-reqwest = { workspace = true }
-serde = { workspace = true }
-serde_json = { workspace = true }
-bs58 ={ workspace = true }
+reqwest = { workspace = true, optional = true }
+# serialize
+serde = { workspace = true, optional = true }
+serde_json = { workspace = true, optional = true }
+bs58 ={ workspace = true, optional = true }
 
 [dev-dependencies]
 serial_test = { version = "3.0" }

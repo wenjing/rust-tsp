@@ -6,6 +6,7 @@ use crate::{
     vid::VidError,
     OwnedVid, Vid,
 };
+#[cfg(feature = "serialize")]
 use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
@@ -14,15 +15,17 @@ use std::{
 };
 use url::Url;
 
-#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
-pub(crate) enum RelationshipStatus {
+#[cfg_attr(feature = "serialize", derive(Serialize, Deserialize))]
+#[derive(Clone, Copy, Debug)]
+pub enum RelationshipStatus {
     _Controlled,
     Bidirectional(Digest),
     Unidirectional(Digest),
     Unrelated,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "serialize", derive(Serialize, Deserialize))]
+#[derive(Debug, Clone)]
 pub struct ExportVid {
     vid: crate::Vid,
     private: Option<crate::OwnedVid>,
@@ -185,11 +188,11 @@ impl Store {
         })
     }
 
-    pub(super) fn list_vids(&self) -> Result<Vec<String>, Error> {
+    pub fn list_vids(&self) -> Result<Vec<String>, Error> {
         Ok(self.vids.read()?.keys().cloned().collect())
     }
 
-    pub(super) fn set_relation_status_for_vid(
+    pub fn set_relation_status_for_vid(
         &self,
         vid: &str,
         relation_status: RelationshipStatus,
@@ -412,14 +415,6 @@ impl Store {
             }
         };
 
-        tracing::debug!(
-            "forwarding message to next hop {}, hops left: {:?}",
-            next_hop,
-            path.iter()
-                .map(|v| String::from_utf8_lossy(v))
-                .collect::<Vec<_>>()
-        );
-
         self.forward_routed_message(next_hop, path, inner_message)
     }
 
@@ -472,7 +467,7 @@ impl Store {
 
     /// Decode an encrypted `message``, which has to be addressed to one of the VID's in `receivers`, and has to have
     /// `verified_vids` as one of the senders.
-    pub(crate) fn open_message(self, message: &mut [u8]) -> Result<ReceivedTspMessage, Error> {
+    pub fn open_message(self, message: &mut [u8]) -> Result<ReceivedTspMessage, Error> {
         let probed_message = crate::cesr::probe(message)?;
 
         match probed_message {

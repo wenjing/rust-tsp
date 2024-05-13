@@ -14,30 +14,31 @@ publish = false
 rust-version = "1.75"
 
 [workspace.dependencies]
-hpke = { git = "https://github.com/marlonbaeten/rust-hpke", branch = "keys-by-reference", features = ["alloc", "std"] }
-crypto_box = { version = "0.9", features = ["alloc", "seal", "chacha20"] }
-rand = "0.8"
-ed25519-dalek = { version = "2", features = [ "rand_core", "pkcs8" ] }
-sha2 = { version = "0.10.8" }
+# generic
 base64ct = { version = "1.6", features = ["alloc", "std"] }
-bs58 = "0.5"
 thiserror = "1.0"
-async-recursion = "1.1"
-# transport
-tokio = { version = "1.0", features = ["full", "tracing"] }
+url = { version = "2.5", features = ["serde"] }
+#crypto
+ed25519-dalek = { version = "2", features = [ "rand_core", "pkcs8" ] }
+hpke = { git = "https://github.com/marlonbaeten/rust-hpke", branch = "keys-by-reference", features = ["alloc", "std"] }
+rand = "0.8"
+sha2 = { version = "0.10.8" }
+# async
+async-stream = { version = "0.3"}
+futures = { version = "0.3.0", features = ["thread-pool"]}
 futures-core = { version = "0.3"}
 futures-util = { version = "0.3" }
-async-stream = { version = "0.3"}
-tokio-util = { version = "0.7", features = ["full"] }
+tokio = { version = "1.0", features = ["full", "tracing"] }
 tokio-stream = { version = "0.1" }
-futures = { version = "0.3.0", features = ["thread-pool"]}
+tokio-tungstenite = { version = "0.21", features = ["rustls-tls-native-roots", "stream"] }
+tokio-util = { version = "0.7", features = ["full"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3.1", default-features = false, features = ["fmt", "ansi", "env-filter", "tracing-log"] }
-url = { version = "2.5", features = ["serde"] }
-tokio-tungstenite = { version = "0.21", features = ["rustls-tls-native-roots", "stream"] }
-# vid
+# resolve
 reqwest = { version = "0.12.3", default-features = false, features = ["rustls-tls-native-roots", "json", "stream", "charset", "http2", "macos-system-configuration"] }
+# serialize
 serde = { version = "1.0", features = ["derive"] }
 serde_json = { version = "1.0" }
+bs58 = "0.5"
 # cli
 clap = { version = "4.5", features = ["derive"] }
