@@ -46,18 +46,23 @@ pub(crate) struct VidContext {
 }
 
 impl VidContext {
+    /// Set the parent VID for this VID. Used to create a nested TSP message
     fn set_parent_vid(&mut self, parent_vid: Option<&str>) {
         self.parent_vid = parent_vid.map(|r| r.to_string());
     }
 
+    /// Set the relation VID for this VID. The relation VID wil be used as
+    /// sender VID when sending messages to this VID
     fn set_relation_vid(&mut self, relation_vid: Option<&str>) {
         self.relation_vid = relation_vid.map(|r| r.to_string());
     }
 
+    /// Set the relation status for this VID.
     fn set_relation_status(&mut self, relation_status: RelationshipStatus) {
         self.relation_status = relation_status;
     }
 
+    /// Set the route for this VID. The route will be used to send routed messages to this VID
     fn set_route(&mut self, route: &[impl AsRef<str>]) {
         if route.is_empty() {
             self.tunnel = None;
@@ -66,14 +71,17 @@ impl VidContext {
         }
     }
 
+    /// Get the parent VID for this VID
     pub(crate) fn get_parent_vid(&self) -> Option<&str> {
         self.parent_vid.as_deref()
     }
 
+    /// Get the relation VID for this VID
     pub(crate) fn get_relation_vid(&self) -> Option<&str> {
         self.relation_vid.as_deref()
     }
 
+    /// Get the route for this VID
     pub(crate) fn get_route(&self) -> Option<&[String]> {
         self.tunnel.as_deref()
     }
@@ -82,8 +90,10 @@ impl VidContext {
 /// Holds private ands verified VIDs
 /// A Store contains verified vid's, our relationship status to them,
 /// as well as the private vid's that this application has control over.
+///
+/// The struct is the primary interface to the VID database, in a synchronous
+/// context (when no async runtime is available).
 #[derive(Default, Clone)]
-//TODO: refactor into a single HashMap<String, {vid+status}>, since being a 'PrivateVid' is also in some sense a "status"; also see gh #94
 pub struct Store {
     pub(crate) vids: Arc<RwLock<HashMap<String, VidContext>>>,
 }
@@ -171,6 +181,7 @@ impl Store {
         Ok(())
     }
 
+    /// Sets the parent for a VID. This is used to create a nested message.
     pub fn set_parent_for_vid(&self, vid: &str, parent_vid: Option<&str>) -> Result<(), Error> {
         self.modify_vid(vid, |resolved| {
             resolved.set_parent_vid(parent_vid);
@@ -188,10 +199,12 @@ impl Store {
         })
     }
 
+    /// List all VIDs in the database
     pub fn list_vids(&self) -> Result<Vec<String>, Error> {
         Ok(self.vids.read()?.keys().cloned().collect())
     }
 
+    /// Sets the relationship status for a VID
     pub fn set_relation_status_for_vid(
         &self,
         vid: &str,
@@ -249,6 +262,7 @@ impl Store {
         Ok(self.get_vid(vid)?.vid)
     }
 
+    /// Retrieve the [VidContext] identified by `vid` from the database, if it exists.
     pub(super) fn get_vid(&self, vid: &str) -> Result<VidContext, Error> {
         match self.vids.read()?.get(vid) {
             Some(resolved) => Ok(resolved.clone()),
@@ -256,6 +270,12 @@ impl Store {
         }
     }
 
+    /// Seal a TSP message.
+    /// The message is encrypted, encoded and signed using the key material
+    /// of the sender and receiver, specified by their VIDs.
+    ///
+    /// Note that the the corresponsing VIDs should first be added and configured
+    /// using this store.
     pub fn seal_message(
         &self,
         sender: &str,
@@ -271,6 +291,7 @@ impl Store {
         )
     }
 
+    /// Seal a TSP message.
     pub(crate) fn seal_message_payload(
         &self,
         sender: &str,
@@ -369,10 +390,12 @@ impl Store {
         Ok((receiver_context.vid.endpoint().clone(), tsp_message))
     }
 
+    /// Sign a unencrypted message, without a specified recipient
     pub fn sign_anycast(&self, sender: &str, message: &[u8]) -> Result<Vec<u8>, Error> {
         self.sign_anycast_payload(sender, Payload::Content(message))
     }
 
+    /// Sign a unencrypted message payload, without a specified recipient
     pub(crate) fn sign_anycast_payload(
         &self,
         sender: &str,
@@ -384,7 +407,7 @@ impl Store {
         Ok(message)
     }
 
-    // Receive, open and forward a TSP message
+    /// Receive, open and forward a TSP message
     pub fn route_message(
         &self,
         sender: &str,

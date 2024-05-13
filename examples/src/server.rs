@@ -75,8 +75,7 @@ async fn main() {
 
     tokio::task::spawn(async {
         let mut db = AsyncStore::new();
-        let piv: OwnedVid =
-            serde_json::from_str(include_str!("../test/p.json")).unwrap();
+        let piv: OwnedVid = serde_json::from_str(include_str!("../test/p.json")).unwrap();
         db.add_private_vid(piv).unwrap();
         db.verify_vid("did:web:did.tsp-test.org:user:q")
             .await
@@ -98,8 +97,7 @@ async fn main() {
 
     tokio::task::spawn(async {
         let mut db = AsyncStore::new();
-        let piv: OwnedVid =
-            serde_json::from_str(include_str!("../test/q.json")).unwrap();
+        let piv: OwnedVid = serde_json::from_str(include_str!("../test/q.json")).unwrap();
         db.add_private_vid(piv).unwrap();
         db.verify_vid("did:web:did.tsp-test.org:user:p")
             .await

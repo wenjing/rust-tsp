@@ -7,7 +7,7 @@
 //! is used to manage and resolve VIDs, as well as send and receive messages
 //! between them.
 //!
-//! # Example
+//! ## Example
 //!
 //! The following example demonstrates how to send a message from Alice to Bob
 //!
@@ -49,10 +49,23 @@
 //!     Ok(())
 //! }
 //! ```
+//! ## Core protocol
 //!
+//! By default this library comes with methods to send and receive messages
+//! over various transport and code to resolve and verify various VIDs.
+//!
+//! If your use-case only requires the core protocol, you can disable the
+//! `async` feature to remove the transport layer and resolve methods.
+//!
+//! The `AsyncStore` uses the tokio async runtime and offers a high level API.
+//!
+//! The `Store` struct implements managing VIDs and sealing / opening
+//! TSP messages (low level API), it does not require an async runtime.
 pub mod cesr;
 pub mod crypto;
 pub mod definitions;
+mod error;
+mod store;
 pub mod vid;
 
 #[cfg(feature = "async")]
@@ -61,20 +74,14 @@ pub mod transport;
 #[cfg(feature = "async")]
 mod async_store;
 
-mod error;
-mod store;
-
 #[cfg(feature = "async")]
 #[cfg(test)]
 mod test;
 
-pub use crate::{
-    definitions::{Payload, PrivateVid, ReceivedTspMessage, VerifiedVid},
-    vid::{OwnedVid, Vid},
-};
-
 #[cfg(feature = "async")]
 pub use async_store::AsyncStore;
 
+pub use definitions::{Payload, PrivateVid, ReceivedTspMessage, VerifiedVid};
 pub use error::Error;
 pub use store::{ExportVid, Store};
+pub use vid::{OwnedVid, Vid};

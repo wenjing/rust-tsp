@@ -9,8 +9,8 @@ use tokio::sync::mpsc::{self, Receiver};
 use url::Url;
 
 /// Holds private ands verified VIDs
-/// A Store contains verified vid's, our relationship status to them,
-/// as well as the private vid's that this application has control over.
+/// A Store contains verified VIDs, our relationship status to them,
+/// as well as the private VIDs that this application has control over.
 ///
 /// # Example
 ///
@@ -42,6 +42,7 @@ pub struct AsyncStore {
 }
 
 impl AsyncStore {
+    /// Create a new and empty store
     pub fn new() -> Self {
         Default::default()
     }
@@ -61,6 +62,7 @@ impl AsyncStore {
         self.inner.set_relation_for_vid(vid, relation_vid)
     }
 
+    /// Sets the relationship status for a VID
     pub(super) fn set_relation_status_for_vid(
         &self,
         vid: &str,
@@ -74,10 +76,12 @@ impl AsyncStore {
         self.inner.set_route_for_vid(vid, route)
     }
 
+    /// Sets the parent for a VID. This is used to create a nested message.
     pub fn set_parent_for_vid(&self, vid: &str, parent: Option<&str>) -> Result<(), Error> {
         self.inner.set_parent_for_vid(vid, parent)
     }
 
+    /// List all VIDs in the database
     pub fn list_vids(&self) -> Result<Vec<String>, Error> {
         self.inner.list_vids()
     }
@@ -267,7 +271,9 @@ impl AsyncStore {
         Ok(())
     }
 
-    // Receive, open and forward a TSP message
+    /// Receive, open and forward a TSP message
+    /// This method is used by intermediary nodes to receive a TSP message,
+    /// open it and forward it to the next hop.
     pub async fn route_message(
         &self,
         sender: &str,
