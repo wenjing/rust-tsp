@@ -1,5 +1,5 @@
 use async_stream::stream;
-use futures::SinkExt;
+use futures::{SinkExt, StreamExt};
 use std::{collections::HashMap, fmt::Display, io, net::SocketAddr, sync::Arc};
 use tokio::{
     io::AsyncWriteExt,
@@ -7,12 +7,10 @@ use tokio::{
     sync::{mpsc, Mutex},
     task::JoinHandle,
 };
-use tokio_stream::StreamExt;
 use tokio_util::{
     bytes::BytesMut,
     codec::{BytesCodec, Framed},
 };
-use tracing_subscriber::EnvFilter;
 use url::Url;
 
 use super::{TSPStream, TransportError};
@@ -80,10 +78,6 @@ pub async fn start_broadcast_server(addr: &str) -> Result<JoinHandle<()>, Transp
 
 /// Start a broadcast server, that will forward all messages to all open tcp connections
 pub async fn broadcast_server<A: ToSocketAddrs + Display>(addr: A) -> Result<(), TransportError> {
-    let _ = tracing_subscriber::fmt()
-        .with_env_filter(EnvFilter::from_default_env().add_directive("warn".parse().unwrap()))
-        .try_init();
-
     let state = Arc::new(Mutex::new(Shared::new()));
     let listener = TcpListener::bind(&addr)
         .await

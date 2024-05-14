@@ -31,7 +31,7 @@ cargo doc --workspace --no-deps
 Apart from the library, there are a few example executables.
 The CLI is most usefull, see below how to install and use the CLI.
 
-# Organisation of the project folder
+## Organisation of the project folder
 
 At this point in time, this repository is organized using [Cargo workspaces](https://doc.rust-lang.org/book/ch14-03-cargo-workspaces.html). This means that several independent crates are present in this repository, which each have their own `Cargo.toml` file.
 
@@ -45,7 +45,7 @@ At this point in time, this repository is organized using [Cargo workspaces](htt
    * `transport/` code (built using [tokio](https://tokio.rs/) foundations) for actually sending and receiving data over a transport layer.
    * `vid/` contains code for handling *verified identifiers* and identities. Currently only an extended form of `did:web` is supported.
 
-# Documentation
+## Documentation
 
 The development documentation is published at https://docs.tsp-test.org/tsp/
 
@@ -54,7 +54,7 @@ can be found on https://book.tsp-test.org/
 
 In the future, documentation will be available at [docs.rs](https://docs.rs).
 
-# Test CLI
+## Test CLI
 
 The examples crate contains a test CLI interface for this library.
 
@@ -85,6 +85,6 @@ echo "Hello World!" | tsp send -s did:web:tsp-test.org:user:alice -r did:web:tsp
 
 See https://book.tsp-test.org/ for the full documentation.
 
-# Technical specification
+## Technical specification
 
 See https://hackmd.io/@2JvzP98CRBm6AyIDDz-2tw/H147MYkjp for the technical specification.

@@ -20,14 +20,10 @@ async = [
     "resolve",
     "dep:async-stream",
     "dep:futures",
-    "dep:futures-core",
-    "dep:futures-util",
     "dep:tokio",
-    "dep:tokio-stream",
     "dep:tokio-tungstenite",
     "dep:tokio-util",
     "dep:tracing",
-    "dep:tracing-subscriber"
 ]
 resolve = [
     "serialize",
@@ -44,22 +40,19 @@ serialize = [
 base64ct = { workspace = true }
 thiserror = { workspace = true }
 url = { workspace = true }
+tracing = { workspace = true, optional = true }
 # crypto
-ed25519-dalek = { workspace = true, features = ["fast", "zeroize", "rand_core"] }
+ed25519-dalek = { workspace = true }
 hpke = { workspace = true }
 rand = { workspace = true }
 sha2 = { workspace = true }
 # async
 async-stream = { workspace = true, optional = true }
 futures = { workspace = true, optional = true }
-futures-core = { workspace = true, optional = true }
-futures-util = { workspace = true, optional = true }
 tokio = { workspace = true, optional = true }
-tokio-stream = { workspace = true, optional = true }
+# transports
 tokio-tungstenite = { workspace = true, optional = true }
 tokio-util = { workspace = true, optional = true }
-tracing = { workspace = true, optional = true }
-tracing-subscriber = { workspace = true, optional = true }
 # resolve
 reqwest = { workspace = true, optional = true }
 # serialize

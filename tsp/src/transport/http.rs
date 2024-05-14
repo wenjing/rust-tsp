@@ -1,6 +1,6 @@
 use crate::definitions::TSPStream;
 use async_stream::stream;
-use futures_util::StreamExt;
+use futures::StreamExt;
 use tokio_util::bytes::BytesMut;
 use url::Url;
 
