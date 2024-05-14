@@ -8,7 +8,13 @@ use rand::{rngs::StdRng, SeedableRng};
 
 use super::{CryptoError, MessageContents};
 
+pub(crate) enum Mode {
+    Auth,
+    Essr,
+}
+
 pub(crate) fn seal<A, Kdf, Kem>(
+    mode: Mode,
     sender: &dyn PrivateVid,
     receiver: &dyn VerifiedVid,
     nonconfidential_data: Option<NonConfidentialData>,
@@ -60,10 +66,13 @@ where
     );
     crate::cesr::encode_payload(secret_payload, &mut cesr_message)?;
 
-    // HPKE sender mode: "Auth"
     let sender_decryption_key = Kem::PrivateKey::from_bytes(sender.decryption_key())?;
     let sender_encryption_key = Kem::PublicKey::from_bytes(sender.encryption_key())?;
-    let mode = OpModeS::Auth((&sender_decryption_key, &sender_encryption_key));
+
+    let hpke_mode = match mode {
+        Mode::Auth => OpModeS::Auth((&sender_decryption_key, &sender_encryption_key)),
+        Mode::Essr => OpModeS::Base
+    };
 
     // recipient public key
     let message_receiver = Kem::PublicKey::from_bytes(receiver.encryption_key())?;
@@ -75,7 +84,7 @@ where
 
     // perform encryption
     let (encapped_key, tag) = hpke::single_shot_seal_in_place_detached::<A, Kdf, Kem, StdRng>(
-        &mode,
+        &hpke_mode,
         &message_receiver,
         &data,
         &mut cesr_message,
@@ -99,6 +108,7 @@ where
 }
 
 pub(crate) fn open<'a, A, Kdf, Kem>(
+    mode: Mode,
     receiver: &dyn PrivateVid,
     sender: &dyn VerifiedVid,
     tsp_message: &'a mut [u8],
@@ -144,9 +154,14 @@ where
     let encapped_key = Kem::EncappedKey::from_bytes(encapped_key)?;
     let tag = AeadTag::from_bytes(tag)?;
 
+    let hpke_mode = match mode {
+        Mode::Auth =>  OpModeR::Auth(&sender_encryption_key),
+        Mode::Essr => OpModeR::Base
+    };
+
     // decrypt the ciphertext
     hpke::single_shot_open_in_place_detached::<A, Kdf, Kem>(
-        &OpModeR::Auth(&sender_encryption_key),
+        &hpke_mode,
         &receiver_decryption_key,
         &encapped_key,
         info,
@@ -182,6 +197,6 @@ where
 }
 
 /// Generate N random bytes using the provided RNG
-fn fresh_nonce(csprng: &mut (impl rand::RngCore + rand::CryptoRng)) -> crate::cesr::Nonce {
+pub(crate) fn fresh_nonce(csprng: &mut (impl rand::RngCore + rand::CryptoRng)) -> crate::cesr::Nonce {
     crate::cesr::Nonce::generate(|dst| csprng.fill_bytes(dst))
 }

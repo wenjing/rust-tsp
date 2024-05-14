@@ -22,7 +22,7 @@ pub fn seal(
     nonconfidential_data: Option<NonConfidentialData>,
     payload: Payload<&[u8]>,
 ) -> Result<TSPMessage, CryptoError> {
-    tsp_hpke::seal::<Aead, Kdf, Kem>(sender, receiver, nonconfidential_data, payload, None)
+    tsp_hpke::seal::<Aead, Kdf, Kem>(tsp_hpke::Mode::Auth, sender, receiver, nonconfidential_data, payload, None)
 }
 
 /// Encrypt, authenticate and sign and CESR encode a TSP message; also returns the hash value of the plaintext parts before encryption
@@ -34,6 +34,7 @@ pub fn seal_and_hash(
 ) -> Result<(TSPMessage, Digest), CryptoError> {
     let digest = &mut Default::default();
     let msg = tsp_hpke::seal::<Aead, Kdf, Kem>(
+        tsp_hpke::Mode::Auth, 
         sender,
         receiver,
         nonconfidential_data,
@@ -56,7 +57,7 @@ pub fn open<'a>(
     sender: &dyn VerifiedVid,
     tsp_message: &'a mut [u8],
 ) -> Result<MessageContents<'a>, CryptoError> {
-    tsp_hpke::open::<Aead, Kdf, Kem>(receiver, sender, tsp_message)
+    tsp_hpke::open::<Aead, Kdf, Kem>(tsp_hpke::Mode::Auth, receiver, sender, tsp_message)
 }
 
 /// Construct and sign a non-confidential TSP message
