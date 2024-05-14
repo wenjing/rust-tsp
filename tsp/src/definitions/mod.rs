@@ -15,7 +15,7 @@ pub type TSPMessage = Vec<u8>;
 #[cfg(feature = "async")]
 pub type TSPStream<D, E> = std::pin::Pin<Box<dyn Stream<Item = Result<D, E>> + Send>>;
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum MessageType {
     Signed,
     SignedAndEncrypted,

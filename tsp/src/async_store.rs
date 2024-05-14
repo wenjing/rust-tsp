@@ -93,6 +93,11 @@ impl AsyncStore {
         self.inner.add_private_vid(private_vid)
     }
 
+    /// Remove a VID from the database
+    pub fn forget_vid(&self, vid: &str) -> Result<(), Error> {
+        self.inner.forget_vid(vid)
+    }
+
     /// Add the already resolved `verified_vid` to the database as a relationship
     pub fn add_verified_vid(&self, verified_vid: impl VerifiedVid + 'static) -> Result<(), Error> {
         self.inner.add_verified_vid(verified_vid)

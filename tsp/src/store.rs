@@ -182,6 +182,13 @@ impl Store {
         Ok(())
     }
 
+    /// Remove a VID from the database
+    pub fn forget_vid(&self, vid: &str) -> Result<(), Error> {
+        self.vids.write()?.remove(vid);
+
+        Ok(())
+    }
+
     /// Sets the parent for a VID. This is used to create a nested message.
     pub fn set_parent_for_vid(&self, vid: &str, parent_vid: Option<&str>) -> Result<(), Error> {
         self.modify_vid(vid, |resolved| {
@@ -630,6 +637,83 @@ impl Store {
                     message_type: MessageType::Signed,
                 })
             }
+        }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use crate::{definitions::MessageType, OwnedVid, ReceivedTspMessage, Store, VerifiedVid};
+
+    fn new_vid() -> OwnedVid {
+        OwnedVid::new_did_peer("tcp://127.0.0.1:1337".parse().unwrap())
+    }
+
+    #[test]
+    fn test_add_private_vid() {
+        let store = Store::new();
+        let vid = new_vid();
+
+        store.add_private_vid(vid.clone()).unwrap();
+
+        assert!(store.has_private_vid(vid.identifier()).unwrap());
+    }
+
+    #[test]
+    fn test_add_verified_vid() {
+        let store = Store::new();
+        let owned_vid = new_vid();
+
+        store.add_verified_vid(owned_vid.vid().clone()).unwrap();
+
+        assert!(store.get_verified_vid(owned_vid.identifier()).is_ok());
+    }
+
+    #[test]
+    fn test_remove() {
+        let store = Store::new();
+        let vid = new_vid();
+
+        store.add_private_vid(vid.clone()).unwrap();
+
+        assert!(store.has_private_vid(vid.identifier()).unwrap());
+
+        store.forget_vid(vid.identifier()).unwrap();
+
+        assert!(!store.has_private_vid(vid.identifier()).unwrap());
+    }
+
+    #[test]
+    fn test_open_seal() {
+        let store = Store::new();
+        let alice = new_vid();
+        let bob = new_vid();
+
+        store.add_private_vid(alice.clone()).unwrap();
+        store.add_private_vid(bob.clone()).unwrap();
+
+        let message = b"hello world";
+
+        let (url, sealed) = store
+            .seal_message(alice.identifier(), bob.identifier(), None, message)
+            .unwrap();
+
+        assert_eq!(url.as_str(), "tcp://127.0.0.1:1337");
+
+        let received = store.open_message(&mut sealed.clone()).unwrap();
+
+        if let ReceivedTspMessage::GenericMessage {
+            sender,
+            message: received_message,
+            message_type,
+            ..
+        } = received
+        {
+            assert_eq!(sender, alice.identifier());
+            assert_eq!(received_message, message);
+            assert_eq!(message_type, MessageType::SignedAndEncrypted);
+        } else {
+            panic!("unexpected message type");
         }
     }
 }
