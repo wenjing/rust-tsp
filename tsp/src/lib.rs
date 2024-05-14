@@ -6,7 +6,7 @@
 //! The primary API this crates exposes is the [AsyncStore] struct, which
 //! is used to manage and resolve VIDs, as well as send and receive messages
 //! between them.
-//! 
+//!
 //! ## Core protocol
 //!
 //! By default this library comes with methods to send and receive messages
@@ -74,7 +74,7 @@ pub mod cesr;
 ///     using DHKEM(X25519, HKDF-SHA256) as asymmetric primitives and
 ///     ChaCha20/Poly1305 as underlying AEAD encrypting scheme,
 ///     and signed using Ed25519 to achieve **non-repudiation**
-///     (more precisely "strong receiver-unforgeability under chosen 
+///     (more precisely "strong receiver-unforgeability under chosen
 pub mod crypto;
 
 /// Defines several common data structures, traits and error types that are used throughout the project.
