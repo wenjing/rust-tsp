@@ -1,4 +1,5 @@
 use crate::definitions::TSPStream;
+use tokio_util::bytes::BytesMut;
 use url::Url;
 
 pub mod error;
@@ -21,7 +22,7 @@ pub async fn send_message(transport: &Url, tsp_message: &[u8]) -> Result<(), Tra
 
 pub async fn receive_messages(
     transport: &Url,
-) -> Result<TSPStream<TransportError>, TransportError> {
+) -> Result<TSPStream<BytesMut, TransportError>, TransportError> {
     match transport.scheme() {
         tcp::SCHEME => tcp::receive_messages(transport).await,
         http::SCHEME_HTTP => http::receive_messages(transport).await,

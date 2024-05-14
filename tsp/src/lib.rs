@@ -25,6 +25,7 @@
 //!
 //! ```no_run
 //! use tsp::{AsyncStore, OwnedVid, Error, ReceivedTspMessage};
+//! use futures::StreamExt;
 //!
 //! #[tokio::main]
 //! async fn main() -> Result<(), Error> {
@@ -52,7 +53,7 @@
 //!
 //!     // receive a message
 //!     let Some(Ok(ReceivedTspMessage::GenericMessage { message, .. }))=
-//!         bobs_messages.recv().await else {
+//!         bobs_messages.next().await else {
 //!         panic!("bob did not receive a generic message")
 //!     };
 //!

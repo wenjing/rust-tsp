@@ -3,8 +3,6 @@ use std::fmt::Debug;
 
 #[cfg(feature = "async")]
 use futures::Stream;
-#[cfg(feature = "async")]
-use tokio_util::bytes::BytesMut;
 
 pub type KeyData = [u8; 32];
 pub type Digest = [u8; 32];
@@ -15,7 +13,7 @@ pub type NonConfidentialData<'a> = &'a [u8];
 pub type TSPMessage = Vec<u8>;
 
 #[cfg(feature = "async")]
-pub type TSPStream<E> = std::pin::Pin<Box<dyn Stream<Item = Result<BytesMut, E>> + Send>>;
+pub type TSPStream<D, E> = std::pin::Pin<Box<dyn Stream<Item = Result<D, E>> + Send>>;
 
 #[derive(Debug)]
 pub enum MessageType {

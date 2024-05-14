@@ -1,11 +1,10 @@
 use crate::{
-    definitions::{Digest, Payload, ReceivedTspMessage, VerifiedVid},
+    definitions::{Digest, Payload, ReceivedTspMessage, TSPStream, VerifiedVid},
     error::Error,
     store::{ExportVid, RelationshipStatus, Store},
     PrivateVid,
 };
 use futures::StreamExt;
-use tokio::sync::mpsc::{self, Receiver};
 use url::Url;
 
 /// Holds private ands verified VIDs
@@ -329,28 +328,20 @@ impl AsyncStore {
     /// Receive TSP messages for the private VID identified by `vid`, using the appropriate transport mechanism for it.
     /// Messages will be queued in a channel
     /// The returned channel contains a maximum of 16 messages
-    pub async fn receive(
-        &self,
-        vid: &str,
-    ) -> Result<Receiver<Result<ReceivedTspMessage, Error>>, Error> {
+    pub async fn receive(&self, vid: &str) -> Result<TSPStream<ReceivedTspMessage, Error>, Error> {
         let receiver = self.inner.get_private_vid(vid)?;
-
-        let (tx, rx) = mpsc::channel(16);
-        let mut messages = crate::transport::receive_messages(receiver.endpoint()).await?;
+        let messages = crate::transport::receive_messages(receiver.endpoint()).await?;
 
         let db = self.inner.clone();
-        tokio::task::spawn(async move {
-            while let Some(message) = messages.next().await {
-                let result = match message {
-                    Ok(mut m) => db.clone().open_message(&mut m),
+        Ok(Box::pin(messages.then(move |message| {
+            let db_inner = db.clone();
+            async move {
+                match message {
+                    Ok(mut m) => db_inner.clone().open_message(&mut m),
                     Err(e) => Err(e.into()),
-                };
-
-                let _ = tx.send(result).await;
+                }
             }
-        });
-
-        Ok(rx)
+        })))
     }
 
     /// Send TSP broadcast message to the specified VIDs

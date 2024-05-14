@@ -1,5 +1,6 @@
 use base64ct::{Base64UrlUnpadded, Encoding};
 use clap::{Parser, Subcommand};
+use futures::StreamExt;
 use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
@@ -340,7 +341,7 @@ async fn run() -> Result<(), Error> {
 
             info!("listening for messages...");
 
-            while let Some(Ok(message)) = messages.recv().await {
+            while let Some(Ok(message)) = messages.next().await {
                 match message {
                     ReceivedTspMessage::GenericMessage {
                         sender,

@@ -28,7 +28,7 @@ pub(crate) async fn send_message(tsp_message: &[u8], url: &Url) -> Result<(), Tr
 
 pub(crate) async fn receive_messages(
     address: &Url,
-) -> Result<TSPStream<TransportError>, TransportError> {
+) -> Result<TSPStream<BytesMut, TransportError>, TransportError> {
     let mut ws_address = address.clone();
 
     match address.scheme() {

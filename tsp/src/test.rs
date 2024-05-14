@@ -2,6 +2,7 @@ use crate::{
     definitions::MessageType::{Signed, SignedAndEncrypted},
     AsyncStore, OwnedVid, VerifiedVid,
 };
+use futures::StreamExt;
 
 #[tokio::test]
 #[serial_test::serial(tcp)]
@@ -53,7 +54,7 @@ async fn test_direct_mode() {
         message,
         message_type: SignedAndEncrypted,
         ..
-    } = bobs_messages.recv().await.unwrap().unwrap()
+    } = bobs_messages.next().await.unwrap().unwrap()
     else {
         panic!("bob did not receive a generic message")
     };
@@ -110,7 +111,7 @@ async fn test_anycast() {
         message,
         message_type: Signed,
         ..
-    } = bobs_messages.recv().await.unwrap().unwrap()
+    } = bobs_messages.next().await.unwrap().unwrap()
     else {
         panic!("bob did not receive a broadcast message")
     };
@@ -197,7 +198,7 @@ async fn test_nested_mode() {
         message,
         message_type: SignedAndEncrypted,
         ..
-    } = bobs_inner_messages.recv().await.unwrap().unwrap()
+    } = bobs_inner_messages.next().await.unwrap().unwrap()
     else {
         panic!("bob did not receive a generic message inner")
     };
@@ -281,7 +282,7 @@ async fn test_routed_mode() {
         sender,
         next_hop,
         route,
-    } = bobs_messages.recv().await.unwrap().unwrap()
+    } = bobs_messages.next().await.unwrap().unwrap()
     else {
         panic!("bob did not receive a forward request")
     };
@@ -315,7 +316,7 @@ async fn test_routed_mode() {
         .await
         .unwrap();
 
-    let crate::Error::UnverifiedVid(hop) = alice_messages.recv().await.unwrap().unwrap_err() else {
+    let crate::Error::UnverifiedVid(hop) = alice_messages.next().await.unwrap().unwrap_err() else {
         panic!("alice accepted a message which she cannot handle");
     };
     assert_eq!(hop, "did:web:hidden.web:user:realbob");
@@ -334,7 +335,7 @@ async fn test_routed_mode() {
         next_hop,
         route,
         ..
-    } = alice_messages.recv().await.unwrap().unwrap()
+    } = alice_messages.next().await.unwrap().unwrap()
     else {
         panic!("alice did not receive message");
     };
@@ -358,7 +359,7 @@ async fn test_routed_mode() {
         message,
         message_type: SignedAndEncrypted,
         ..
-    } = alice_messages.recv().await.unwrap().unwrap()
+    } = alice_messages.next().await.unwrap().unwrap()
     else {
         panic!("alice did not receive message");
     };
@@ -432,7 +433,7 @@ async fn attack_failures() {
         .await
         .unwrap();
 
-        assert!(bobs_messages.recv().await.unwrap().is_err());
+        assert!(bobs_messages.next().await.unwrap().is_err());
 
         if stop {
             break;
@@ -487,7 +488,7 @@ async fn test_relation_forming() {
     // receive a message
     let crate::definitions::ReceivedTspMessage::RequestRelationship {
         sender, thread_id, ..
-    } = bobs_messages.recv().await.unwrap().unwrap()
+    } = bobs_messages.next().await.unwrap().unwrap()
     else {
         panic!("bob did not receive a relation request")
     };
@@ -512,7 +513,7 @@ async fn test_relation_forming() {
         .unwrap();
 
     let crate::definitions::ReceivedTspMessage::AcceptRelationship { sender } =
-        alice_messages.recv().await.unwrap().unwrap()
+        alice_messages.next().await.unwrap().unwrap()
     else {
         panic!("alice did not receive a relation accept")
     };
