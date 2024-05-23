@@ -515,7 +515,7 @@ impl Store {
                 let sender = String::from_utf8(sender.to_vec())?;
 
                 let Ok(sender_vid) = self.get_verified_vid(&sender) else {
-                    return Err(Error::UnverifiedVid(sender));
+                    return Err(Error::UnverifiedSource(sender));
                 };
 
                 let (nonconfidential_data, payload, raw_bytes) =
@@ -546,8 +546,9 @@ impl Store {
                     Payload::RoutedMessage(hops, message) => {
                         let next_hop = std::str::from_utf8(hops[0])?;
 
+                        // TODO maybe we should defer this to the actual attempt at forwarding the message
                         let Ok(next_hop) = self.get_verified_vid(next_hop) else {
-                            return Err(Error::UnverifiedVid(next_hop.to_string()));
+                            return Err(Error::UnverifiedNextHop(next_hop.to_string()));
                         };
 
                         Ok(ReceivedTspMessage::ForwardRequest {
