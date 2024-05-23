@@ -46,6 +46,10 @@ pub enum ReceivedTspMessage {
         route: Vec<Vec<u8>>,
         opaque_payload: Vec<u8>,
     },
+    PendingMessage {
+        unknown_vid: String,
+        payload: tokio_util::bytes::BytesMut,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

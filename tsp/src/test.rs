@@ -316,7 +316,10 @@ async fn test_routed_mode() {
         .await
         .unwrap();
 
-    let crate::Error::UnverifiedNextHop(hop) = alice_messages.next().await.unwrap().unwrap_err() else {
+    let crate::ReceivedTspMessage::PendingMessage {
+        unknown_vid: hop, ..
+    } = alice_messages.next().await.unwrap().unwrap()
+    else {
         panic!("alice accepted a message which she cannot handle");
     };
     assert_eq!(hop, "did:web:hidden.web:user:realbob");

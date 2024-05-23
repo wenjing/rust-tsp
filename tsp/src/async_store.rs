@@ -342,7 +342,16 @@ impl AsyncStore {
             let db_inner = db.clone();
             async move {
                 match message {
-                    Ok(mut m) => db_inner.clone().open_message(&mut m),
+                    Ok(mut m) => match db_inner.clone().open_message(&mut m) {
+                        Err(Error::UnverifiedSource(unknown_vid))
+                        | Err(Error::UnverifiedNextHop(unknown_vid)) => {
+                            Ok(ReceivedTspMessage::PendingMessage {
+                                unknown_vid,
+                                payload: m,
+                            })
+                        }
+                        maybe_message => maybe_message,
+                    },
                     Err(e) => Err(e.into()),
                 }
             }
@@ -365,5 +374,16 @@ impl AsyncStore {
         }
 
         Ok(())
+    }
+
+    /// Process the payload from a  'PendingMessage' by resolving the unknown vid and retrying
+    pub async fn verify_and_open(
+        &mut self,
+        vid: &str,
+        mut payload: tokio_util::bytes::BytesMut,
+    ) -> Result<ReceivedTspMessage, Error> {
+        self.verify_vid(vid).await?;
+
+        self.inner.clone().open_message(&mut payload)
     }
 }

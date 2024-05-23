@@ -373,6 +373,10 @@ async fn run() -> Result<(), Error> {
                             sender, next_hop
                         );
                     }
+                    ReceivedTspMessage::PendingMessage { unknown_vid, .. } => {
+                        //TODO: resolve the vid and retry
+                        info!("message involving unknown party {}", unknown_vid);
+                    }
                 }
 
                 if one {
