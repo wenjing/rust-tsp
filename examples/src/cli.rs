@@ -341,46 +341,67 @@ async fn run() -> Result<(), Error> {
 
             info!("listening for messages...");
 
-            while let Some(Ok(message)) = messages.next().await {
-                match message {
-                    ReceivedTspMessage::GenericMessage {
-                        sender,
-                        nonconfidential_data: _,
-                        message,
-                        message_type: _,
-                    } => {
-                        info!("received message ({} bytes) from {}", message.len(), sender,);
-                        println!("{}", String::from_utf8_lossy(&message),);
+            'receiving: while let Some(Ok(mut message)) = messages.next().await {
+                'retry: loop {
+                    match message {
+                        ReceivedTspMessage::GenericMessage {
+                            sender,
+                            nonconfidential_data: _,
+                            message,
+                            message_type: _,
+                        } => {
+                            info!("received message ({} bytes) from {}", message.len(), sender,);
+                            println!("{}", String::from_utf8_lossy(&message),);
+                        }
+                        ReceivedTspMessage::RequestRelationship {
+                            sender,
+                            thread_id: _,
+                            route: _,
+                        } => {
+                            info!("received relationship request from {}", sender);
+                        }
+                        ReceivedTspMessage::AcceptRelationship { sender } => {
+                            info!("received accept relationship from {}", sender);
+                        }
+                        ReceivedTspMessage::CancelRelationship { sender } => {
+                            info!("received cancel relationship from {}", sender);
+                        }
+                        ReceivedTspMessage::ForwardRequest {
+                            sender, next_hop, ..
+                        } => {
+                            info!(
+                                "messaging forwarding request from {} to {}",
+                                sender, next_hop
+                            );
+                        }
+                        ReceivedTspMessage::PendingMessage {
+                            unknown_vid,
+                            payload,
+                        } => {
+                            use std::io::BufRead;
+                            info!("message involving unknown party {}", unknown_vid);
+                            print!(
+                                "do you want to read a message from '{}' [y/n]?",
+                                unknown_vid
+                            );
+                            let mut line = String::new();
+                            std::io::stdin()
+                                .lock()
+                                .read_line(&mut line)
+                                .expect("IO error");
+                            if line.to_uppercase() == "Y" || line.to_uppercase() == "YES" {
+                                message =
+                                    vid_database.verify_and_open(&unknown_vid, payload).await?;
+                                continue 'retry;
+                            }
+                        }
                     }
-                    ReceivedTspMessage::RequestRelationship {
-                        sender,
-                        thread_id: _,
-                        route: _,
-                    } => {
-                        info!("received relationship request from {}", sender);
-                    }
-                    ReceivedTspMessage::AcceptRelationship { sender } => {
-                        info!("received accept relationship from {}", sender);
-                    }
-                    ReceivedTspMessage::CancelRelationship { sender } => {
-                        info!("received cancel relationship from {}", sender);
-                    }
-                    ReceivedTspMessage::ForwardRequest {
-                        sender, next_hop, ..
-                    } => {
-                        info!(
-                            "messaging forwarding request from {} to {}",
-                            sender, next_hop
-                        );
-                    }
-                    ReceivedTspMessage::PendingMessage { unknown_vid, .. } => {
-                        //TODO: resolve the vid and retry
-                        info!("message involving unknown party {}", unknown_vid);
-                    }
-                }
 
-                if one {
-                    break;
+                    if one {
+                        break 'receiving;
+                    } else {
+                        break;
+                    }
                 }
             }
         }
