@@ -341,8 +341,8 @@ async fn run() -> Result<(), Error> {
 
             info!("listening for messages...");
 
-            'receiving: while let Some(Ok(mut message)) = messages.next().await {
-                'retry: loop {
+            while let Some(Ok(message)) = messages.next().await {
+                let handle_message = |message| {
                     match message {
                         ReceivedTspMessage::GenericMessage {
                             sender,
@@ -390,18 +390,21 @@ async fn run() -> Result<(), Error> {
                                 .read_line(&mut line)
                                 .expect("IO error");
                             if line.to_uppercase() == "Y" || line.to_uppercase() == "YES" {
-                                message =
-                                    vid_database.verify_and_open(&unknown_vid, payload).await?;
-                                continue 'retry;
+                                return Some((unknown_vid, payload));
                             }
                         }
                     }
 
-                    if one {
-                        break 'receiving;
-                    } else {
-                        break;
-                    }
+                    None
+                };
+
+                if let Some((unknown_vid, payload)) = handle_message(message) {
+                    let message = vid_database.verify_and_open(&unknown_vid, payload).await?;
+                    let _ = handle_message(message);
+                }
+
+                if one {
+                    break;
                 }
             }
         }
