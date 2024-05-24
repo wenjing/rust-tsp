@@ -26,10 +26,12 @@ pub enum Error {
     MissingVid(String),
     #[error("Error: unresolved vid {0}")]
     UnverifiedVid(String),
-    #[error("Error: unknown sender {0}")]
+    #[error("Error: no relation with sender {0}")]
     UnverifiedSource(String),
     #[error("Error: no relation with next hop {0}")]
-    UnverifiedNextHop(String),
+    InvalidNextHop(String),
+    #[error("Error: no relation established for {0}")]
+    MissingDropOff(String),
     #[error("Internal error")]
     Internal,
 }

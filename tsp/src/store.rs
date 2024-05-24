@@ -464,7 +464,7 @@ impl Store {
             //TODO: we cannot user 'sender.relation_vid()', since the relationship status of this cannot be set
             let recipient = match self.get_vid(sender.identifier())?.get_relation_vid() {
                 Some(destination) => self.get_verified_vid(destination)?,
-                None => return Err(VidError::ResolveVid("no relation for drop-off VID").into()),
+                None => return Err(Error::MissingDropOff(sender.identifier().to_string())),
             };
 
             let tsp_message = crate::crypto::seal(
@@ -477,12 +477,13 @@ impl Store {
             Ok((recipient.endpoint().clone(), tsp_message))
         } else {
             // we are an intermediary, continue sending the message
-            // let next_hop = self.inner.get_vid(next_hop)?;
-            let next_hop_context = self.get_vid(next_hop)?;
+            let next_hop_context = self
+                .get_vid(next_hop)
+                .map_err(|_| Error::InvalidNextHop(next_hop.to_string()))?;
 
-            let sender = match self.get_vid(next_hop)?.get_relation_vid() {
+            let sender = match next_hop_context.get_relation_vid() {
                 Some(first_sender) => self.get_private_vid(first_sender)?,
-                None => return Err(VidError::ResolveVid("missing sender VID for first hop").into()),
+                None => return Err(Error::InvalidNextHop(next_hop.to_string())),
             };
 
             let tsp_message = crate::crypto::seal(
@@ -546,14 +547,9 @@ impl Store {
                     Payload::RoutedMessage(hops, message) => {
                         let next_hop = std::str::from_utf8(hops[0])?;
 
-                        // TODO maybe we should defer this to the actual attempt at forwarding the message
-                        let Ok(next_hop) = self.get_verified_vid(next_hop) else {
-                            return Err(Error::UnverifiedNextHop(next_hop.to_string()));
-                        };
-
                         Ok(ReceivedTspMessage::ForwardRequest {
                             sender,
-                            next_hop: next_hop.identifier().to_string(),
+                            next_hop: next_hop.to_string(),
                             route: hops[1..].iter().map(|x| x.to_vec()).collect(),
                             opaque_payload: message.to_owned(),
                         })

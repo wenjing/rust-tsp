@@ -343,8 +343,7 @@ impl AsyncStore {
             async move {
                 match message {
                     Ok(mut m) => match db_inner.clone().open_message(&mut m) {
-                        Err(Error::UnverifiedSource(unknown_vid))
-                        | Err(Error::UnverifiedNextHop(unknown_vid)) => {
+                        Err(Error::UnverifiedSource(unknown_vid)) => {
                             Ok(ReceivedTspMessage::PendingMessage {
                                 unknown_vid,
                                 payload: m,
