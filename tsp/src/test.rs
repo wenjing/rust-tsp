@@ -457,7 +457,25 @@ async fn attack_failures() {
         .await
         .unwrap();
 
-        assert!(bobs_messages.next().await.unwrap().is_err());
+        // corrupting a message might only corrupt the envelope, which is something we cannot
+        // detect immediately without looking up cryptographic material
+        if let Ok(msg) = bobs_messages.next().await.unwrap() {
+            let crate::ReceivedTspMessage::PendingMessage {
+                unknown_vid,
+                payload,
+            } = msg
+            else {
+                panic!("a corrupted message was decoded correctly!");
+            };
+
+            // confirm that the sender vid has been corrupted
+            assert_ne!(unknown_vid, "did:web:did.tsp-test.org:user:alice");
+
+            // confirm that opening the pending message also fails
+            // (We cannot test this exhaustively -- but because the cryptographic material for this
+            // message does not belong to the corrupted vid, it should reliably always fail)
+            assert!(bob_db.verify_and_open(&unknown_vid, payload).await.is_err());
+        };
 
         if stop {
             break;
