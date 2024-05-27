@@ -14,8 +14,7 @@ rust-version.workspace = true
 cesr-t = [ ]
 default = ["async"]
 strict = [ ]
-alloc = [ ]
-demo = ["alloc"]
+demo = [ ]
 async = [
     "resolve",
     "dep:async-stream",

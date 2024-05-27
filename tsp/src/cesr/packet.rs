@@ -588,7 +588,7 @@ pub fn decode_envelope_mut<'a>(stream: &'a mut [u8]) -> Result<CipherView<'a>, D
 }
 
 /// Allocating variant of [encode_payload]
-#[cfg(any(feature = "alloc", test))]
+#[cfg(test)]
 pub fn encode_payload_vec(
     payload: Payload<impl AsRef<[u8]>, impl AsRef<[u8]>>,
 ) -> Result<Vec<u8>, EncodeError> {
@@ -599,7 +599,7 @@ pub fn encode_payload_vec(
 }
 
 /// Allocating variant of [encode_ets_envelope]
-#[cfg(any(feature = "alloc", test))]
+#[cfg(test)]
 pub fn encode_ets_envelope_vec<Vid: AsRef<[u8]>>(
     envelope: Envelope<Vid>,
 ) -> Result<Vec<u8>, EncodeError> {
@@ -610,7 +610,7 @@ pub fn encode_ets_envelope_vec<Vid: AsRef<[u8]>>(
 }
 
 /// Allocating variant of [encode_ets_envelope]
-#[cfg(any(feature = "alloc", test))]
+#[cfg(test)]
 pub fn encode_s_envelope_vec<Vid: AsRef<[u8]>>(
     envelope: Envelope<Vid>,
 ) -> Result<Vec<u8>, EncodeError> {
