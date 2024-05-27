@@ -622,19 +622,19 @@ pub fn encode_s_envelope_vec<Vid: AsRef<[u8]>>(
 
 /// Describes the bytes in a CESR-encoded message part
 #[derive(Default, Debug)]
-pub struct Part {
-    pub prefix: Vec<u8>,
-    pub data: Vec<u8>,
+pub struct Part<'a> {
+    pub prefix: &'a [u8],
+    pub data: &'a [u8],
 }
 
 /// Decode a CESR-encoded data into a Part
-impl Part {
-    fn decode(identifier: u32, data: &[u8], pos: &mut usize) -> Option<Part> {
+impl<'a> Part<'a> {
+    fn decode(identifier: u32, data: &'a [u8], pos: &mut usize) -> Option<Part<'a>> {
         match decode_variable_data_index(identifier, &data[*pos..]) {
             Some(range) => {
                 let part = Part {
-                    prefix: data[*pos..(*pos + range.start)].to_vec(),
-                    data: data[(*pos + range.start)..(*pos + range.end)].to_vec(),
+                    prefix: &data[*pos..(*pos + range.start)],
+                    data: &data[(*pos + range.start)..(*pos + range.end)],
                 };
                 *pos += range.end;
 
@@ -647,13 +647,13 @@ impl Part {
 
 /// Describes the CESR-encoded parts of a TSP message
 #[derive(Default, Debug)]
-pub struct MessageParts {
-    pub prefix: Part,
-    pub sender: Part,
-    pub receiver: Option<Part>,
-    pub nonconfidential_data: Option<Part>,
-    pub ciphertext: Option<Part>,
-    pub signature: Part,
+pub struct MessageParts<'a> {
+    pub prefix: Part<'a>,
+    pub sender: Part<'a>,
+    pub receiver: Option<Part<'a>>,
+    pub nonconfidential_data: Option<Part<'a>>,
+    pub ciphertext: Option<Part<'a>>,
+    pub signature: Part<'a>,
 }
 
 /// Decode a CESR-encoded message into its CESR-encoded parts
@@ -661,8 +661,8 @@ pub fn open_message_into_parts(data: &[u8]) -> Result<MessageParts, DecodeError>
     let (mut pos, _) = detected_tsp_header_size_and_confidentiality(&mut (data as &[u8]))?;
 
     let prefix = Part {
-        prefix: data[..pos].to_vec(),
-        data: vec![],
+        prefix: &data[..pos],
+        data: &[],
     };
 
     let sender = Part::decode(TSP_DEVELOPMENT_VID, data, &mut pos).ok_or(DecodeError::VidError)?;
@@ -674,8 +674,8 @@ pub fn open_message_into_parts(data: &[u8]) -> Result<MessageParts, DecodeError>
         .ok_or(DecodeError::SignatureError)?;
 
     let signature = Part {
-        prefix: data[pos..(data.len() - signature.len())].to_vec(),
-        data: signature.to_vec(),
+        prefix: &data[pos..(data.len() - signature.len())],
+        data: signature,
     };
 
     Ok(MessageParts {

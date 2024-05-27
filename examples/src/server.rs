@@ -241,7 +241,7 @@ async fn get_did_doc(State(state): State<Arc<AppState>>, Path(name): Path<String
 
 /// Format CESR-encoded message parts to descriptive JSON
 fn format_part(title: &str, part: &tsp::cesr::Part, plain: Option<&[u8]>) -> serde_json::Value {
-    let full = [&part.prefix[..], &part.data[..]].concat();
+    let full = [part.prefix, part.data].concat();
 
     json!({
         "title": title,
@@ -249,7 +249,7 @@ fn format_part(title: &str, part: &tsp::cesr::Part, plain: Option<&[u8]>) -> ser
         "data": Base64UrlUnpadded::encode_string(&full),
         "plain": plain
             .and_then(|b| std::str::from_utf8(b).ok())
-            .or(std::str::from_utf8(&part.data).ok()),
+            .or(std::str::from_utf8(part.data).ok()),
     })
 }
 

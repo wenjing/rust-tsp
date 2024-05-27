@@ -148,8 +148,8 @@ fn color_print_part(part: Option<Part>, color: u8) {
     if let Some(Part { prefix, data }) = part {
         print!(
             "\x1b[1;{color}m{}\x1b[0;{color}m{}\x1b[0m",
-            Base64UrlUnpadded::encode_string(&prefix),
-            Base64UrlUnpadded::encode_string(&data)
+            Base64UrlUnpadded::encode_string(prefix),
+            Base64UrlUnpadded::encode_string(data)
         );
     }
 }
