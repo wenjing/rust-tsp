@@ -376,7 +376,8 @@ pub(super) fn detected_tsp_header_size_and_confidentiality(
     Ok((6, encrypted))
 }
 
-/// A structure representing a siganture + data that needs to be verified
+/// A structure representing a siganture + data that needs to be verified.
+/// The `signature` must authenticate the `signed_data`.
 #[derive(Clone, Debug)]
 #[must_use]
 pub struct VerificationChallenge<'a> {
@@ -451,6 +452,16 @@ pub fn decode_envelope<'a, Vid: TryFrom<&'a [u8]>>(
 use std::ops::Range;
 
 #[derive(Debug)]
+/// A CipherView is an intermediary representation of an "opened envelope", but whose signature still needs
+/// to be checked.
+// An opened envelope has the capability of in-place mutations: since the original data is still present
+// 'in memory' (guaranteed by CESR encoding), this saves a needless copy (which is good from a
+// security point-of-view)
+//
+// At the same time, to check the signature on the entire CESR message, we need a immutable
+// reference to the parts of memory that we want to mutate soon after checking the signature, so we
+// cannot use slices in this structure but instead use a mutable reference to the entire data plus
+// ranges so we can produce both "views" of this data.
 pub struct CipherView<'a> {
     data: &'a mut [u8],
 
@@ -466,6 +477,7 @@ pub struct CipherView<'a> {
 }
 
 impl<'a> CipherView<'a> {
+    /// Produce the "opened envelope", consuming this 'CipherView'.
     pub fn into_opened<Vid: TryFrom<&'a [u8]>>(
         self,
     ) -> Result<DecodedEnvelope<'a, Vid, &'a mut [u8]>, Vid::Error> {
@@ -499,6 +511,7 @@ impl<'a> CipherView<'a> {
         })
     }
 
+    /// Obtain the VerificationChallenge of this CipherView
     pub fn as_challenge(&self) -> VerificationChallenge {
         VerificationChallenge {
             signed_data: &self.data[self.signed_data.clone()],
