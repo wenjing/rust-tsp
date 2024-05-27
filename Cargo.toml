@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = [ "tsp", "examples"]
+members = [ "tsp", "examples", "fuzz" ]
 
 [workspace.package]
 version = "0.1.0"
