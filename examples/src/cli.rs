@@ -406,6 +406,13 @@ async fn run() -> Result<(), Error> {
 
                 if let Some((unknown_vid, payload)) = handle_message(message) {
                     let message = vid_database.verify_and_open(&unknown_vid, payload).await?;
+
+                    write_database(&args.database, &vid_database, aliases.clone()).await?;
+
+                    info!(
+                        "{vid} is verified and added to the database {}",
+                        &args.database
+                    );
                     let _ = handle_message(message);
                 }
 
