@@ -33,6 +33,8 @@ struct Cli {
     server: String,
     #[arg(short, long)]
     verbose: bool,
+    #[arg(short, long, help = "Always answer yes to any prompts")]
+    yes: bool,
     #[arg(short, long, help = "Pretty print CESR messages")]
     pretty_print: bool,
 }
@@ -386,15 +388,18 @@ async fn run() -> Result<(), Error> {
                             );
                             io::stdout().flush().expect("I/O error");
 
-                            let mut line = String::new();
-                            io::stdin()
-                                .lock()
-                                .read_line(&mut line)
-                                .expect("could not read reply");
+                            let user_affirms = args.yes || {
+                                let mut line = String::new();
+                                io::stdin()
+                                    .lock()
+                                    .read_line(&mut line)
+                                    .expect("could not read reply");
+                                line = line.to_uppercase();
 
-                            let line = line.to_uppercase();
-                            let reply = line.trim();
-                            if reply == "Y" || reply == "YES" {
+                                matches!(line.trim(), "Y" | "YES")
+                            };
+
+                            if user_affirms {
                                 trace!("processing pending message");
                                 return Some((unknown_vid, payload));
                             }
