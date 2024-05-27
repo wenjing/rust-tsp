@@ -499,7 +499,7 @@ impl Store {
 
     /// Decode an encrypted `message``, which has to be addressed to one of the VIDs in `receivers`, and has to have
     /// `verified_vids` as one of the senders.
-    pub fn open_message(self, message: &mut [u8]) -> Result<ReceivedTspMessage, Error> {
+    pub fn open_message(&self, message: &mut [u8]) -> Result<ReceivedTspMessage, Error> {
         let probed_message = crate::cesr::probe(message)?;
 
         match probed_message {

@@ -342,7 +342,7 @@ impl AsyncStore {
             let db_inner = db.clone();
             async move {
                 match message {
-                    Ok(mut m) => match db_inner.clone().open_message(&mut m) {
+                    Ok(mut m) => match db_inner.open_message(&mut m) {
                         Err(Error::UnverifiedSource(unknown_vid)) => {
                             Ok(ReceivedTspMessage::PendingMessage {
                                 unknown_vid,
@@ -383,6 +383,6 @@ impl AsyncStore {
     ) -> Result<ReceivedTspMessage, Error> {
         self.verify_vid(vid).await?;
 
-        self.inner.clone().open_message(&mut payload)
+        self.inner.open_message(&mut payload)
     }
 }
