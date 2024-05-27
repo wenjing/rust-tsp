@@ -53,6 +53,38 @@ pub struct PublicKeyJwk {
     pub x: String,
 }
 
+pub async fn resolve(id: &str, parts: Vec<&str>) -> Result<Vid, VidError> {
+    #[cfg(test)]
+    {
+        let did_doc = tokio::fs::read_to_string(format!("../examples/test/{}-did.json", parts[4]))
+            .await
+            .unwrap();
+
+        let did_doc: DidDocument = serde_json::from_str(&did_doc).unwrap();
+
+        resolve_document(did_doc, id)
+    }
+
+    #[cfg(not(test))]
+    {
+        let url = resolve_url(&parts)?;
+
+        let response = reqwest::get(url.as_ref())
+            .await
+            .map_err(|e| VidError::Http(url.to_string(), e))?;
+
+        let did_document = match response.error_for_status() {
+            Ok(r) => r
+                .json::<DidDocument>()
+                .await
+                .map_err(|e| VidError::Json(url.to_string(), e))?,
+            Err(e) => Err(VidError::Http(url.to_string(), e))?,
+        };
+
+        resolve_document(did_document, id)
+    }
+}
+
 pub fn resolve_url(parts: &[&str]) -> Result<Url, VidError> {
     match parts {
         ["did", "web", domain] => format!("{PROTOCOL}{domain}/{DEFAULT_PATH}/{DOCUMENT}"),
