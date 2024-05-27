@@ -30,6 +30,8 @@ mod msgtype {
     pub(super) const REL_CANCEL: [u8; 2] = [1, 255];
 }
 
+use arbitrary::Arbitrary;
+
 use super::{
     decode::{decode_count, decode_fixed_data, decode_variable_data, decode_variable_data_index},
     encode::{encode_count, encode_fixed_data},
@@ -40,7 +42,7 @@ use super::{
 /// (128bits via a birthday attack -> 256bits needed)
 /// This explicitly does not implement Clone or Copy to make sure nonces are not reused
 #[derive(Debug)]
-#[cfg_attr(test, derive(PartialEq, Eq, Clone))]
+#[cfg_attr(any(test, feature = "fuzzing"), derive(PartialEq, Eq, Clone))]
 pub struct Nonce([u8; 32]);
 
 impl Nonce {
@@ -60,7 +62,7 @@ pub type Sha256Digest = [u8; 32];
 //TODO: this probably belongs in tsp-definitions; but that's not possible right now
 //due to a circular dependency; this can be solved by removing the workspaces
 #[derive(Clone, Copy, Debug)]
-#[cfg_attr(test, derive(PartialEq, Eq))]
+#[cfg_attr(any(test, feature = "fuzzing"), derive(PartialEq, Eq))]
 pub struct PairedKeys<'a> {
     pub signing: &'a [u8; 32],
     pub encrypting: &'a [u8; 32],
@@ -69,7 +71,7 @@ pub struct PairedKeys<'a> {
 /// A type to distinguish "normal" TSP messages from "control" messages
 #[repr(u32)]
 #[derive(Debug)]
-#[cfg_attr(test, derive(PartialEq, Eq, Clone))]
+#[cfg_attr(any(test, feature = "fuzzing"), derive(PartialEq, Eq, Clone))]
 //TODO: Boxed slices?
 pub enum Payload<'a, Bytes: AsRef<[u8]>, Vid> {
     /// A TSP message which consists only of a message which will be protected using HPKE
@@ -99,6 +101,165 @@ pub enum Payload<'a, Bytes: AsRef<[u8]>, Vid> {
 impl<'a, Bytes: AsRef<[u8]>, Vid> Payload<'a, Bytes, Vid> {
     pub fn estimate_size(&self) -> usize {
         0 // TODO
+    }
+}
+
+// helpers for generating and comparing arbitrary `Payload`s
+#[cfg(feature = "fuzzing")]
+pub mod fuzzing {
+    use super::*;
+
+    #[derive(Debug)]
+    pub struct Wrapper(pub Payload<'static, Vec<u8>, Vec<u8>>);
+
+    impl<'a> arbitrary::Arbitrary<'a> for Wrapper {
+        fn arbitrary(u: &mut arbitrary::Unstructured<'a>) -> arbitrary::Result<Self> {
+            const DIGEST: [u8; 32] = {
+                let mut buf = [0; 32];
+                let mut i = 0;
+                while i < buf.len() {
+                    buf[i] = i as u8;
+                    i += 1;
+                }
+
+                buf
+            };
+
+            const SIGNING: [u8; 32] = DIGEST;
+
+            const ENCRYPTING: [u8; 32] = {
+                let mut buf = [0; 32];
+                let mut i = 0;
+                while i < buf.len() {
+                    buf[i] = 32 + i as u8;
+                    i += 1;
+                }
+
+                buf
+            };
+
+            const PAIRED_KEYS: PairedKeys<'static> = PairedKeys {
+                signing: &SIGNING,
+                encrypting: &ENCRYPTING,
+            };
+
+            #[derive(arbitrary::Arbitrary)]
+            enum Variants {
+                GenericMessage,
+                NestedMessage,
+                RoutedMessage,
+                DirectRelationProposal,
+                DirectRelationAffirm,
+                NestedRelationProposal,
+                NestedRelationAffirm,
+                RelationshipCancel,
+            }
+
+            #[allow(dead_code)]
+            fn check_exhaustive(payload: Payload<Vec<u8>, Vec<u8>>) -> Variants {
+                match payload {
+                    Payload::GenericMessage(_) => Variants::GenericMessage,
+                    Payload::NestedMessage(_) => Variants::NestedMessage,
+                    Payload::RoutedMessage(_, _) => Variants::RoutedMessage,
+                    Payload::DirectRelationProposal { .. } => Variants::DirectRelationProposal,
+                    Payload::DirectRelationAffirm { .. } => Variants::DirectRelationAffirm,
+                    Payload::NestedRelationProposal { .. } => Variants::NestedRelationProposal,
+                    Payload::NestedRelationAffirm { .. } => Variants::NestedRelationAffirm,
+                    Payload::RelationshipCancel { .. } => Variants::RelationshipCancel,
+                }
+            }
+
+            let variant = Variants::arbitrary(u)?;
+
+            let payload = match variant {
+                Variants::GenericMessage => Payload::GenericMessage(Arbitrary::arbitrary(u)?),
+                Variants::NestedMessage => Payload::NestedMessage(Arbitrary::arbitrary(u)?),
+                Variants::RoutedMessage => {
+                    Payload::RoutedMessage(Arbitrary::arbitrary(u)?, Arbitrary::arbitrary(u)?)
+                }
+                Variants::DirectRelationProposal => Payload::DirectRelationProposal {
+                    nonce: Nonce(Arbitrary::arbitrary(u)?),
+                    hops: Arbitrary::arbitrary(u)?,
+                },
+                Variants::DirectRelationAffirm => Payload::DirectRelationAffirm { reply: &DIGEST },
+                Variants::NestedRelationProposal => Payload::NestedRelationProposal {
+                    public_keys: PAIRED_KEYS,
+                },
+                Variants::NestedRelationAffirm => Payload::NestedRelationAffirm {
+                    reply: &DIGEST,
+                    public_keys: PAIRED_KEYS,
+                },
+                Variants::RelationshipCancel => Payload::RelationshipCancel {
+                    nonce: Nonce(Arbitrary::arbitrary(u)?),
+                    reply: &DIGEST,
+                },
+            };
+
+            Ok(Wrapper(payload))
+        }
+    }
+
+    impl<'a> PartialEq<Payload<'a, &'a [u8], &'a [u8]>> for Wrapper {
+        fn eq(&self, other: &Payload<'a, &'a [u8], &'a [u8]>) -> bool {
+            match (&self.0, other) {
+                (Payload::GenericMessage(l0), Payload::GenericMessage(r0)) => l0 == r0,
+                (Payload::NestedMessage(l0), Payload::NestedMessage(r0)) => l0 == r0,
+                (Payload::RoutedMessage(l0, l1), Payload::RoutedMessage(r0, r1)) => {
+                    l0 == r0 && l1 == r1
+                }
+                (
+                    Payload::DirectRelationProposal {
+                        nonce: l_nonce,
+                        hops: l_hops,
+                    },
+                    Payload::DirectRelationProposal {
+                        nonce: r_nonce,
+                        hops: r_hops,
+                    },
+                ) => l_nonce.0 == r_nonce.0 && l_hops == r_hops,
+                (
+                    Payload::DirectRelationAffirm { reply: l_reply },
+                    Payload::DirectRelationAffirm { reply: r_reply },
+                ) => l_reply == r_reply,
+                (
+                    Payload::NestedRelationProposal {
+                        public_keys: l_public_keys,
+                    },
+                    Payload::NestedRelationProposal {
+                        public_keys: r_public_keys,
+                    },
+                ) => {
+                    l_public_keys.signing == r_public_keys.signing
+                        && l_public_keys.encrypting == r_public_keys.encrypting
+                }
+                (
+                    Payload::NestedRelationAffirm {
+                        reply: l_reply,
+                        public_keys: l_public_keys,
+                    },
+                    Payload::NestedRelationAffirm {
+                        reply: r_reply,
+                        public_keys: r_public_keys,
+                    },
+                ) => {
+                    l_reply == r_reply
+                        && (l_public_keys.signing == r_public_keys.signing
+                            && l_public_keys.encrypting == r_public_keys.encrypting)
+                }
+
+                (
+                    Payload::RelationshipCancel {
+                        nonce: l_nonce,
+                        reply: l_reply,
+                    },
+                    Payload::RelationshipCancel {
+                        nonce: r_nonce,
+                        reply: r_reply,
+                    },
+                ) => l_nonce.0 == r_nonce.0 && l_reply == r_reply,
+                _ => false,
+            }
+        }
     }
 }
 
@@ -138,7 +299,7 @@ fn checked_encode_variable_data(
 
 /// Encode a TSP Payload into CESR for encryption
 pub fn encode_payload(
-    payload: Payload<impl AsRef<[u8]>, impl AsRef<[u8]>>,
+    payload: &Payload<impl AsRef<[u8]>, impl AsRef<[u8]>>,
     output: &mut impl for<'a> Extend<&'a u8>,
 ) -> Result<(), EncodeError> {
     encode_count(TSP_PAYLOAD, 1, output);
@@ -163,7 +324,7 @@ pub fn encode_payload(
         }
         Payload::DirectRelationAffirm { reply } => {
             encode_fixed_data(TSP_TYPECODE, &msgtype::NEW_REL_REPLY, output);
-            encode_fixed_data(TSP_SHA256, reply, output);
+            encode_fixed_data(TSP_SHA256, reply.as_slice(), output);
         }
         Payload::NestedRelationProposal { public_keys } => {
             encode_fixed_data(TSP_TYPECODE, &msgtype::NEW_NEST_REL, output);
@@ -172,14 +333,14 @@ pub fn encode_payload(
         }
         Payload::NestedRelationAffirm { reply, public_keys } => {
             encode_fixed_data(TSP_TYPECODE, &msgtype::NEW_NEST_REL_REPLY, output);
-            encode_fixed_data(TSP_SHA256, reply, output);
+            encode_fixed_data(TSP_SHA256, reply.as_slice(), output);
             encode_fixed_data(ED25519_PUBLICKEY, public_keys.signing, output);
             encode_fixed_data(HPKE_PUBLICKEY, public_keys.encrypting, output);
         }
         Payload::RelationshipCancel { nonce, reply } => {
             encode_fixed_data(TSP_TYPECODE, &msgtype::REL_CANCEL, output);
             encode_fixed_data(TSP_NONCE, &nonce.0, output);
-            encode_fixed_data(TSP_SHA256, reply, output);
+            encode_fixed_data(TSP_SHA256, reply.as_slice(), output);
         }
     }
 
@@ -188,7 +349,7 @@ pub fn encode_payload(
 
 /// Encode a hops list
 pub fn encode_hops(
-    hops: Vec<impl AsRef<[u8]>>,
+    hops: &[impl AsRef<[u8]>],
     output: &mut impl for<'a> Extend<&'a u8>,
 ) -> Result<(), EncodeError> {
     if !hops.is_empty() {
@@ -590,7 +751,7 @@ pub fn decode_envelope_mut<'a>(stream: &'a mut [u8]) -> Result<CipherView<'a>, D
 /// Allocating variant of [encode_payload]
 #[cfg(test)]
 pub fn encode_payload_vec(
-    payload: Payload<impl AsRef<[u8]>, impl AsRef<[u8]>>,
+    payload: &Payload<impl AsRef<[u8]>, impl AsRef<[u8]>>,
 ) -> Result<Vec<u8>, EncodeError> {
     let mut data = vec![];
     encode_payload(payload, &mut data)?;
@@ -717,7 +878,7 @@ pub fn encode_tsp_message<Vid: AsRef<[u8]>>(
         nonconfidential_data,
     })?;
 
-    let ciphertext = &encrypt(receiver, encode_payload_vec(message)?);
+    let ciphertext = &encrypt(receiver, encode_payload_vec(&message)?);
 
     encode_ciphertext(ciphertext, &mut cesr)?;
     encode_signature(&sign(sender, &cesr), &mut cesr);
@@ -780,7 +941,7 @@ mod test {
         let fixed_sig = [1; 64];
 
         let cesr_payload =
-            { encode_payload_vec(Payload::<_, &[u8]>::GenericMessage(b"Hello TSP!")).unwrap() };
+            { encode_payload_vec(&Payload::<_, &[u8]>::GenericMessage(b"Hello TSP!")).unwrap() };
 
         let mut outer = encode_ets_envelope_vec(Envelope {
             sender: &b"Alister"[..],
@@ -824,7 +985,7 @@ mod test {
         let fixed_sig = [1; 64];
 
         let cesr_payload =
-            { encode_payload_vec(Payload::<_, &[u8]>::GenericMessage(b"Hello TSP!")).unwrap() };
+            { encode_payload_vec(&Payload::<_, &[u8]>::GenericMessage(b"Hello TSP!")).unwrap() };
 
         let mut outer = encode_ets_envelope_vec(Envelope {
             sender: &b"Alister"[..],
@@ -899,7 +1060,7 @@ mod test {
         let fixed_sig = [1; 64];
 
         let cesr_payload =
-            { encode_payload_vec(Payload::<_, &[u8]>::GenericMessage(b"Hello TSP!")).unwrap() };
+            { encode_payload_vec(&Payload::<_, &[u8]>::GenericMessage(b"Hello TSP!")).unwrap() };
 
         let mut outer = encode_s_envelope_vec(Envelope {
             sender: &b"Alister"[..],
@@ -1007,7 +1168,7 @@ mod test {
         }
         let fixed_sig = [1; 64];
 
-        let cesr_payload = encode_payload_vec(payload.clone()).unwrap();
+        let cesr_payload = encode_payload_vec(&payload).unwrap();
 
         let mut outer = encode_ets_envelope_vec(Envelope {
             sender: &b"Alister"[..],

@@ -58,7 +58,7 @@ where
         // encapsulated key length
         + Kem::EncappedKey::size(),
     );
-    crate::cesr::encode_payload(secret_payload, &mut cesr_message)?;
+    crate::cesr::encode_payload(&secret_payload, &mut cesr_message)?;
 
     // HPKE sender mode: "Auth"
     let sender_decryption_key = Kem::PrivateKey::from_bytes(sender.decryption_key())?;

@@ -39,6 +39,8 @@ reqwest = { version = "0.12.3", default-features = false, features = ["rustls-tl
 serde = { version = "1.0", features = ["derive"] }
 serde_json = { version = "1.0" }
 bs58 = "0.5"
+# fuzzing
+arbitrary = { version = "1.0", features = ["derive"] }
 # cli
 clap = { version = "4.5", features = ["derive"] }
 # demo server

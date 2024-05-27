@@ -14,6 +14,7 @@ rust-version.workspace = true
 cesr-t = [ ]
 default = ["async"]
 strict = [ ]
+fuzzing = ["dep:arbitrary"]
 demo = [ ]
 async = [
     "resolve",
@@ -58,6 +59,8 @@ reqwest = { workspace = true, optional = true }
 serde = { workspace = true, optional = true }
 serde_json = { workspace = true, optional = true }
 bs58 ={ workspace = true, optional = true }
+# fuzzing
+arbitrary ={ workspace = true, optional = true }
 
 [dev-dependencies]
 serial_test = { version = "3.0" }
