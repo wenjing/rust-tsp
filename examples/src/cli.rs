@@ -378,18 +378,24 @@ async fn run() -> Result<(), Error> {
                             unknown_vid,
                             payload,
                         } => {
-                            use std::io::BufRead;
+                            use std::io::{self, BufRead, Write};
                             info!("message involving unknown party {}", unknown_vid);
                             print!(
-                                "do you want to read a message from '{}' [y/n]?",
+                                "do you want to read a message from '{}' [y/n]? ",
                                 unknown_vid
                             );
+                            io::stdout().flush().expect("I/O error");
+
                             let mut line = String::new();
-                            std::io::stdin()
+                            io::stdin()
                                 .lock()
                                 .read_line(&mut line)
-                                .expect("IO error");
-                            if line.to_uppercase() == "Y" || line.to_uppercase() == "YES" {
+                                .expect("could not read reply");
+
+                            let line = line.to_uppercase();
+                            let reply = line.trim();
+                            if reply == "Y" || reply == "YES" {
+                                trace!("processing pending message");
                                 return Some((unknown_vid, payload));
                             }
                         }
