@@ -93,6 +93,10 @@ echo "Hello World!" | tsp send -s did:web:tsp-test.org:user:alice -r did:web:tsp
 
 See https://book.tsp-test.org/ for the full documentation.
 
+## Implement custom VIDs
+
+See [the documentation](/docs/custom-vids.md) on how to implement custom VIDs.
+
 ## Intermediary server
 
 See [the documentation](/docs/intermediary.md) on how to create / setup an intermediary server.
