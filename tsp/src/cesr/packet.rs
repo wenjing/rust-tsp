@@ -30,8 +30,6 @@ mod msgtype {
     pub(super) const REL_CANCEL: [u8; 2] = [1, 255];
 }
 
-use arbitrary::Arbitrary;
-
 use super::{
     decode::{decode_count, decode_fixed_data, decode_variable_data, decode_variable_data_index},
     encode::{encode_count, encode_fixed_data},
@@ -108,6 +106,7 @@ impl<'a, Bytes: AsRef<[u8]>, Vid> Payload<'a, Bytes, Vid> {
 #[cfg(feature = "fuzzing")]
 pub mod fuzzing {
     use super::*;
+    use arbitrary::Arbitrary;
 
     #[derive(Debug)]
     pub struct Wrapper(pub Payload<'static, Vec<u8>, Vec<u8>>);

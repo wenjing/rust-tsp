@@ -96,6 +96,9 @@ pub mod transport;
 mod async_store;
 
 #[cfg(feature = "async")]
+mod vault;
+
+#[cfg(feature = "async")]
 #[cfg(test)]
 mod test;
 
