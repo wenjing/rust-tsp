@@ -599,7 +599,12 @@ impl Store {
                                     }
                                     context.relation_status = RelationshipStatus::Unrelated;
                                 }
-                                _ => todo!(),
+                                RelationshipStatus::_Controlled => {
+                                    return Err(Error::Relationship(
+                                        "you cannot cancel a relationship with yourself".into(),
+                                    ))
+                                }
+                                RelationshipStatus::Unrelated => {}
                             }
                         }
 
