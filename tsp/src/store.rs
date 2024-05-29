@@ -559,6 +559,7 @@ impl Store {
                             sender,
                             route: route.map(|vec| vec.iter().map(|vid| vid.to_vec()).collect()),
                             thread_id: crate::crypto::sha256(raw_bytes),
+                            nested_vid: None,
                         })
                     }
                     Payload::AcceptRelationship { thread_id } => {
@@ -585,7 +586,10 @@ impl Store {
 
                         context.relation_status = RelationshipStatus::Bidirectional(digest);
 
-                        Ok(ReceivedTspMessage::AcceptRelationship { sender })
+                        Ok(ReceivedTspMessage::AcceptRelationship {
+                            sender,
+                            nested_vid: None,
+                        })
                     }
                     Payload::CancelRelationship { thread_id } => {
                         if let Some(context) = self.vids.write()?.get_mut(&sender) {
@@ -609,6 +613,26 @@ impl Store {
                         }
 
                         Ok(ReceivedTspMessage::CancelRelationship { sender })
+                    }
+                    Payload::RequestNestedRelationship { vid, veri_info } => {
+                        //TODO: process relation
+                        Ok(ReceivedTspMessage::RequestRelationship {
+                            sender,
+                            route: None,
+                            thread_id: crate::crypto::sha256(raw_bytes),
+                            nested_vid: Some(std::str::from_utf8(vid)?.to_string()),
+                        })
+                    }
+                    Payload::AcceptNestedRelationship {
+                        thread_id,
+                        vid,
+                        veri_info,
+                    } => {
+                        //TODO: process relation
+                        Ok(ReceivedTspMessage::AcceptRelationship {
+                            sender,
+                            nested_vid: Some(std::str::from_utf8(vid)?.to_string()),
+                        })
                     }
                 }
             }

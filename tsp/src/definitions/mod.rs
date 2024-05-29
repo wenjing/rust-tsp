@@ -32,10 +32,12 @@ pub enum ReceivedTspMessage {
     RequestRelationship {
         sender: String,
         route: Option<Vec<Vec<u8>>>,
+        nested_vid: Option<String>,
         thread_id: Digest,
     },
     AcceptRelationship {
         sender: String,
+        nested_vid: Option<String>,
     },
     CancelRelationship {
         sender: String,
@@ -54,13 +56,34 @@ pub enum ReceivedTspMessage {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+pub struct VeriInfo {
+    pub signature_key: KeyData,
+    pub encryption_key: KeyData,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Payload<'a, Bytes: AsRef<[u8]>> {
     Content(Bytes),
     NestedMessage(Bytes),
     RoutedMessage(Vec<VidData<'a>>, Bytes),
-    CancelRelationship { thread_id: Digest },
-    RequestRelationship { route: Option<Vec<VidData<'a>>> },
-    AcceptRelationship { thread_id: Digest },
+    CancelRelationship {
+        thread_id: Digest,
+    },
+    RequestRelationship {
+        route: Option<Vec<VidData<'a>>>,
+    },
+    AcceptRelationship {
+        thread_id: Digest,
+    },
+    RequestNestedRelationship {
+        vid: VidData<'a>,
+        veri_info: VeriInfo,
+    },
+    AcceptNestedRelationship {
+        thread_id: Digest,
+        vid: VidData<'a>,
+        veri_info: VeriInfo,
+    },
 }
 
 impl<'a, Bytes: AsRef<[u8]>> Payload<'a, Bytes> {
@@ -72,6 +95,8 @@ impl<'a, Bytes: AsRef<[u8]>> Payload<'a, Bytes> {
             Payload::CancelRelationship { .. } => &[],
             Payload::RequestRelationship { .. } => &[],
             Payload::AcceptRelationship { .. } => &[],
+            Payload::RequestNestedRelationship { .. } => &[],
+            Payload::AcceptNestedRelationship { .. } => &[],
         }
     }
 }
@@ -98,9 +123,11 @@ impl<'a, Bytes: AsRef<[u8]>> fmt::Display for Payload<'a, Bytes> {
                 }
                 write!(f, "]")
             }
-            Payload::CancelRelationship { thread_id: _ } => write!(f, "Cancel Relationship"),
-            Payload::RequestRelationship { route: _ } => write!(f, "Request Relationship"),
-            Payload::AcceptRelationship { thread_id: _ } => write!(f, "Accept Relationship"),
+            Payload::CancelRelationship { .. } => write!(f, "Cancel Relationship"),
+            Payload::RequestRelationship { .. } => write!(f, "Request Relationship"),
+            Payload::AcceptRelationship { .. } => write!(f, "Accept Relationship"),
+            Payload::RequestNestedRelationship { .. } => write!(f, "Request Nested Relationship"),
+            Payload::AcceptNestedRelationship { .. } => write!(f, "Accept Nested Relationship"),
         }
     }
 }

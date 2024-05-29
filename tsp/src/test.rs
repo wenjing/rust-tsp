@@ -557,7 +557,7 @@ async fn test_relation_forming() {
         .await
         .unwrap();
 
-    let crate::definitions::ReceivedTspMessage::AcceptRelationship { sender } =
+    let crate::definitions::ReceivedTspMessage::AcceptRelationship { sender, .. } =
         alice_messages.next().await.unwrap().unwrap()
     else {
         panic!("alice did not receive a relation accept")

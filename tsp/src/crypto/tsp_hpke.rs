@@ -1,6 +1,6 @@
 use crate::{
-    cesr::DecodedEnvelope,
-    definitions::{NonConfidentialData, Payload, PrivateVid, TSPMessage, VerifiedVid},
+    cesr::{DecodedEnvelope, PairedKeys},
+    definitions::{NonConfidentialData, Payload, PrivateVid, TSPMessage, VeriInfo, VerifiedVid},
 };
 use ed25519_dalek::Signer;
 use hpke::{aead::AeadTag, Deserializable, OpModeR, OpModeS, Serializable};
@@ -41,6 +41,27 @@ where
         Payload::AcceptRelationship { ref thread_id } => {
             crate::cesr::Payload::DirectRelationAffirm { reply: thread_id }
         }
+        Payload::RequestNestedRelationship { vid, ref veri_info } => {
+            crate::cesr::Payload::NestedRelationProposal {
+                new_vid: vid,
+                public_keys: PairedKeys {
+                    encrypting: &veri_info.encryption_key,
+                    signing: &veri_info.signature_key,
+                },
+            }
+        }
+        Payload::AcceptNestedRelationship {
+            ref thread_id,
+            vid,
+            ref veri_info,
+        } => crate::cesr::Payload::NestedRelationAffirm {
+            reply: thread_id,
+            new_vid: vid,
+            public_keys: PairedKeys {
+                encrypting: &veri_info.encryption_key,
+                signing: &veri_info.signature_key,
+            },
+        },
         Payload::CancelRelationship { ref thread_id } => crate::cesr::Payload::RelationshipCancel {
             nonce: fresh_nonce(&mut csprng),
             reply: thread_id,
@@ -167,8 +188,28 @@ where
         crate::cesr::Payload::DirectRelationAffirm { reply: &thread_id } => {
             Payload::AcceptRelationship { thread_id }
         }
-        crate::cesr::Payload::NestedRelationProposal { .. } => todo!(),
-        crate::cesr::Payload::NestedRelationAffirm { .. } => todo!(),
+        crate::cesr::Payload::NestedRelationProposal {
+            new_vid,
+            public_keys,
+        } => Payload::RequestNestedRelationship {
+            vid: new_vid,
+            veri_info: VeriInfo {
+                signature_key: *public_keys.signing,
+                encryption_key: *public_keys.encrypting,
+            },
+        },
+        crate::cesr::Payload::NestedRelationAffirm {
+            new_vid,
+            public_keys,
+            reply: &thread_id,
+        } => Payload::AcceptNestedRelationship {
+            vid: new_vid,
+            veri_info: VeriInfo {
+                signature_key: *public_keys.signing,
+                encryption_key: *public_keys.encrypting,
+            },
+            thread_id,
+        },
         crate::cesr::Payload::RelationshipCancel {
             reply: &thread_id, ..
         } => Payload::CancelRelationship { thread_id },
