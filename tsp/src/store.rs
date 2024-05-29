@@ -563,28 +563,7 @@ impl Store {
                         })
                     }
                     Payload::AcceptRelationship { thread_id } => {
-                        let mut vids = self.vids.write()?;
-                        let Some(context) = vids.get_mut(&sender) else {
-                            //TODO: should we inform the user of who sent this?
-                            return Err(Error::Relationship(
-                                "received confirmation of a relation with an unknown entity".into(),
-                            ));
-                        };
-
-                        let RelationshipStatus::Unidirectional(digest) = context.relation_status
-                        else {
-                            return Err(Error::Relationship(
-                                "received confirmation of a relation that we did not want".into(),
-                            ));
-                        };
-
-                        if thread_id != digest {
-                            return Err(Error::Relationship(
-                                "attempt to change the terms of the relationship".into(),
-                            ));
-                        }
-
-                        context.relation_status = RelationshipStatus::Bidirectional(digest);
+                        self.upgrade_relation(&sender, thread_id)?;
 
                         Ok(ReceivedTspMessage::AcceptRelationship {
                             sender,
@@ -614,24 +593,31 @@ impl Store {
 
                         Ok(ReceivedTspMessage::CancelRelationship { sender })
                     }
-                    Payload::RequestNestedRelationship { vid, veri_info } => {
-                        //TODO: process relation
+                    Payload::RequestNestedRelationship { vid, veri_info: _ } => {
+                        let vid = std::str::from_utf8(vid)?;
+                        self.add_nested_vid(vid)?;
+
                         Ok(ReceivedTspMessage::RequestRelationship {
                             sender,
                             route: None,
                             thread_id: crate::crypto::sha256(raw_bytes),
-                            nested_vid: Some(std::str::from_utf8(vid)?.to_string()),
+                            nested_vid: Some(vid.to_string()),
                         })
                     }
                     Payload::AcceptNestedRelationship {
                         thread_id,
                         vid,
-                        veri_info,
+                        veri_info: _,
                     } => {
-                        //TODO: process relation
+                        let vid = std::str::from_utf8(vid)?;
+                        self.add_nested_vid(vid)?;
+                        self.upgrade_relation(vid, thread_id)?;
+                        self.set_parent_for_vid(vid, Some(&sender))?;
+                        //TODO: set relation_for_vid
+
                         Ok(ReceivedTspMessage::AcceptRelationship {
                             sender,
-                            nested_vid: Some(std::str::from_utf8(vid)?.to_string()),
+                            nested_vid: Some(vid.to_string()),
                         })
                     }
                 }
@@ -664,6 +650,46 @@ impl Store {
                 })
             }
         }
+    }
+
+    fn add_nested_vid(&self, vid: &str) -> Result<(), Error> {
+        //TODO: a non-async resolve function should probably be added to the `vid` module instead of here
+        use crate::vid::did::{self, peer};
+        let parts = vid.split(':').collect::<Vec<&str>>();
+        let Some([did::SCHEME, did::peer::SCHEME]) = parts.get(0..2) else {
+            return Err(Error::Relationship(
+                "nested relationships must use did:peer".into(),
+            ));
+        };
+        let nested_vid = peer::verify_did_peer(&parts)?;
+
+        self.add_verified_vid(nested_vid)
+    }
+
+    fn upgrade_relation(&self, vid: &str, thread_id: Digest) -> Result<(), Error> {
+        let mut vids = self.vids.write()?;
+        let Some(context) = vids.get_mut(vid) else {
+            //TODO: should we inform the user of who sent this?
+            return Err(Error::Relationship(
+                "received confirmation of a relation with an unknown entity".into(),
+            ));
+        };
+
+        let RelationshipStatus::Unidirectional(digest) = context.relation_status else {
+            return Err(Error::Relationship(
+                "received confirmation of a relation that we did not want".into(),
+            ));
+        };
+
+        if thread_id != digest {
+            return Err(Error::Relationship(
+                "attempt to change the terms of the relationship".into(),
+            ));
+        }
+
+        context.relation_status = RelationshipStatus::Bidirectional(digest);
+
+        Ok(())
     }
 }
 
