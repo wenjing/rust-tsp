@@ -30,8 +30,6 @@ mod msgtype {
     pub(super) const REL_CANCEL: [u8; 2] = [1, 255];
 }
 
-use arbitrary::Arbitrary;
-
 use super::{
     decode::{decode_count, decode_fixed_data, decode_variable_data, decode_variable_data_index},
     encode::{encode_count, encode_fixed_data},
@@ -171,6 +169,7 @@ pub mod fuzzing {
 
             let variant = Variants::arbitrary(u)?;
 
+            use arbitrary::Arbitrary;
             let payload = match variant {
                 Variants::GenericMessage => Payload::GenericMessage(Arbitrary::arbitrary(u)?),
                 Variants::NestedMessage => Payload::NestedMessage(Arbitrary::arbitrary(u)?),
