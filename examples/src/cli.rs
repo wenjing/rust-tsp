@@ -359,11 +359,29 @@ async fn run() -> Result<(), Error> {
                             sender,
                             thread_id: _,
                             route: _,
+                            nested_vid: None,
                         } => {
                             info!("received relationship request from {}", sender);
                         }
-                        ReceivedTspMessage::AcceptRelationship { sender } => {
+                        ReceivedTspMessage::AcceptRelationship {
+                            sender,
+                            nested_vid: None,
+                        } => {
                             info!("received accept relationship from {}", sender);
+                        }
+                        ReceivedTspMessage::RequestRelationship {
+                            sender,
+                            thread_id: _,
+                            route: _,
+                            nested_vid: Some(_),
+                        } => {
+                            info!("received nested relationship request from {}", sender);
+                        }
+                        ReceivedTspMessage::AcceptRelationship {
+                            sender,
+                            nested_vid: Some(_),
+                        } => {
+                            info!("received accept nested relationship from {}", sender);
                         }
                         ReceivedTspMessage::CancelRelationship { sender } => {
                             info!("received cancel relationship from {}", sender);
