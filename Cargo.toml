@@ -18,11 +18,13 @@ rust-version = "1.77"
 base64ct = { version = "1.6", default-features = false, features = ["alloc", "std"] }
 thiserror = "1.0"
 url = { version = "2.5", features = ["serde"] }
+zeroize = "1.8.1"
 #crypto
 ed25519-dalek = { version = "2.1.1", default-features = false, features = ["fast", "std", "zeroize", "rand_core"] }
 hpke = { git = "https://github.com/marlonbaeten/rust-hpke", branch = "keys-by-reference", features = ["alloc", "std"] }
 rand = "0.8.5"
 sha2 = { version = "0.10.8" }
+aries-askar = "0.3.1"
 # async
 async-stream = { version = "0.3"}
 futures = { version = "0.3" }

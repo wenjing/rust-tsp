@@ -1,4 +1,8 @@
-use crate::{definitions::VerifiedVid, vid::error::VidError, Vid};
+use crate::{
+    definitions::{PublicKeyData, VerifiedVid},
+    vid::error::VidError,
+    Vid,
+};
 use base64ct::{Base64UrlUnpadded, Encoding};
 use serde_json::json;
 use url::Url;
@@ -14,7 +18,7 @@ pub(crate) fn encode_did_peer(vid: &Vid) -> String {
     v.push(0xed);
     // 32 bytes length
     v.push(0x20);
-    v.extend_from_slice(vid.verifying_key());
+    v.extend_from_slice(&vid.verifying_key().0);
 
     let verification_key = bs58::encode(&v)
         .with_alphabet(bs58::Alphabet::BITCOIN)
@@ -25,7 +29,7 @@ pub(crate) fn encode_did_peer(vid: &Vid) -> String {
     v.push(0xec);
     // 32 bytes length
     v.push(0x20);
-    v.extend_from_slice(vid.encryption_key());
+    v.extend_from_slice(&vid.encryption_key().0);
 
     let encryption_key = bs58::encode(&v)
         .with_alphabet(bs58::Alphabet::BITCOIN)
@@ -76,7 +80,7 @@ pub(crate) fn verify_did_peer(parts: &[&str]) -> Result<Vid, VidError> {
 
                 // multicodec for x25519-pub + length 32 bytes
                 if let [0xec, 0x20, rest @ ..] = buf {
-                    public_enckey = rest.last_chunk::<32>().copied();
+                    public_enckey = rest.last_chunk::<32>().copied().map(PublicKeyData)
                 } else {
                     return Err(VidError::ResolveVid(
                         "invalid encryption key type in did:peer",
@@ -97,7 +101,7 @@ pub(crate) fn verify_did_peer(parts: &[&str]) -> Result<Vid, VidError> {
                 // multicodec for ed25519-pub + length 32 bytes
                 if let [0xed, 0x20, rest @ ..] = buf {
                     if let Some(sigkey_bytes) = rest.last_chunk::<32>() {
-                        public_sigkey = ed25519_dalek::VerifyingKey::from_bytes(sigkey_bytes).ok();
+                        public_sigkey = Some(PublicKeyData(*sigkey_bytes));
                     }
                 } else {
                     return Err(VidError::ResolveVid(
@@ -142,7 +146,7 @@ pub(crate) fn verify_did_peer(parts: &[&str]) -> Result<Vid, VidError> {
 
 #[cfg(test)]
 mod test {
-    use crate::definitions::VerifiedVid;
+    use crate::definitions::{PublicKeyData, VerifiedVid};
     use ed25519_dalek::{self as Ed};
     use hpke::{kem::X25519HkdfSha256 as KemType, Kem, Serializable};
     use rand::rngs::OsRng;
@@ -160,8 +164,8 @@ mod test {
         let mut vid = Vid {
             id: Default::default(),
             transport: Url::parse("tcp://127.0.0.1:1337").unwrap(),
-            public_sigkey: sigkey.verifying_key(),
-            public_enckey: public_enckey.to_bytes().into(),
+            public_sigkey: PublicKeyData(sigkey.verifying_key().to_bytes()),
+            public_enckey: PublicKeyData(public_enckey.to_bytes().into()),
         };
 
         vid.id = encode_did_peer(&vid);

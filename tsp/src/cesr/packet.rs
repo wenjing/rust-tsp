@@ -106,6 +106,7 @@ impl<'a, Bytes: AsRef<[u8]>, Vid> Payload<'a, Bytes, Vid> {
 #[cfg(feature = "fuzzing")]
 pub mod fuzzing {
     use super::*;
+    use arbitrary::Arbitrary;
 
     #[derive(Debug)]
     pub struct Wrapper(pub Payload<'static, Vec<u8>, Vec<u8>>);
@@ -169,7 +170,6 @@ pub mod fuzzing {
 
             let variant = Variants::arbitrary(u)?;
 
-            use arbitrary::Arbitrary;
             let payload = match variant {
                 Variants::GenericMessage => Payload::GenericMessage(Arbitrary::arbitrary(u)?),
                 Variants::NestedMessage => Payload::NestedMessage(Arbitrary::arbitrary(u)?),

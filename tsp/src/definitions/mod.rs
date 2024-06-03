@@ -1,13 +1,21 @@
 use core::fmt;
 use std::fmt::Debug;
+use zeroize::Zeroize;
 
 #[cfg(feature = "async")]
 use futures::Stream;
 
-pub type KeyData = [u8; 32];
+#[cfg(feature = "serialize")]
+use serde::{Deserialize, Serialize};
+
 pub type Digest = [u8; 32];
-pub type PrivateKeyData<'a> = &'a KeyData;
-pub type PublicKeyData<'a> = &'a KeyData;
+
+#[derive(Clone, Zeroize)]
+pub struct PrivateKeyData(pub(crate) [u8; 32]);
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PublicKeyData(pub(crate) [u8; 32]);
+
 pub type VidData<'a> = &'a [u8];
 pub type NonConfidentialData<'a> = &'a [u8];
 pub type TSPMessage = Vec<u8>;
@@ -19,6 +27,15 @@ pub type TSPStream<D, E> = std::pin::Pin<Box<dyn Stream<Item = Result<D, E>> + S
 pub enum MessageType {
     Signed,
     SignedAndEncrypted,
+}
+
+#[cfg_attr(feature = "serialize", derive(Serialize, Deserialize))]
+#[derive(Clone, Copy, Debug)]
+pub enum RelationshipStatus {
+    _Controlled,
+    Bidirectional(Digest),
+    Unidirectional(Digest),
+    Unrelated,
 }
 
 #[derive(Debug)]
@@ -113,16 +130,22 @@ pub trait VerifiedVid: Send + Sync {
     fn endpoint(&self) -> &url::Url;
 
     /// The verification key that can check signatures made by this Vid
-    fn verifying_key(&self) -> PublicKeyData;
+    fn verifying_key(&self) -> &PublicKeyData;
 
     /// The encryption key associated with this Vid
-    fn encryption_key(&self) -> PublicKeyData;
+    fn encryption_key(&self) -> &PublicKeyData;
 }
 
 pub trait PrivateVid: VerifiedVid + Send + Sync {
     /// The PRIVATE key used to decrypt data
-    fn decryption_key(&self) -> PrivateKeyData;
+    fn decryption_key(&self) -> &PrivateKeyData;
 
     /// The PRIVATE key used to sign data
-    fn signing_key(&self) -> PrivateKeyData;
+    fn signing_key(&self) -> &PrivateKeyData;
+}
+
+impl Debug for PrivateKeyData {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "PrivateKeyData([redacted])")
+    }
 }

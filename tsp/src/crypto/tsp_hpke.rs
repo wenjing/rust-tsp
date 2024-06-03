@@ -61,12 +61,12 @@ where
     crate::cesr::encode_payload(&secret_payload, &mut cesr_message)?;
 
     // HPKE sender mode: "Auth"
-    let sender_decryption_key = Kem::PrivateKey::from_bytes(sender.decryption_key())?;
-    let sender_encryption_key = Kem::PublicKey::from_bytes(sender.encryption_key())?;
+    let sender_decryption_key = Kem::PrivateKey::from_bytes(&sender.decryption_key().0)?;
+    let sender_encryption_key = Kem::PublicKey::from_bytes(&sender.encryption_key().0)?;
     let mode = OpModeS::Auth((&sender_decryption_key, &sender_encryption_key));
 
     // recipient public key
-    let message_receiver = Kem::PublicKey::from_bytes(receiver.encryption_key())?;
+    let message_receiver = Kem::PublicKey::from_bytes(&receiver.encryption_key().0)?;
 
     // this callback allows "observing" the raw bytes of the plaintext before encryption, for hash computations
     if let Some(func) = plaintext_observer {
@@ -91,7 +91,7 @@ where
     crate::cesr::encode_ciphertext(&cesr_message, &mut data)?;
 
     // create and append outer signature
-    let sign_key = ed25519_dalek::SigningKey::from_bytes(sender.signing_key());
+    let sign_key = ed25519_dalek::SigningKey::from_bytes(&sender.signing_key().0);
     let signature = sign_key.sign(&data).to_bytes();
     crate::cesr::encode_signature(&signature, &mut data);
 
@@ -113,7 +113,7 @@ where
     // verify outer signature
     let verification_challange = view.as_challenge();
     let signature = ed25519_dalek::Signature::from(verification_challange.signature);
-    let verifying_key = ed25519_dalek::VerifyingKey::from_bytes(sender.verifying_key())?;
+    let verifying_key = ed25519_dalek::VerifyingKey::from_bytes(&sender.verifying_key().0)?;
     verifying_key.verify_strict(verification_challange.signed_data, &signature)?;
 
     // decode envelope
@@ -139,8 +139,8 @@ where
     let (tag, encapped_key) = footer.split_at(footer.len() - Kem::EncappedKey::size());
 
     // construct correct key types
-    let sender_encryption_key = Kem::PublicKey::from_bytes(sender.encryption_key())?;
-    let receiver_decryption_key = Kem::PrivateKey::from_bytes(receiver.decryption_key())?;
+    let sender_encryption_key = Kem::PublicKey::from_bytes(&sender.encryption_key().0)?;
+    let receiver_decryption_key = Kem::PrivateKey::from_bytes(&receiver.decryption_key().0)?;
     let encapped_key = Kem::EncappedKey::from_bytes(encapped_key)?;
     let tag = AeadTag::from_bytes(tag)?;
 

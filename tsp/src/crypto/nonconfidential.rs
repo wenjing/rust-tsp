@@ -24,7 +24,7 @@ pub fn sign(
     )?;
 
     // create and append signature
-    let sign_key = ed25519_dalek::SigningKey::from_bytes(sender.signing_key());
+    let sign_key = ed25519_dalek::SigningKey::from_bytes(&sender.signing_key().0);
     let signature = sign_key.sign(&data).to_bytes();
     crate::cesr::encode_signature(&signature, &mut data);
 
@@ -41,7 +41,7 @@ pub fn verify<'a>(
     // verify outer signature
     let verification_challange = view.as_challenge();
     let signature = ed25519_dalek::Signature::from(verification_challange.signature);
-    let verifying_key = ed25519_dalek::VerifyingKey::from_bytes(sender.verifying_key())?;
+    let verifying_key = ed25519_dalek::VerifyingKey::from_bytes(&sender.verifying_key().0)?;
     verifying_key.verify_strict(verification_challange.signed_data, &signature)?;
 
     // decode envelope
