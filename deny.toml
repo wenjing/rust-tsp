@@ -3,6 +3,9 @@ targets = [
     { triple = "x86_64-unknown-linux-gnu" },
 ]
 
+[bans]
+
+
 [licenses]
 allow-osi-fsf-free = "either"
 copyleft = "deny"
@@ -18,4 +21,5 @@ license-files = [ { path = "LICENSE", hash = 0xbd0eed23 } ]
 [sources]
 allow-git = [
     "https://github.com/marlonbaeten/rust-hpke",
+    "https://github.com/marlonbaeten/aries-askar",
 ]

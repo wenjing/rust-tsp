@@ -48,8 +48,8 @@ ed25519-dalek = { workspace = true }
 hpke = { workspace = true }
 rand = { workspace = true }
 sha2 = { workspace = true }
-aries-askar = { workspace = true, optional = true }
 # async
+aries-askar = { workspace = true, optional = true }
 async-stream = { workspace = true, optional = true }
 futures = { workspace = true, optional = true }
 tokio = { workspace = true, optional = true }
