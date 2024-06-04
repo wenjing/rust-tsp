@@ -16,7 +16,7 @@ use std::{
 use url::Url;
 
 #[cfg_attr(feature = "serialize", derive(Serialize, Deserialize))]
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Debug)]
 pub enum RelationshipStatus {
     _Controlled,
     Bidirectional(Digest),
@@ -115,7 +115,7 @@ impl Store {
                 Ok(ExportVid {
                     vid: Vid::from_verified_vid(context.vid.clone()),
                     private: context.private.clone().map(OwnedVid::from_private_vid),
-                    relation_status: context.relation_status,
+                    relation_status: context.relation_status.clone(),
                     relation_vid: context.relation_vid.clone(),
                     parent_vid: context.parent_vid.clone(),
                     tunnel: context.tunnel.clone(),
@@ -596,6 +596,7 @@ impl Store {
                     Payload::RequestNestedRelationship { vid, veri_info: _ } => {
                         let vid = std::str::from_utf8(vid)?;
                         self.add_nested_vid(vid)?;
+                        self.set_parent_for_vid(vid, Some(&sender))?;
 
                         Ok(ReceivedTspMessage::RequestRelationship {
                             sender,
@@ -611,9 +612,9 @@ impl Store {
                     } => {
                         let vid = std::str::from_utf8(vid)?;
                         self.add_nested_vid(vid)?;
-                        self.upgrade_relation(vid, thread_id)?;
                         self.set_parent_for_vid(vid, Some(&sender))?;
                         //TODO: set relation_for_vid
+                        self.upgrade_relation(vid, thread_id)?;
 
                         Ok(ReceivedTspMessage::AcceptRelationship {
                             sender,

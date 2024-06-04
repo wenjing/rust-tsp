@@ -275,16 +275,16 @@ impl AsyncStore {
         Ok(())
     }
 
-    /// Send a nested relationship request between the VID's identified by `sender` and `receiver.
+    /// Send a nested relationship request to `receiver`, creating a new nested vid with `outer_sender` as a parent.
     pub async fn send_nested_relationship_request(
         &self,
-        sender: &str,
+        parent_sender: &str,
         receiver: &str,
     ) -> Result<OwnedVid, Error> {
-        let sender = self.inner.get_private_vid(sender)?;
+        let sender = self.inner.get_private_vid(parent_sender)?;
         let receiver = self.inner.get_verified_vid(receiver)?;
 
-        let nested_vid = Self::make_propositioning_vid(sender.identifier());
+        let nested_vid = self.make_propositioning_vid(sender.identifier())?;
 
         let veri_info = VeriInfo {
             signature_key: *nested_vid.signing_key(),
@@ -303,21 +303,28 @@ impl AsyncStore {
 
         crate::transport::send_message(receiver.endpoint(), &tsp_message).await?;
 
-        // TODO: add propositioning_vid to database
-
         Ok(nested_vid)
     }
 
-    /// Accept a nested relationship between the resolved VIDs identified by `sender` and `receiver`.
+    /// Accept a nested relationship with the (nested) VID identified by `nested_receiver`.
+    /// Generate a new nested VID that will have `parent_sender` as its parent.
     /// `thread_id` must be the same as the one that was present in the relationship request.
     /// Encodes the control message, encrypts, signs and sends a TSP message
     pub async fn send_nested_relationship_accept(
         &self,
-        sender: &str,
-        receiver: &str,
+        parent_sender: &str,
+        nested_receiver: &str,
         thread_id: Digest,
-    ) -> Result<(), Error> {
-        let nested_vid = Self::make_propositioning_vid(sender);
+    ) -> Result<OwnedVid, Error> {
+        let nested_vid = self.make_propositioning_vid(parent_sender)?;
+        self.set_relation_for_vid(nested_vid.identifier(), Some(nested_receiver))?;
+
+        let receiver_vid = self.inner.get_vid(nested_receiver)?;
+        let parent_receiver = receiver_vid
+            .get_parent_vid()
+            .ok_or(Error::Relationship(format!(
+                "missing parent for {nested_receiver}"
+            )))?;
 
         let veri_info = VeriInfo {
             signature_key: *nested_vid.signing_key(),
@@ -325,8 +332,8 @@ impl AsyncStore {
         };
 
         let (transport, tsp_message) = self.inner.seal_message_payload(
-            sender,
-            receiver,
+            parent_sender,
+            parent_receiver,
             None,
             Payload::AcceptNestedRelationship {
                 thread_id,
@@ -337,15 +344,22 @@ impl AsyncStore {
 
         crate::transport::send_message(&transport, &tsp_message).await?;
 
-        self.set_relation_status_for_vid(receiver, RelationshipStatus::Bidirectional(thread_id))?;
+        self.set_relation_status_for_vid(
+            nested_receiver,
+            RelationshipStatus::Bidirectional(thread_id),
+        )?;
 
-        Ok(())
+        Ok(nested_vid)
     }
 
-    fn make_propositioning_vid(parent_vid: &str) -> OwnedVid {
+    fn make_propositioning_vid(&self, parent_vid: &str) -> Result<OwnedVid, Error> {
         let transport = Url::from_file_path("/dev/null").expect("error generating a URL");
 
-        OwnedVid::new_did_peer(transport)
+        let vid = OwnedVid::new_did_peer(transport);
+        self.inner.add_private_vid(vid.clone())?;
+        self.set_parent_for_vid(vid.identifier(), Some(parent_vid))?;
+
+        Ok(vid)
     }
 
     /// Receive, open and forward a TSP message
