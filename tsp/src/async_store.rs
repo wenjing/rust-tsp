@@ -1,8 +1,8 @@
 use crate::{
-    definitions::{Digest, Payload, ReceivedTspMessage, TSPStream, VerifiedVid},
+    definitions::{Digest, Payload, ReceivedTspMessage, TSPStream, VeriInfo, VerifiedVid},
     error::Error,
     store::{ExportVid, RelationshipStatus, Store},
-    PrivateVid,
+    OwnedVid, PrivateVid,
 };
 use futures::StreamExt;
 use url::Url;
@@ -273,6 +273,79 @@ impl AsyncStore {
         crate::transport::send_message(&transport, &message).await?;
 
         Ok(())
+    }
+
+    /// Send a nested relationship request between the VID's identified by `sender` and `receiver.
+    pub async fn send_nested_relationship_request(
+        &self,
+        sender: &str,
+        receiver: &str,
+    ) -> Result<OwnedVid, Error> {
+        let sender = self.inner.get_private_vid(sender)?;
+        let receiver = self.inner.get_verified_vid(receiver)?;
+
+        let nested_vid = Self::make_propositioning_vid(sender.identifier());
+
+        let veri_info = VeriInfo {
+            signature_key: *nested_vid.signing_key(),
+            encryption_key: *nested_vid.encryption_key(),
+        };
+
+        let (tsp_message, thread_id) = crate::crypto::seal_and_hash(
+            &*sender,
+            &*receiver,
+            None,
+            Payload::RequestNestedRelationship {
+                vid: nested_vid.vid().as_ref(),
+                veri_info,
+            },
+        )?;
+
+        crate::transport::send_message(receiver.endpoint(), &tsp_message).await?;
+
+        // TODO: add propositioning_vid to database
+
+        Ok(nested_vid)
+    }
+
+    /// Accept a nested relationship between the resolved VIDs identified by `sender` and `receiver`.
+    /// `thread_id` must be the same as the one that was present in the relationship request.
+    /// Encodes the control message, encrypts, signs and sends a TSP message
+    pub async fn send_nested_relationship_accept(
+        &self,
+        sender: &str,
+        receiver: &str,
+        thread_id: Digest,
+    ) -> Result<(), Error> {
+        let nested_vid = Self::make_propositioning_vid(sender);
+
+        let veri_info = VeriInfo {
+            signature_key: *nested_vid.signing_key(),
+            encryption_key: *nested_vid.encryption_key(),
+        };
+
+        let (transport, tsp_message) = self.inner.seal_message_payload(
+            sender,
+            receiver,
+            None,
+            Payload::AcceptNestedRelationship {
+                thread_id,
+                vid: nested_vid.vid().as_ref(),
+                veri_info,
+            },
+        )?;
+
+        crate::transport::send_message(&transport, &tsp_message).await?;
+
+        self.set_relation_status_for_vid(receiver, RelationshipStatus::Bidirectional(thread_id))?;
+
+        Ok(())
+    }
+
+    fn make_propositioning_vid(parent_vid: &str) -> OwnedVid {
+        let transport = Url::from_file_path("/dev/null").expect("error generating a URL");
+
+        OwnedVid::new_did_peer(transport)
     }
 
     /// Receive, open and forward a TSP message
