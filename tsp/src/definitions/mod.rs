@@ -56,12 +56,6 @@ pub enum ReceivedTspMessage {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct VeriInfo {
-    pub signature_key: KeyData,
-    pub encryption_key: KeyData,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Payload<'a, Bytes: AsRef<[u8]>> {
     Content(Bytes),
     NestedMessage(Bytes),
@@ -77,13 +71,11 @@ pub enum Payload<'a, Bytes: AsRef<[u8]>> {
     },
     RequestNestedRelationship {
         vid: VidData<'a>,
-        veri_info: VeriInfo,
     },
     AcceptNestedRelationship {
         thread_id: Digest,
         vid: VidData<'a>,
         connect_to_vid: VidData<'a>,
-        veri_info: VeriInfo,
     },
 }
 

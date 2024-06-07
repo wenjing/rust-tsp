@@ -16,24 +16,6 @@ impl<'a> arbitrary::Arbitrary<'a> for Wrapper {
             buf
         };
 
-        const SIGNING: [u8; 32] = DIGEST;
-
-        const ENCRYPTING: [u8; 32] = {
-            let mut buf = [0; 32];
-            let mut i = 0;
-            while i < buf.len() {
-                buf[i] = 32 + i as u8;
-                i += 1;
-            }
-
-            buf
-        };
-
-        const PAIRED_KEYS: PairedKeys<'static> = PairedKeys {
-            signing: &SIGNING,
-            encrypting: &ENCRYPTING,
-        };
-
         #[derive(arbitrary::Arbitrary)]
         enum Variants {
             GenericMessage,
@@ -75,12 +57,10 @@ impl<'a> arbitrary::Arbitrary<'a> for Wrapper {
             },
             Variants::DirectRelationAffirm => Payload::DirectRelationAffirm { reply: &DIGEST },
             Variants::NestedRelationProposal => Payload::NestedRelationProposal {
-                public_keys: PAIRED_KEYS,
                 new_vid: Arbitrary::arbitrary(u)?,
             },
             Variants::NestedRelationAffirm => Payload::NestedRelationAffirm {
                 reply: &DIGEST,
-                public_keys: PAIRED_KEYS,
                 new_vid: Arbitrary::arbitrary(u)?,
                 connect_to_vid: Arbitrary::arbitrary(u)?,
             },
@@ -117,39 +97,21 @@ impl<'a> PartialEq<Payload<'a, &'a [u8], &'a [u8]>> for Wrapper {
                 Payload::DirectRelationAffirm { reply: r_reply },
             ) => l_reply == r_reply,
             (
-                Payload::NestedRelationProposal {
-                    public_keys: l_public_keys,
-                    new_vid: l_vid,
-                },
-                Payload::NestedRelationProposal {
-                    public_keys: r_public_keys,
-                    new_vid: r_vid,
-                },
-            ) => {
-                l_public_keys.signing == r_public_keys.signing
-                    && l_public_keys.encrypting == r_public_keys.encrypting
-                    && l_vid == r_vid
-            }
+                Payload::NestedRelationProposal { new_vid: l_vid },
+                Payload::NestedRelationProposal { new_vid: r_vid },
+            ) => l_vid == r_vid,
             (
                 Payload::NestedRelationAffirm {
                     reply: l_reply,
-                    public_keys: l_public_keys,
                     new_vid: l_vid,
                     connect_to_vid: l_vid2,
                 },
                 Payload::NestedRelationAffirm {
                     reply: r_reply,
-                    public_keys: r_public_keys,
                     new_vid: r_vid,
                     connect_to_vid: r_vid2,
                 },
-            ) => {
-                l_reply == r_reply
-                    && (l_public_keys.signing == r_public_keys.signing
-                        && l_public_keys.encrypting == r_public_keys.encrypting)
-                    && l_vid == r_vid
-                    && l_vid2 == r_vid2
-            }
+            ) => l_reply == r_reply && l_vid == r_vid && l_vid2 == r_vid2,
 
             (
                 Payload::RelationshipCancel {

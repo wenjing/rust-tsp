@@ -593,7 +593,7 @@ impl Store {
 
                         Ok(ReceivedTspMessage::CancelRelationship { sender })
                     }
-                    Payload::RequestNestedRelationship { vid, veri_info: _ } => {
+                    Payload::RequestNestedRelationship { vid } => {
                         let vid = std::str::from_utf8(vid)?;
                         self.add_nested_vid(vid)?;
                         self.set_parent_for_vid(vid, Some(&sender))?;
@@ -609,7 +609,6 @@ impl Store {
                         thread_id,
                         vid,
                         connect_to_vid,
-                        veri_info: _,
                     } => {
                         let vid = std::str::from_utf8(vid)?;
                         let connect_to_vid = std::str::from_utf8(connect_to_vid)?;

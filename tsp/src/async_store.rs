@@ -1,5 +1,5 @@
 use crate::{
-    definitions::{Digest, Payload, ReceivedTspMessage, TSPStream, VeriInfo, VerifiedVid},
+    definitions::{Digest, Payload, ReceivedTspMessage, TSPStream, VerifiedVid},
     error::Error,
     store::{ExportVid, RelationshipStatus, Store},
     OwnedVid, PrivateVid,
@@ -286,18 +286,12 @@ impl AsyncStore {
 
         let nested_vid = self.make_propositioning_vid(sender.identifier())?;
 
-        let veri_info = VeriInfo {
-            signature_key: *nested_vid.signing_key(),
-            encryption_key: *nested_vid.encryption_key(),
-        };
-
         let (tsp_message, thread_id) = crate::crypto::seal_and_hash(
             &*sender,
             &*receiver,
             None,
             Payload::RequestNestedRelationship {
                 vid: nested_vid.vid().as_ref(),
-                veri_info,
             },
         )?;
 
@@ -331,11 +325,6 @@ impl AsyncStore {
                 "missing parent for {nested_receiver}"
             )))?;
 
-        let veri_info = VeriInfo {
-            signature_key: *nested_vid.signing_key(),
-            encryption_key: *nested_vid.encryption_key(),
-        };
-
         let (transport, tsp_message) = self.inner.seal_message_payload(
             parent_sender,
             parent_receiver,
@@ -344,7 +333,6 @@ impl AsyncStore {
                 thread_id,
                 vid: nested_vid.vid().as_ref(),
                 connect_to_vid: nested_receiver.as_ref(),
-                veri_info,
             },
         )?;
 

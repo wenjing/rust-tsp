@@ -9,8 +9,6 @@ const ED25519_SIGNATURE: u32 = (b'B' - b'A') as u32;
 #[allow(clippy::eq_op)]
 const TSP_NONCE: u32 = (b'A' - b'A') as u32;
 const TSP_SHA256: u32 = (b'I' - b'A') as u32;
-const ED25519_PUBLICKEY: u32 = (b'D' - b'A') as u32;
-const HPKE_PUBLICKEY: u32 = (b'Q' - b'A') as u32;
 
 /// Constants that determine the specific CESR types for the framing codes
 const TSP_ETS_WRAPPER: u16 = (b'E' - b'A') as u16;
@@ -56,16 +54,6 @@ impl Nonce {
 //TODO: this should probably be in tsp-definitions
 pub type Sha256Digest = [u8; 32];
 
-/// A *public* key pair
-//TODO: this probably belongs in tsp-definitions; but that's not possible right now
-//due to a circular dependency; this can be solved by removing the workspaces
-#[derive(Clone, Copy, Debug)]
-#[cfg_attr(any(test, feature = "fuzzing"), derive(PartialEq, Eq))]
-pub struct PairedKeys<'a> {
-    pub signing: &'a [u8; 32],
-    pub encrypting: &'a [u8; 32],
-}
-
 /// A type to distinguish "normal" TSP messages from "control" messages
 #[repr(u32)]
 #[derive(Debug)]
@@ -83,16 +71,12 @@ pub enum Payload<'a, Bytes: AsRef<[u8]>, Vid> {
     /// A TSP message confiming a relationship
     DirectRelationAffirm { reply: &'a Sha256Digest },
     /// A TSP message requesting a nested relationship
-    NestedRelationProposal {
-        new_vid: Vid,
-        public_keys: PairedKeys<'a>,
-    },
+    NestedRelationProposal { new_vid: Vid },
     /// A TSP message confiming a relationship
     NestedRelationAffirm {
         new_vid: Vid,
         connect_to_vid: Vid,
         reply: &'a Sha256Digest,
-        public_keys: PairedKeys<'a>,
     },
     /// A TSP cancellation message
     RelationshipCancel {
@@ -174,27 +158,19 @@ pub fn encode_payload(
             encode_fixed_data(TSP_TYPECODE, &msgtype::NEW_REL_REPLY, output);
             encode_fixed_data(TSP_SHA256, reply.as_slice(), output);
         }
-        Payload::NestedRelationProposal {
-            new_vid,
-            public_keys,
-        } => {
+        Payload::NestedRelationProposal { new_vid } => {
             encode_fixed_data(TSP_TYPECODE, &msgtype::NEW_NEST_REL, output);
             checked_encode_variable_data(TSP_DEVELOPMENT_VID, new_vid.as_ref(), output)?;
-            encode_fixed_data(ED25519_PUBLICKEY, public_keys.signing, output);
-            encode_fixed_data(HPKE_PUBLICKEY, public_keys.encrypting, output);
         }
         Payload::NestedRelationAffirm {
             new_vid,
             connect_to_vid,
             reply,
-            public_keys,
         } => {
             encode_fixed_data(TSP_TYPECODE, &msgtype::NEW_NEST_REL_REPLY, output);
             checked_encode_variable_data(TSP_DEVELOPMENT_VID, new_vid.as_ref(), output)?;
             checked_encode_variable_data(TSP_DEVELOPMENT_VID, connect_to_vid.as_ref(), output)?;
             encode_fixed_data(TSP_SHA256, reply.as_slice(), output);
-            encode_fixed_data(ED25519_PUBLICKEY, public_keys.signing, output);
-            encode_fixed_data(HPKE_PUBLICKEY, public_keys.encrypting, output);
         }
         Payload::RelationshipCancel { nonce, reply } => {
             encode_fixed_data(TSP_TYPECODE, &msgtype::REL_CANCEL, output);
@@ -282,18 +258,7 @@ pub fn decode_payload<'a, Vid: TryFrom<&'a [u8]>>(
                 .try_into()
                 .map_err(|_| DecodeError::VidError)?;
 
-            decode_fixed_data(ED25519_PUBLICKEY, &mut stream).and_then(|signing| {
-                decode_fixed_data(HPKE_PUBLICKEY, &mut stream).map(|encrypting| {
-                    let public_keys = PairedKeys {
-                        signing,
-                        encrypting,
-                    };
-                    Payload::NestedRelationProposal {
-                        new_vid,
-                        public_keys,
-                    }
-                })
-            })
+            Some(Payload::NestedRelationProposal { new_vid })
         }
         msgtype::NEW_NEST_REL_REPLY => {
             let new_vid = decode_variable_data(TSP_DEVELOPMENT_VID, &mut stream)
@@ -305,21 +270,10 @@ pub fn decode_payload<'a, Vid: TryFrom<&'a [u8]>>(
                 .try_into()
                 .map_err(|_| DecodeError::VidError)?;
 
-            decode_fixed_data(TSP_SHA256, &mut stream).and_then(|reply| {
-                decode_fixed_data(ED25519_PUBLICKEY, &mut stream).and_then(|signing| {
-                    decode_fixed_data(HPKE_PUBLICKEY, &mut stream).map(|encrypting| {
-                        let public_keys = PairedKeys {
-                            signing,
-                            encrypting,
-                        };
-                        Payload::NestedRelationAffirm {
-                            new_vid,
-                            connect_to_vid,
-                            reply,
-                            public_keys,
-                        }
-                    })
-                })
+            decode_fixed_data(TSP_SHA256, &mut stream).map(|reply| Payload::NestedRelationAffirm {
+                new_vid,
+                connect_to_vid,
+                reply,
             })
         }
         msgtype::REL_CANCEL => decode_fixed_data(TSP_NONCE, &mut stream).and_then(|nonce| {
@@ -1085,28 +1039,18 @@ mod test {
     #[test]
     fn test_relation_forming() {
         let temp = (1u8..33).collect::<Vec<u8>>();
-        let pk1 = (33u8..65).collect::<Vec<u8>>();
-        let pk2 = (65u8..97).collect::<Vec<u8>>();
         let nonce: &[u8; 32] = temp.as_slice().try_into().unwrap();
         test_turn_around(Payload::DirectRelationProposal {
             nonce: Nonce(*nonce),
             hops: vec![],
         });
         test_turn_around(Payload::DirectRelationAffirm { reply: nonce });
-        let public_keys = PairedKeys {
-            signing: pk1.as_slice().try_into().unwrap(),
-            encrypting: pk2.as_slice().try_into().unwrap(),
-        };
         let new_vid = &[];
-        test_turn_around(Payload::NestedRelationProposal {
-            new_vid,
-            public_keys,
-        });
+        test_turn_around(Payload::NestedRelationProposal { new_vid });
         test_turn_around(Payload::NestedRelationAffirm {
             new_vid,
             connect_to_vid: new_vid,
             reply: nonce,
-            public_keys,
         });
 
         test_turn_around(Payload::RelationshipCancel {
