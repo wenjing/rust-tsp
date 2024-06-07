@@ -608,13 +608,15 @@ impl Store {
                     Payload::AcceptNestedRelationship {
                         thread_id,
                         vid,
+                        connect_to_vid,
                         veri_info: _,
                     } => {
                         let vid = std::str::from_utf8(vid)?;
+                        let connect_to_vid = std::str::from_utf8(connect_to_vid)?;
                         self.add_nested_vid(vid)?;
                         self.set_parent_for_vid(vid, Some(&sender))?;
-                        //TODO: set relation_for_vid
                         self.upgrade_relation(vid, thread_id)?;
+                        self.set_relation_for_vid(connect_to_vid, Some(vid))?;
 
                         Ok(ReceivedTspMessage::AcceptRelationship {
                             sender,

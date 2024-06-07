@@ -82,6 +82,7 @@ pub enum Payload<'a, Bytes: AsRef<[u8]>> {
     AcceptNestedRelationship {
         thread_id: Digest,
         vid: VidData<'a>,
+        connect_to_vid: VidData<'a>,
         veri_info: VeriInfo,
     },
 }

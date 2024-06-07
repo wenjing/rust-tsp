@@ -53,10 +53,12 @@ where
         Payload::AcceptNestedRelationship {
             ref thread_id,
             vid,
+            connect_to_vid,
             ref veri_info,
         } => crate::cesr::Payload::NestedRelationAffirm {
             reply: thread_id,
             new_vid: vid,
+            connect_to_vid,
             public_keys: PairedKeys {
                 encrypting: &veri_info.encryption_key,
                 signing: &veri_info.signature_key,
@@ -200,10 +202,12 @@ where
         },
         crate::cesr::Payload::NestedRelationAffirm {
             new_vid,
+            connect_to_vid,
             public_keys,
             reply: &thread_id,
         } => Payload::AcceptNestedRelationship {
             vid: new_vid,
+            connect_to_vid,
             veri_info: VeriInfo {
                 signature_key: *public_keys.signing,
                 encryption_key: *public_keys.encrypting,

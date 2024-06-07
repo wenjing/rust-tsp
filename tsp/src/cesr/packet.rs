@@ -90,6 +90,7 @@ pub enum Payload<'a, Bytes: AsRef<[u8]>, Vid> {
     /// A TSP message confiming a relationship
     NestedRelationAffirm {
         new_vid: Vid,
+        connect_to_vid: Vid,
         reply: &'a Sha256Digest,
         public_keys: PairedKeys<'a>,
     },
@@ -184,11 +185,13 @@ pub fn encode_payload(
         }
         Payload::NestedRelationAffirm {
             new_vid,
+            connect_to_vid,
             reply,
             public_keys,
         } => {
             encode_fixed_data(TSP_TYPECODE, &msgtype::NEW_NEST_REL_REPLY, output);
             checked_encode_variable_data(TSP_DEVELOPMENT_VID, new_vid.as_ref(), output)?;
+            checked_encode_variable_data(TSP_DEVELOPMENT_VID, connect_to_vid.as_ref(), output)?;
             encode_fixed_data(TSP_SHA256, reply.as_slice(), output);
             encode_fixed_data(ED25519_PUBLICKEY, public_keys.signing, output);
             encode_fixed_data(HPKE_PUBLICKEY, public_keys.encrypting, output);
@@ -297,6 +300,10 @@ pub fn decode_payload<'a, Vid: TryFrom<&'a [u8]>>(
                 .ok_or(DecodeError::UnexpectedData)?
                 .try_into()
                 .map_err(|_| DecodeError::VidError)?;
+            let connect_to_vid = decode_variable_data(TSP_DEVELOPMENT_VID, &mut stream)
+                .ok_or(DecodeError::UnexpectedData)?
+                .try_into()
+                .map_err(|_| DecodeError::VidError)?;
 
             decode_fixed_data(TSP_SHA256, &mut stream).and_then(|reply| {
                 decode_fixed_data(ED25519_PUBLICKEY, &mut stream).and_then(|signing| {
@@ -307,6 +314,7 @@ pub fn decode_payload<'a, Vid: TryFrom<&'a [u8]>>(
                         };
                         Payload::NestedRelationAffirm {
                             new_vid,
+                            connect_to_vid,
                             reply,
                             public_keys,
                         }
@@ -1096,6 +1104,7 @@ mod test {
         });
         test_turn_around(Payload::NestedRelationAffirm {
             new_vid,
+            connect_to_vid: new_vid,
             reply: nonce,
             public_keys,
         });

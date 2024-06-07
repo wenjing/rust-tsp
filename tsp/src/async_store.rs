@@ -303,6 +303,11 @@ impl AsyncStore {
 
         crate::transport::send_message(receiver.endpoint(), &tsp_message).await?;
 
+        self.set_relation_status_for_vid(
+            receiver.identifier(),
+            RelationshipStatus::Unidirectional(thread_id),
+        )?;
+
         Ok(nested_vid)
     }
 
@@ -338,6 +343,7 @@ impl AsyncStore {
             Payload::AcceptNestedRelationship {
                 thread_id,
                 vid: nested_vid.vid().as_ref(),
+                connect_to_vid: nested_receiver.as_ref(),
                 veri_info,
             },
         )?;

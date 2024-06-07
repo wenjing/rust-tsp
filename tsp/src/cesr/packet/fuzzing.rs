@@ -82,6 +82,7 @@ impl<'a> arbitrary::Arbitrary<'a> for Wrapper {
                 reply: &DIGEST,
                 public_keys: PAIRED_KEYS,
                 new_vid: Arbitrary::arbitrary(u)?,
+                connect_to_vid: Arbitrary::arbitrary(u)?,
             },
             Variants::RelationshipCancel => Payload::RelationshipCancel {
                 nonce: Nonce(Arbitrary::arbitrary(u)?),
@@ -134,17 +135,20 @@ impl<'a> PartialEq<Payload<'a, &'a [u8], &'a [u8]>> for Wrapper {
                     reply: l_reply,
                     public_keys: l_public_keys,
                     new_vid: l_vid,
+                    connect_to_vid: l_vid2,
                 },
                 Payload::NestedRelationAffirm {
                     reply: r_reply,
                     public_keys: r_public_keys,
                     new_vid: r_vid,
+                    connect_to_vid: r_vid2,
                 },
             ) => {
                 l_reply == r_reply
                     && (l_public_keys.signing == r_public_keys.signing
                         && l_public_keys.encrypting == r_public_keys.encrypting)
                     && l_vid == r_vid
+                    && l_vid2 == r_vid2
             }
 
             (
