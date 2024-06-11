@@ -84,6 +84,27 @@ enum Commands {
         #[arg(short, long)]
         one: bool,
     },
+    #[command(arg_required_else_help = true)]
+    Request {
+        #[arg(short, long, required = true)]
+        sender_vid: String,
+        #[arg(short, long, required = true)]
+        receiver_vid: String,
+    },
+    Accept {
+        #[arg(short, long, required = true)]
+        sender_vid: String,
+        #[arg(short, long, required = true)]
+        receiver_vid: String,
+        #[arg(long, required = true)]
+        thread_id: String,
+    },
+    Cancel {
+        #[arg(short, long, required = true)]
+        sender_vid: String,
+        #[arg(short, long, required = true)]
+        receiver_vid: String,
+    },
 }
 
 type Aliases = HashMap<String, String>;
@@ -357,11 +378,15 @@ async fn run() -> Result<(), Error> {
                         }
                         ReceivedTspMessage::RequestRelationship {
                             sender,
-                            thread_id: _,
+                            thread_id,
                             route: _,
                             nested_vid: None,
                         } => {
-                            info!("received relationship request from {}", sender);
+                            let thread_id = Base64UrlUnpadded::encode_string(&thread_id);
+                            info!(
+                                "received relationship request from {}, thread-id '{}'",
+                                sender, thread_id
+                            );
                         }
                         ReceivedTspMessage::AcceptRelationship {
                             sender,
@@ -445,6 +470,67 @@ async fn run() -> Result<(), Error> {
                     break;
                 }
             }
+        }
+        Commands::Cancel {
+            sender_vid,
+            receiver_vid,
+        } => {
+            let sender_vid = aliases.get(&sender_vid).unwrap_or(&sender_vid);
+            let receiver_vid = aliases.get(&receiver_vid).unwrap_or(&receiver_vid);
+
+            if let Err(e) = vid_database
+                .send_relationship_cancel(sender_vid, receiver_vid)
+                .await
+            {
+                tracing::error!("error sending message from {sender_vid} to {receiver_vid}: {e}");
+
+                return Ok(());
+            }
+
+            info!("sent control message from {sender_vid} to {receiver_vid}",);
+            write_database(&args.database, &vid_database, aliases.clone()).await?;
+        }
+        Commands::Request {
+            sender_vid,
+            receiver_vid,
+        } => {
+            let sender_vid = aliases.get(&sender_vid).unwrap_or(&sender_vid);
+            let receiver_vid = aliases.get(&receiver_vid).unwrap_or(&receiver_vid);
+
+            if let Err(e) = vid_database
+                .send_relationship_request(sender_vid, receiver_vid, None)
+                .await
+            {
+                tracing::error!("error sending message from {sender_vid} to {receiver_vid}: {e}");
+
+                return Ok(());
+            }
+
+            info!("sent control message from {sender_vid} to {receiver_vid}",);
+            write_database(&args.database, &vid_database, aliases.clone()).await?;
+        }
+        Commands::Accept {
+            sender_vid,
+            receiver_vid,
+            thread_id,
+        } => {
+            let sender_vid = aliases.get(&sender_vid).unwrap_or(&sender_vid);
+            let receiver_vid = aliases.get(&receiver_vid).unwrap_or(&receiver_vid);
+
+            let mut digest: [u8; 32] = Default::default();
+            Base64UrlUnpadded::decode(&thread_id, &mut digest).unwrap();
+
+            if let Err(e) = vid_database
+                .send_relationship_accept(sender_vid, receiver_vid, digest, None)
+                .await
+            {
+                tracing::error!("error sending message from {sender_vid} to {receiver_vid}: {e}");
+
+                return Ok(());
+            }
+
+            info!("sent control message from {sender_vid} to {receiver_vid}",);
+            write_database(&args.database, &vid_database, aliases.clone()).await?;
         }
     }
 
