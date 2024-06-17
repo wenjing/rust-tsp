@@ -12,6 +12,7 @@ const PROTOCOL: &str = "https://";
 const DEFAULT_PATH: &str = ".well-known";
 const DOCUMENT: &str = "did.json";
 
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DidDocument {
@@ -24,6 +25,7 @@ pub struct DidDocument {
     pub verification_method: Vec<VerificationMethod>,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Service {
@@ -33,6 +35,7 @@ pub struct Service {
     pub service_type: String,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct VerificationMethod {
@@ -43,6 +46,7 @@ pub struct VerificationMethod {
     pub method_type: String,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PublicKeyJwk {
@@ -135,8 +139,7 @@ pub fn resolve_document(did_document: DidDocument, target_id: &str) -> Result<Vi
         &did_document.authentication,
         "Ed25519",
         "sig",
-    )
-    .and_then(|key| ed25519_dalek::VerifyingKey::from_bytes(&key).ok()) else {
+    ) else {
         return Err(VidError::ResolveVid(
             "No valid sign key found in DID document",
         ));
@@ -168,8 +171,8 @@ pub fn resolve_document(did_document: DidDocument, target_id: &str) -> Result<Vi
     Ok(Vid {
         id: did_document.id,
         transport,
-        public_sigkey,
-        public_enckey,
+        public_sigkey: public_sigkey.into(),
+        public_enckey: public_enckey.into(),
     })
 }
 
@@ -191,7 +194,7 @@ pub fn vid_to_did_document(vid: &Vid) -> serde_json::Value {
                     "kty": "OKP",
                     "crv": "Ed25519",
                     "use": "sig",
-                    "x": Base64UrlUnpadded::encode_string(vid.verifying_key()),
+                    "x": Base64UrlUnpadded::encode_string(vid.verifying_key().as_ref()),
                 }
             },
             {
@@ -202,7 +205,7 @@ pub fn vid_to_did_document(vid: &Vid) -> serde_json::Value {
                     "kty": "OKP",
                     "crv": "X25519",
                     "use": "enc",
-                    "x": Base64UrlUnpadded::encode_string(vid.encryption_key()),
+                    "x": Base64UrlUnpadded::encode_string(vid.encryption_key().as_ref()),
                 }
             },
         ],

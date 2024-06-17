@@ -2,14 +2,13 @@ use base64ct::{Base64UrlUnpadded, Encoding};
 use clap::{Parser, Subcommand};
 use futures::StreamExt;
 use serde::{Deserialize, Serialize};
-use std::{
-    collections::HashMap,
-    path::{Path, PathBuf},
-};
+use std::{collections::HashMap, path::PathBuf};
 use tokio::io::AsyncReadExt;
 use tracing::{info, trace};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
-use tsp::{cesr::Part, AsyncStore, Error, ExportVid, OwnedVid, ReceivedTspMessage, VerifiedVid};
+use tsp::{
+    cesr::Part, AsyncStore, Error, ExportVid, OwnedVid, ReceivedTspMessage, Vault, VerifiedVid,
+};
 
 #[derive(Debug, Parser)]
 #[command(name = "tsp")]
@@ -17,13 +16,14 @@ use tsp::{cesr::Part, AsyncStore, Error, ExportVid, OwnedVid, ReceivedTspMessage
 struct Cli {
     #[command(subcommand)]
     command: Commands,
-    #[arg(
-        short,
-        long,
-        default_value = "database.json",
-        help = "Database file path"
-    )]
+    #[arg(short, long, default_value = "database", help = "Database name to use")]
     database: String,
+    #[arg(
+        long,
+        default_value = "unsecure",
+        help = "Password used to encrypt the database"
+    )]
+    password: String,
     #[arg(
         short,
         long,
@@ -119,53 +119,43 @@ struct DatabaseContents {
     aliases: Aliases,
 }
 
-async fn write_database(
-    database_file: &str,
-    db: &AsyncStore,
-    aliases: Aliases,
-) -> Result<(), Error> {
-    let db_path = Path::new(database_file);
+async fn write_database(vault: &Vault, db: &AsyncStore, aliases: Aliases) -> Result<(), Error> {
+    let aliases = serde_json::to_value(&aliases).ok();
+    vault.persist(db.export()?, aliases).await?;
 
-    let db_contents = DatabaseContents {
-        data: db.export()?,
-        aliases,
-    };
-
-    let db_contents_json =
-        serde_json::to_string_pretty(&db_contents).expect("Could not serialize database");
-
-    tokio::fs::write(db_path, db_contents_json)
-        .await
-        .expect("Could not write database");
-
-    trace!("persisted database to {database_file}");
+    trace!("persisted database");
 
     Ok(())
 }
 
-async fn read_database(database_file: &str) -> Result<(AsyncStore, Aliases), Error> {
-    let db_path = Path::new(database_file);
-    if db_path.exists() {
-        let contents = tokio::fs::read_to_string(db_path)
-            .await
-            .expect("Could not read database file");
+async fn read_database(
+    database_name: &str,
+    password: &str,
+) -> Result<(Vault, AsyncStore, Aliases), Error> {
+    match Vault::open_sqlite(database_name, password.as_bytes()).await {
+        Ok(vault) => {
+            let (vids, aliases) = vault.load().await?;
 
-        let db_contents: DatabaseContents =
-            serde_json::from_str(&contents).expect("Could not deserialize database");
+            let aliases: Aliases = match aliases {
+                Some(aliases) => serde_json::from_value(aliases).expect("Invalid aliases"),
+                None => Aliases::new(),
+            };
 
-        let db = AsyncStore::new();
-        db.import(db_contents.data)?;
+            let db = AsyncStore::new();
+            db.import(vids)?;
 
-        trace!("opened database {database_file}");
+            trace!("opened database {database_name}");
 
-        Ok((db, db_contents.aliases))
-    } else {
-        let db = AsyncStore::new();
-        write_database(database_file, &db, Aliases::new()).await?;
+            Ok((vault, db, aliases))
+        }
+        Err(_) => {
+            let vault = Vault::new_sqlite(database_name, password.as_bytes()).await?;
 
-        info!("created new database");
+            let db = AsyncStore::new();
+            info!("created new database");
 
-        Ok((db, Aliases::new()))
+            Ok((vault, db, Aliases::new()))
+        }
     }
 }
 
@@ -214,7 +204,8 @@ async fn run() -> Result<(), Error> {
         )
         .init();
 
-    let (mut vid_database, mut aliases) = read_database(&args.database).await?;
+    let (vault, mut vid_database, mut aliases) =
+        read_database(&args.database, &args.password).await?;
     let server: String = args.server;
 
     match args.command {
@@ -228,7 +219,7 @@ async fn run() -> Result<(), Error> {
 
             vid_database.set_relation_for_vid(&vid, sender.as_deref())?;
 
-            write_database(&args.database, &vid_database, aliases).await?;
+            write_database(&vault, &vid_database, aliases).await?;
 
             info!(
                 "{vid} is verified and added to the database {}",
@@ -264,7 +255,7 @@ async fn run() -> Result<(), Error> {
             trace!("published DID document to {url}/did.json");
 
             vid_database.add_private_vid(private_vid.clone())?;
-            write_database(&args.database, &vid_database, aliases).await?;
+            write_database(&vault, &vid_database, aliases).await?;
         }
         Commands::CreatePeer { alias } => {
             let transport = url::Url::parse(&format!("https://{server}/user/{alias}")).unwrap();
@@ -273,7 +264,7 @@ async fn run() -> Result<(), Error> {
             aliases.insert(alias.clone(), private_vid.identifier().to_string());
 
             vid_database.add_private_vid(private_vid.clone())?;
-            write_database(&args.database, &vid_database, aliases).await?;
+            write_database(&vault, &vid_database, aliases).await?;
 
             info!("created peer identity {}", private_vid.identifier());
         }
@@ -285,7 +276,7 @@ async fn run() -> Result<(), Error> {
                 aliases.insert(alias.clone(), private_vid.identifier().to_string());
             }
 
-            write_database(&args.database, &vid_database, aliases).await?;
+            write_database(&vault, &vid_database, aliases).await?;
 
             info!("created identity from file {}", private_vid.identifier());
         }
@@ -297,7 +288,7 @@ async fn run() -> Result<(), Error> {
 
             info!("{vid} is now a child of {other_vid}");
 
-            write_database(&args.database, &vid_database, aliases).await?;
+            write_database(&vault, &vid_database, aliases).await?;
         }
         Commands::SetRoute { vid, route } => {
             let vid = aliases.get(&vid).cloned().unwrap_or(vid);
@@ -310,7 +301,7 @@ async fn run() -> Result<(), Error> {
             let route_ref = route.iter().map(|s| s.as_str()).collect::<Vec<_>>();
 
             vid_database.set_route_for_vid(&vid, &route_ref)?;
-            write_database(&args.database, &vid_database, aliases).await?;
+            write_database(&vault, &vid_database, aliases).await?;
 
             info!("{vid} has route {route:?}");
         }
@@ -319,7 +310,7 @@ async fn run() -> Result<(), Error> {
             let other_vid = aliases.get(&other_vid).cloned().unwrap_or(other_vid);
 
             vid_database.set_relation_for_vid(&vid, Some(&other_vid))?;
-            write_database(&args.database, &vid_database, aliases).await?;
+            write_database(&vault, &vid_database, aliases).await?;
 
             info!("{vid} has relation to {other_vid}");
         }
@@ -408,9 +399,9 @@ async fn run() -> Result<(), Error> {
                         }
                         ReceivedTspMessage::AcceptRelationship {
                             sender,
-                            nested_vid: Some(_),
+                            nested_vid: Some(vid),
                         } => {
-                            info!("received accept nested relationship from {sender}");
+                            info!("received accept nested relationship from '{vid}' (new identity for {sender})");
                         }
                         ReceivedTspMessage::CancelRelationship { sender } => {
                             info!("received cancel relationship from {sender}");
@@ -464,7 +455,7 @@ async fn run() -> Result<(), Error> {
                     );
                     let _ = handle_message(message);
                 }
-                write_database(&args.database, &vid_database, aliases.clone()).await?;
+                write_database(&vault, &vid_database, aliases.clone()).await?;
 
                 if one {
                     break;
@@ -488,7 +479,7 @@ async fn run() -> Result<(), Error> {
             }
 
             info!("sent control message from {sender_vid} to {receiver_vid}",);
-            write_database(&args.database, &vid_database, aliases.clone()).await?;
+            write_database(&vault, &vid_database, aliases.clone()).await?;
         }
         Commands::Request {
             sender_vid,
@@ -525,7 +516,7 @@ async fn run() -> Result<(), Error> {
             }
 
             info!("sent control message from {sender_vid} to {receiver_vid}",);
-            write_database(&args.database, &vid_database, aliases.clone()).await?;
+            write_database(&vault, &vid_database, aliases.clone()).await?;
         }
         Commands::Accept {
             sender_vid,
@@ -568,9 +559,11 @@ async fn run() -> Result<(), Error> {
             }
 
             info!("sent control message from {sender_vid} to {receiver_vid}",);
-            write_database(&args.database, &vid_database, aliases.clone()).await?;
+            write_database(&vault, &vid_database, aliases.clone()).await?;
         }
     }
+
+    vault.close().await?;
 
     Ok(())
 }

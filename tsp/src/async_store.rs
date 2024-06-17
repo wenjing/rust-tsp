@@ -1,8 +1,10 @@
 use crate::{
-    definitions::{Digest, Payload, ReceivedTspMessage, TSPStream, VerifiedVid},
+    definitions::{
+        Digest, Payload, ReceivedTspMessage, RelationshipStatus, TSPStream, VerifiedVid,
+    },
     error::Error,
-    store::{ExportVid, RelationshipStatus, Store},
-    OwnedVid, PrivateVid,
+    store::Store,
+    ExportVid, OwnedVid, PrivateVid,
 };
 use futures::StreamExt;
 use url::Url;
@@ -417,6 +419,12 @@ impl AsyncStore {
         crate::transport::send_message(&transport, &message).await?;
 
         Ok(transport)
+    }
+
+    /// Decode an encrypted `message``, which has to be addressed to one of the VIDs in `receivers`, and has to have
+    /// `verified_vids` as one of the senders.
+    pub fn open_message(&self, message: &mut [u8]) -> Result<ReceivedTspMessage, Error> {
+        self.inner.open_message(message)
     }
 
     /// Receive TSP messages for the private VID identified by `vid`, using the appropriate transport mechanism for it.
