@@ -217,7 +217,7 @@ impl AsyncStore {
 
         self.set_relation_status_for_vid(
             receiver.identifier(),
-            RelationshipStatus::Unidirectional(thread_id),
+            RelationshipStatus::Unidirectional { thread_id },
         )?;
 
         Ok(())
@@ -247,7 +247,13 @@ impl AsyncStore {
             crate::transport::send_message(&transport, &tsp_message).await?;
         }
 
-        self.set_relation_status_for_vid(receiver, RelationshipStatus::Bidirectional(thread_id))?;
+        self.set_relation_status_for_vid(
+            receiver,
+            RelationshipStatus::Bidirectional {
+                thread_id,
+                outstanding_nested_thread_ids: Default::default(),
+            },
+        )?;
 
         Ok(())
     }
@@ -295,13 +301,10 @@ impl AsyncStore {
             },
         )?;
 
-        crate::transport::send_message(receiver.endpoint(), &tsp_message).await?;
+        self.inner
+            .add_nested_thread_id(receiver.identifier(), thread_id)?;
 
-        //TEMPORARY
-        self.set_relation_status_for_vid(
-            receiver.identifier(),
-            RelationshipStatus::Unidirectional(thread_id),
-        )?;
+        crate::transport::send_message(receiver.endpoint(), &tsp_message).await?;
 
         Ok(nested_vid)
     }
@@ -318,6 +321,7 @@ impl AsyncStore {
     ) -> Result<OwnedVid, Error> {
         let nested_vid = self.make_propositioning_vid(parent_sender)?;
         self.set_relation_for_vid(nested_vid.identifier(), Some(nested_receiver))?;
+        self.set_relation_for_vid(nested_receiver, Some(nested_vid.identifier()))?;
 
         let receiver_vid = self.inner.get_vid(nested_receiver)?;
         let parent_receiver = receiver_vid
@@ -341,7 +345,10 @@ impl AsyncStore {
 
         self.set_relation_status_for_vid(
             nested_receiver,
-            RelationshipStatus::Bidirectional(thread_id),
+            RelationshipStatus::Bidirectional {
+                thread_id,
+                outstanding_nested_thread_ids: Default::default(),
+            },
         )?;
 
         Ok(nested_vid)
