@@ -297,6 +297,7 @@ impl AsyncStore {
 
         crate::transport::send_message(receiver.endpoint(), &tsp_message).await?;
 
+        //TEMPORARY
         self.set_relation_status_for_vid(
             receiver.identifier(),
             RelationshipStatus::Unidirectional(thread_id),

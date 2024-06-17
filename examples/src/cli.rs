@@ -90,6 +90,8 @@ enum Commands {
         sender_vid: String,
         #[arg(short, long, required = true)]
         receiver_vid: String,
+        #[arg(long)]
+        nested: bool,
     },
     Accept {
         #[arg(short, long, required = true)]
@@ -98,6 +100,8 @@ enum Commands {
         receiver_vid: String,
         #[arg(long, required = true)]
         thread_id: String,
+        #[arg(long)]
+        nested: bool,
     },
     Cancel {
         #[arg(short, long, required = true)]
@@ -384,8 +388,7 @@ async fn run() -> Result<(), Error> {
                         } => {
                             let thread_id = Base64UrlUnpadded::encode_string(&thread_id);
                             info!(
-                                "received relationship request from {}, thread-id '{}'",
-                                sender, thread_id
+                                "received relationship request from {sender}, thread-id '{thread_id}'",
                             );
                         }
                         ReceivedTspMessage::AcceptRelationship {
@@ -396,28 +399,26 @@ async fn run() -> Result<(), Error> {
                         }
                         ReceivedTspMessage::RequestRelationship {
                             sender,
-                            thread_id: _,
+                            thread_id,
                             route: _,
-                            nested_vid: Some(_),
+                            nested_vid: Some(vid),
                         } => {
-                            info!("received nested relationship request from {}", sender);
+                            let thread_id = Base64UrlUnpadded::encode_string(&thread_id);
+                            info!("received nested relationship request from '{vid}' (new identity for {sender}), thread-id '{thread_id}'");
                         }
                         ReceivedTspMessage::AcceptRelationship {
                             sender,
                             nested_vid: Some(_),
                         } => {
-                            info!("received accept nested relationship from {}", sender);
+                            info!("received accept nested relationship from {sender}");
                         }
                         ReceivedTspMessage::CancelRelationship { sender } => {
-                            info!("received cancel relationship from {}", sender);
+                            info!("received cancel relationship from {sender}");
                         }
                         ReceivedTspMessage::ForwardRequest {
                             sender, next_hop, ..
                         } => {
-                            info!(
-                                "messaging forwarding request from {} to {}",
-                                sender, next_hop
-                            );
+                            info!("messaging forwarding request from {sender} to {next_hop}",);
                         }
                         ReceivedTspMessage::PendingMessage {
                             unknown_vid,
@@ -457,14 +458,13 @@ async fn run() -> Result<(), Error> {
                         .verify_and_open(&unknown_vid, &mut payload)
                         .await?;
 
-                    write_database(&args.database, &vid_database, aliases.clone()).await?;
-
                     info!(
                         "{vid} is verified and added to the database {}",
                         &args.database
                     );
                     let _ = handle_message(message);
                 }
+                write_database(&args.database, &vid_database, aliases.clone()).await?;
 
                 if one {
                     break;
@@ -493,16 +493,34 @@ async fn run() -> Result<(), Error> {
         Commands::Request {
             sender_vid,
             receiver_vid,
+            nested,
         } => {
             let sender_vid = aliases.get(&sender_vid).unwrap_or(&sender_vid);
             let receiver_vid = aliases.get(&receiver_vid).unwrap_or(&receiver_vid);
 
-            if let Err(e) = vid_database
+            if nested {
+                match vid_database
+                    .send_nested_relationship_request(sender_vid, receiver_vid)
+                    .await
+                {
+                    Ok(vid) => {
+                        tracing::info!(
+			    "sent a nested relationship request to {receiver_vid} with new identity '{}'",
+			    vid.identifier()
+                    );
+                    }
+                    Err(e) => {
+                        tracing::error!(
+                            "error sending message from {sender_vid} to {receiver_vid}: {e}"
+                        );
+                        return Ok(());
+                    }
+                }
+            } else if let Err(e) = vid_database
                 .send_relationship_request(sender_vid, receiver_vid, None)
                 .await
             {
                 tracing::error!("error sending message from {sender_vid} to {receiver_vid}: {e}");
-
                 return Ok(());
             }
 
@@ -513,6 +531,7 @@ async fn run() -> Result<(), Error> {
             sender_vid,
             receiver_vid,
             thread_id,
+            nested,
         } => {
             let sender_vid = aliases.get(&sender_vid).unwrap_or(&sender_vid);
             let receiver_vid = aliases.get(&receiver_vid).unwrap_or(&receiver_vid);
@@ -520,7 +539,26 @@ async fn run() -> Result<(), Error> {
             let mut digest: [u8; 32] = Default::default();
             Base64UrlUnpadded::decode(&thread_id, &mut digest).unwrap();
 
-            if let Err(e) = vid_database
+            if nested {
+                match vid_database
+                    .send_nested_relationship_accept(sender_vid, receiver_vid, digest)
+                    .await
+                {
+                    Ok(vid) => {
+                        tracing::info!(
+			    "formed a nested relationship with {receiver_vid} with new identity '{}'",
+			    vid.identifier()
+			);
+                    }
+                    Err(e) => {
+                        tracing::error!(
+                            "error sending message from {sender_vid} to {receiver_vid}: {e}"
+                        );
+
+                        return Ok(());
+                    }
+                }
+            } else if let Err(e) = vid_database
                 .send_relationship_accept(sender_vid, receiver_vid, digest, None)
                 .await
             {

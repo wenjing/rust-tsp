@@ -614,6 +614,11 @@ impl Store {
                         let connect_to_vid = std::str::from_utf8(connect_to_vid)?;
                         self.add_nested_vid(vid)?;
                         self.set_parent_for_vid(vid, Some(&sender))?;
+                        //TEMPORARY
+                        self.set_relation_status_for_vid(
+                            vid,
+                            RelationshipStatus::Unidirectional(thread_id),
+                        )?;
                         self.upgrade_relation(vid, thread_id)?;
                         self.set_relation_for_vid(connect_to_vid, Some(vid))?;
 
